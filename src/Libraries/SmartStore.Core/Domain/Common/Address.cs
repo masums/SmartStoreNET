@@ -10,6 +10,18 @@ namespace SmartStore.Core.Domain.Common
         /// <summary>
         /// Gets or sets the first name
         /// </summary>
+        [DataMember]
+        public string Salutation { get; set; }
+
+        /// <summary>
+        /// Gets or sets the first name
+        /// </summary>
+        [DataMember]
+        public string Title { get; set; }
+
+        /// <summary>
+        /// Gets or sets the first name
+        /// </summary>
 		[DataMember]
 		public string FirstName { get; set; }
 
@@ -97,11 +109,12 @@ namespace SmartStore.Core.Domain.Common
 		[DataMember]
 		public virtual StateProvince StateProvince { get; set; }
 
-
         public object Clone()
         {
             var addr = new Address()
             {
+                Salutation = this.Salutation,
+                Title = this.Title,
                 FirstName = this.FirstName,
                 LastName = this.LastName,
                 Email = this.Email,
@@ -120,5 +133,18 @@ namespace SmartStore.Core.Domain.Common
             };
             return addr;
         }
+
+		public static string DefaultAddressFormat
+		{
+			get
+			{
+				return @"{{ Salutation }} {{ Title }} {{ FirstName }} {{ LastName }}
+{{ Company }}
+{{ Street1 }}
+{{ Street2 }}
+{{ ZipCode }} {{ City }}
+{{ Country | Upcase }}";
+			}
+		}
     }
 }

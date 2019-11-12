@@ -1,4 +1,5 @@
 ﻿using System;
+using SmartStore.Core.Email;
 
 namespace SmartStore.Core.Domain.Messages
 {
@@ -54,9 +55,10 @@ namespace SmartStore.Core.Domain.Messages
         {
             get
             {
-                if (!String.IsNullOrWhiteSpace(this.DisplayName))
-                    return this.Email + " (" + this.DisplayName + ")";
-                return this.Email;
+				if (DisplayName.IsEmpty())
+					return Email;
+
+				return "{0} ({1})".FormatInvariant(DisplayName, Email);
             }
         }
 
@@ -69,5 +71,10 @@ namespace SmartStore.Core.Domain.Messages
         {
             return this.MemberwiseClone();
         }
+
+		public EmailAddress ToEmailAddress()
+		{
+			return new EmailAddress(this.Email, this.DisplayName);
+		}
     }
 }

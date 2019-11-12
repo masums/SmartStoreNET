@@ -3,15 +3,18 @@ using System.Data.Entity.Migrations;
 using System.Web.Routing;
 using SmartStore.Core;
 using SmartStore.Core.Domain.Shipping;
+using SmartStore.Core.Localization;
 using SmartStore.Core.Plugins;
-using SmartStore.ShippingByWeight.Data;
-using SmartStore.ShippingByWeight.Data.Migrations;
-using SmartStore.ShippingByWeight.Services;
 using SmartStore.Services;
 using SmartStore.Services.Catalog;
 using SmartStore.Services.Localization;
 using SmartStore.Services.Shipping;
 using SmartStore.Services.Shipping.Tracking;
+using SmartStore.Services.Tax;
+using SmartStore.ShippingByWeight.Data;
+using SmartStore.ShippingByWeight.Data.Migrations;
+using SmartStore.ShippingByWeight.Services;
+using SmartStore.Core.Domain.Tax;
 
 namespace SmartStore.ShippingByWeight
 {
@@ -27,11 +30,13 @@ namespace SmartStore.ShippingByWeight
         private readonly ShippingByWeightObjectContext _objectContext;
         private readonly ILocalizationService _localizationService;
         private readonly IPriceFormatter _priceFormatter;
-        private readonly ICommonServices _commonServices;
+        private readonly ICommonServices _services;
+		private readonly ITaxService _taxService;
         
         #endregion
 
         #region Ctor
+
         public ByWeightShippingComputationMethod(IShippingService shippingService,
 			IStoreContext storeContext,
             IShippingByWeightService shippingByWeightService,
@@ -40,7 +45,8 @@ namespace SmartStore.ShippingByWeight
             ShippingByWeightObjectContext objectContext,
             ILocalizationService localizationService,
             IPriceFormatter priceFormatter,
-            ICommonServices commonServices)
+            ICommonServices services,
+			ITaxService taxService)
         {
             this._shippingService = shippingService;
 			this._storeContext = storeContext;
@@ -50,17 +56,23 @@ namespace SmartStore.ShippingByWeight
             this._objectContext = objectContext;
             this._localizationService = localizationService;
             this._priceFormatter = priceFormatter;
-            this._commonServices = commonServices;
-        }
-        #endregion
+            this._services = services;
+			_taxService = taxService;
 
-        #region Utilities
+			T = NullLocalizer.Instance;
+		}
 
-		private decimal? GetRate(decimal subTotal, decimal weight, int shippingMethodId, int storeId, int countryId)
+		public Localizer T { get; set; }
+
+		#endregion
+
+		#region Utilities
+
+		private decimal? GetRate(decimal subTotal, decimal weight, int shippingMethodId, int storeId, int countryId, string zip)
         {
             decimal? shippingTotal = null;
 
-			var shippingByWeightRecord = _shippingByWeightService.FindRecord(shippingMethodId, storeId, countryId, weight);
+			var shippingByWeightRecord = _shippingByWeightService.FindRecord(shippingMethodId, storeId, countryId, weight, zip);
             if (shippingByWeightRecord == null)
             {
                 if (_shippingByWeightSettings.LimitMethodsToCreated)
@@ -109,50 +121,67 @@ namespace SmartStore.ShippingByWeight
         /// <summary>
         ///  Gets available shipping options
         /// </summary>
-        /// <param name="getShippingOptionRequest">A request for getting shipping options</param>
+        /// <param name="request">A request for getting shipping options</param>
         /// <returns>Represents a response of getting shipping rate options</returns>
-        public GetShippingOptionResponse GetShippingOptions(GetShippingOptionRequest getShippingOptionRequest)
+        public GetShippingOptionResponse GetShippingOptions(GetShippingOptionRequest request)
         {
-            if (getShippingOptionRequest == null)
+            if (request == null)
                 throw new ArgumentNullException("getShippingOptionRequest");
 
             var response = new GetShippingOptionResponse();
 
-            if (getShippingOptionRequest.Items == null || getShippingOptionRequest.Items.Count == 0)
+            if (request.Items == null || request.Items.Count == 0)
             {
-                response.AddError("No shipment items");
+                response.AddError(T("Admin.System.Warnings.NoShipmentItems"));
                 return response;
             }
-
-			int storeId = _storeContext.CurrentStore.Id;
-			decimal subTotal = decimal.Zero;
+			
+			int storeId = request.StoreId > 0 ? request.StoreId : _storeContext.CurrentStore.Id;
+			var taxRate = decimal.Zero;
+			decimal subTotalInclTax = decimal.Zero;
+            decimal subTotalExclTax = decimal.Zero;
+            decimal currentSubTotal = decimal.Zero;
             int countryId = 0;
+            string zip = null;
 
-			if (getShippingOptionRequest.ShippingAddress != null)
+			if (request.ShippingAddress != null)
 			{
-				countryId = getShippingOptionRequest.ShippingAddress.CountryId ?? 0;
+				countryId = request.ShippingAddress.CountryId ?? 0;
+                zip = request.ShippingAddress.ZipPostalCode;
 			}
             
-            foreach (var shoppingCartItem in getShippingOptionRequest.Items)
+            foreach (var shoppingCartItem in request.Items)
             {
-                if (shoppingCartItem.Item.IsFreeShipping || !shoppingCartItem.Item.IsShipEnabled)
-                    continue;
-                subTotal += _priceCalculationService.GetSubTotal(shoppingCartItem, true);
-            }
-            decimal weight = _shippingService.GetShoppingCartTotalWeight(getShippingOptionRequest.Items);
+				if (shoppingCartItem.Item.IsFreeShipping || !shoppingCartItem.Item.IsShipEnabled)
+				{
+					continue;
+				}
 
-            var shippingMethods = _shippingService.GetAllShippingMethods(countryId);
+				var itemSubTotal = _priceCalculationService.GetSubTotal(shoppingCartItem, true);
+
+				var itemSubTotalInclTax = _taxService.GetProductPrice(shoppingCartItem.Item.Product, itemSubTotal, true, request.Customer, out taxRate);
+				subTotalInclTax += itemSubTotalInclTax;
+
+                var itemSubTotalExclTax = _taxService.GetProductPrice(shoppingCartItem.Item.Product, itemSubTotal, false, request.Customer, out taxRate);
+                subTotalExclTax += itemSubTotalExclTax;
+            }
+
+			var weight = _shippingService.GetShoppingCartTotalWeight(request.Items, _shippingByWeightSettings.IncludeWeightOfFreeShippingProducts);
+            var shippingMethods = _shippingService.GetAllShippingMethods(request, storeId);
+            currentSubTotal = _services.WorkContext.TaxDisplayType == TaxDisplayType.ExcludingTax ? subTotalExclTax : subTotalInclTax;
+
             foreach (var shippingMethod in shippingMethods)
             {
-                var record = _shippingByWeightService.FindRecord(shippingMethod.Id, storeId, countryId, weight);
+                var record = _shippingByWeightService.FindRecord(shippingMethod.Id, storeId, countryId, weight, zip);
                 
-                decimal? rate = GetRate(subTotal, weight, shippingMethod.Id, storeId, countryId);
+                decimal? rate = GetRate(subTotalInclTax, weight, shippingMethod.Id, storeId, countryId, zip);
                 if (rate.HasValue)
                 {
                     var shippingOption = new ShippingOption();
+					shippingOption.ShippingMethodId = shippingMethod.Id;
                     shippingOption.Name = shippingMethod.GetLocalized(x => x.Name);
 
-                    if (record != null && record.SmallQuantityThreshold > subTotal)
+                    if (record != null && record.SmallQuantityThreshold > currentSubTotal)
                     {
                         shippingOption.Description = shippingMethod.GetLocalized(x => x.Description)
                             + _localizationService.GetResource("Plugin.Shipping.ByWeight.SmallQuantitySurchargeNotReached").FormatWith(
@@ -247,6 +276,11 @@ namespace SmartStore.ShippingByWeight
                 return null; 
             }
         }
+
+		public bool IsActive
+		{
+			get { return true; }
+		}
 
         #endregion
     }

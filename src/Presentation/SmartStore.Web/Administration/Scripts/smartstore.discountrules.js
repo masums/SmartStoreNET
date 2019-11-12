@@ -1,5 +1,3 @@
-;
-
 // Unobtrusive handler for inline discount rule partials
 (function ($, window, document, undefined) {
 
@@ -9,8 +7,8 @@
 			discountId = wrapper.data('discount-id'),
 			requirementId = wrapper.data('requirement-id'),
 			actionUrl = wrapper.data('action-url'),
-			failMsg = JSON.parse(wrapper.data('fail-msg')),
-			successMsg = JSON.parse(wrapper.data('success-msg'));
+			failMsg = wrapper.data('fail-msg'),
+			successMsg = wrapper.data('success-msg');
 		
 		var data = { "discountId": discountId, "discountRequirementId": requirementId };
 		wrapper.find("[data-routeparam]").each(function (i, el) {

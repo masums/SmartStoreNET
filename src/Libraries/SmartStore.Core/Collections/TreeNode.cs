@@ -1,439 +1,258 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
+using Newtonsoft.Json;
+using SmartStore.ComponentModel;
 
 namespace SmartStore.Collections
 {
-    public class TreeNode<T> : ICloneable<TreeNode<T>>
-    {
-        private readonly LinkedList<TreeNode<T>> _children = new LinkedList<TreeNode<T>>();
-		private int? _depth = null;
-
-        public TreeNode(T value)
-        {
-            Value = value;
-        }
-
-        #region Properties
-
-        public TreeNode<T> Parent { get; private set; }
-
-        public T Value { get; set; }
-
-        public TreeNode<T> this[int i]
-        {
-            get
-            {
-                return _children.ElementAt(i);
-            }
-        }
-
-        public IEnumerable<TreeNode<T>> Children
-        {
-            get
-            {
-                return _children;
-            }
-        }
-
-        public IEnumerable<TreeNode<T>> LeafNodes
-        {
-            get
-            {
-                return _children.Where(x => x.IsLeaf);
-            }
-        }
-
-        public IEnumerable<TreeNode<T>> NonLeafNodes
-        {
-            get
-            {
-                return _children.Where(x => !x.IsLeaf);
-            }
-        }
-
-
-        public TreeNode<T> FirstChild
-        {
-            get
-            {
-                var first = _children.First;
-                if (first != null)
-                    return first.Value;
-                return null;
-            }
-        }
-
-        public TreeNode<T> LastChild
-        {
-            get
-            {
-                var last = _children.Last;
-                if (last != null)
-                    return last.Value;
-                return null;
-            }
-        }
-
-        public bool IsLeaf
-        {
-            get
-            {
-                return _children.Count == 0;
-            }
-        }
-
-        public bool HasChildren
-        {
-            get
-            {
-                return _children.Count > 0;
-            }
-        }
-
-        public bool IsRoot
-        {
-            get
-            {
-                return Parent == null;
-            }
-        }
-
-		public int Depth
+	[JsonConverter(typeof(TreeNodeConverter))]
+	public class TreeNode<TValue> : TreeNodeBase<TreeNode<TValue>>
+	{
+		public TreeNode(TValue value)
 		{
-			get
-			{
-				if (!_depth.HasValue)
-				{
-					var node = this;
-					int depth = -1;
-					while (node != null && !node.IsRoot)
-					{
-						depth++;
-						node = node.Parent;
-					}
-					_depth = depth;
-				}
+			Guard.NotNull(value, nameof(value));
 
-				return _depth.Value;
+			Value = value;
+		}
+
+		public TreeNode(TValue value, IEnumerable<TValue> children)
+			: this(value)
+		{
+			if (children != null && children.Any())
+			{
+				AppendRange(children);
 			}
 		}
 
-        public TreeNode<T> Root
-        {
-            get
-            {
-                var root = this;
-                while (root.Parent != null)
-                {
-                    root = root.Parent;
-                }
-                return root;
-            }
-        }
+		public TreeNode(TValue value, IEnumerable<TreeNode<TValue>> children)
+			: this(value)
+		{
+			// for serialization
+			if (children != null && children.Any())
+			{
+				AppendRange(children);
+			}	
+		}
 
-        public TreeNode<T> Next
-        {
-            get
-            {
-                if (this.Parent != null)
-                {
-                    var self = this.Parent._children.Find(this);
-                    var next = self != null ? self.Next : null;
-                    if (next != null)
-                        return next.Value;
-                }
-                return null;
-            }
-        }
+		public TValue Value
+		{
+			get;
+			private set;
+		}
 
-        public TreeNode<T> Previous
-        {
-            get
-            {
-                if (this.Parent != null)
-                {
-                    var self = this.Parent._children.Find(this);
-                    var prev = self != null ? self.Previous : null;
-                    if (prev != null)
-                        return prev.Value;
-                }
-                return null;
-            }
-        }
+		protected override TreeNode<TValue> CreateInstance()
+		{
+			TValue value = this.Value;
 
-        #endregion
+			if (value is ICloneable<TValue>)
+			{
+				value = ((ICloneable<TValue>)value).Clone();
+			}
 
-        #region Methods/Declarations
+			var clonedNode = new TreeNode<TValue>(value);
 
-        private void AddChild(TreeNode<T> node, bool clone, bool append = true)
-        {
-            var newNode = node;
-            if (clone)
-            {
-                newNode = node.Clone(true);
-            }
-            newNode.Parent = this;
-			newNode.TraverseTree(x => x._depth = null);
-            if (append)
-            {
-                _children.AddLast(newNode);
-            }
-            else
-            {
-                _children.AddFirst(newNode);
-            }
-        }
+			// Assign or clone Metadata
+			if (_metadata != null && _metadata.Count > 0)
+			{
+				foreach (var kvp in _metadata)
+				{
+					var metadataValue = kvp.Value is ICloneable 
+						? ((ICloneable)kvp.Value).Clone() 
+						: kvp.Value;
+					clonedNode.SetMetadata(kvp.Key, metadataValue);
+				}
+			}
 
-        #region Append
+			if (_id != null)
+			{
+				clonedNode._id = _id;
+			}
 
-        public TreeNode<T> Append(T value)
-        {
-            var node = new TreeNode<T>(value);
-            this.AddChild(node, false);
-            return node;
-        }
+			return clonedNode;
+		}
 
-        public void Append(TreeNode<T> node, bool clone = true)
-        {
-            this.AddChild(node, clone, true);
-        }
+		public TreeNode<TValue> Append(TValue value, object id = null)
+		{
+			var node = new TreeNode<TValue>(value);
+			node._id = id;
+			this.Append(node);
+			return node;
+		}
 
-        public ICollection<TreeNode<T>> AppendMany(IEnumerable<T> values)
-        {
-            return values.Select(this.Append).AsReadOnly();
-        }
+		public void AppendRange(IEnumerable<TValue> values)
+		{
+			values.Each(x => Append(x));
+		}
 
-        public TreeNode<T>[] AppendMany(params T[] values)
-        {
-            return values.Select(this.Append).ToArray();
-        }
+		public void AppendRange(IEnumerable<TValue> values, Func<TValue, object> idSelector)
+		{
+			Guard.NotNull(idSelector, nameof(idSelector));
 
-        public void AppendMany(IEnumerable<TreeNode<T>> values)
-        {
-            values.Each(x => this.AddChild(x, true));
-        }
+			values.Each(x => Append(x, idSelector(x)));
+		}
 
-        public void AppendChildrenOf(TreeNode<T> node)
-        {
-            node._children.Each(x => this.AddChild(x, true));
-        }
+		public TreeNode<TValue> Prepend(TValue value, object id = null)
+		{
+			var node = new TreeNode<TValue>(value);
+			node._id = id;
+			this.Prepend(node);
+			return node;
+		}
 
-        #endregion
+		public IEnumerable<TValue> Flatten(bool includeSelf = true)
+		{
+			return this.Flatten(null, includeSelf);
+		}
 
-        #region Prepend
+		public IEnumerable<TValue> Flatten(Expression<Func<TValue, bool>> expression, bool includeSelf = true)
+		{
+			IEnumerable<TValue> list;
+			if (includeSelf)
+			{
+				list = new[] { this.Value };
+			}
+			else
+			{
+				list = Enumerable.Empty<TValue>();
+			}
 
-        public TreeNode<T> Prepend(T value)
-        {
-            var node = new TreeNode<T>(value);
-            this.AddChild(node, true, false);
-            return node;
-        }
+			if (!HasChildren)
+				return list;
 
-        #endregion
+			var result = list.Union(Children.SelectMany(x => x.Flatten()));
+			if (expression != null)
+			{
+				result = result.Where(expression.Compile());
+			}
 
-        #region Insert[...]
+			return result;
+		}
+	}
 
-        public void InsertAfter(TreeNode<T> refNode)
-        {
-            this.Insert(refNode, true);
-        }
+	public class TreeNodeConverter : JsonConverter
+	{
+		public override bool CanConvert(Type objectType)
+		{
+			var canConvert = objectType.IsGenericType && objectType.GetGenericTypeDefinition() == typeof(TreeNode<>);
+			return canConvert;
+		}
 
-        public void InsertBefore(TreeNode<T> refNode)
-        {
-            this.Insert(refNode, false);
-        }
+		public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+		{
+			var valueType = objectType.GetGenericArguments()[0];
+			var sequenceType = typeof(List<>).MakeGenericType(objectType);
 
-        private void Insert(TreeNode<T> refNode, bool after)
-        {
-            Guard.ArgumentNotNull(() => refNode);
+			object objValue = null;
+			object objChildren = null;
+			string id = null;
+			Dictionary<string, object> metadata = null;
 
-            if (refNode.Parent == null)
-            {
-                throw Error.Argument("refNode", "The reference node cannot be a root node and must be attached to the tree.");
-            }
+			reader.Read();
+			while (reader.TokenType == JsonToken.PropertyName)
+			{
+				string a = reader.Value.ToString();
+				if (string.Equals(a, "Value", StringComparison.OrdinalIgnoreCase))
+				{
+					reader.Read();
+					objValue = serializer.Deserialize(reader, valueType);
+				}
+				else if (string.Equals(a, "Metadata", StringComparison.OrdinalIgnoreCase))
+				{
+					reader.Read();
+					metadata = serializer.Deserialize<Dictionary<string, object>>(reader);
+				}
+				else if (string.Equals(a, "Children", StringComparison.OrdinalIgnoreCase))
+				{
+					reader.Read();
+					objChildren = serializer.Deserialize(reader, sequenceType);
+				}
+				else if (string.Equals(a, "Id", StringComparison.OrdinalIgnoreCase))
+				{
+					reader.Read();
+					id = serializer.Deserialize<string>(reader);
+				}
+				else
+				{
+					reader.Skip();
+				}
 
-            var refLinkedList = refNode.Parent._children;
-            var refNodeInternal = refLinkedList.Find(refNode);
+				reader.Read();
+			}
 
-            if (this.Parent != null)
-            {
-                var thisLinkedList = this.Parent._children;
-                thisLinkedList.Remove(this);
-            }
+			var ctorParams = objChildren != null 
+				? new object[] { objValue, objChildren } 
+				: new object[] { objValue };
 
-            if (after)
-            {
-                refLinkedList.AddAfter(refNodeInternal, this);
-            }
-            else
-            {
-                refLinkedList.AddBefore(refNodeInternal, this);
-            }
+			var treeNode = Activator.CreateInstance(objectType, ctorParams);
 
-            this.Parent = refNode.Parent;
-			this.TraverseTree(x => x._depth = null);
-        }
+			// Set Metadata
+			if (metadata != null && metadata.Count > 0)
+			{
+				var metadataProp = FastProperty.GetProperty(objectType, "Metadata", PropertyCachingStrategy.Cached);
+				metadataProp.SetValue(treeNode, metadata);
+			}
 
-        #endregion
+			// Set Id
+			if (id.HasValue())
+			{
+				var idProp = FastProperty.GetProperty(objectType, "Id", PropertyCachingStrategy.Cached);
+				idProp.SetValue(treeNode, id);
+			}
 
-        #region Select[...]
+			return treeNode;
+		}
 
-        public TreeNode<T> SelectNode(Expression<Func<TreeNode<T>, bool>> predicate)
-        {
-            Guard.ArgumentNotNull(() => predicate);
+		public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+		{
+			writer.WriteStartObject();
+			{
+				// Id
+				if (GetPropValue("Id", value) is object o)
+				{
+					writer.WritePropertyName("Id");
+					serializer.Serialize(writer, o);
+				}
 
-            return this.FlattenNodes(predicate, false).FirstOrDefault();
-        }
+				// Value
+				writer.WritePropertyName("Value");
+				serializer.Serialize(writer, GetPropValue("Value", value));
 
-        /// <summary>
-        /// Selects all nodes (recursively) with match the given <c>predicate</c>,
-        /// but excluding self
-        /// </summary>
-        /// <param name="predicate">The predicate to match against</param>
-        /// <returns>A readonly collection of node matches</returns>
-        public ICollection<TreeNode<T>> SelectNodes(Expression<Func<TreeNode<T>, bool>> predicate)
-        {
-            Guard.ArgumentNotNull(() => predicate);
-            
-            var result = new List<TreeNode<T>>();
+				// Metadata
+				if (GetPropValue("Metadata", value) is IDictionary<string, object> dict && dict.Count > 0)
+				{
+					writer.WritePropertyName("Metadata");
 
-            var flattened = this.FlattenNodes(predicate, false);
-            result.AddRange(flattened);
+					var typeNameHandling = serializer.TypeNameHandling;
+					try
+					{
+						serializer.TypeNameHandling = TypeNameHandling.All;
+						serializer.Serialize(writer, dict);
+					}
+					finally
+					{
+						serializer.TypeNameHandling = typeNameHandling;
+					}
+				}
 
-            return result.AsReadOnly();
-        }
+				// Children
+				if (GetPropValue("HasChildren", value) is bool b && b == true)
+				{
+					writer.WritePropertyName("Children");
+					serializer.Serialize(writer, GetPropValue("Children", value));
+				}
+			}
+			writer.WriteEndObject();
+		}
 
-        #endregion
-
-        public bool RemoveNode(TreeNode<T> node)
-        {
-			node.TraverseTree(x => x._depth = null);
-			return _children.Remove(node);
-        }
-
-
-        public void Clear()
-        {
-            _children.Clear();
-        }
-
-        public void Traverse(Action<T> action)
-        {
-            action(Value);
-            foreach (var child in _children)
-                child.Traverse(action);
-        }
-
-        public void TraverseTree(Action<TreeNode<T>> action)
-        {
-            action(this);
-            foreach (var child in _children)
-                child.TraverseTree(action);
-        }
-
-        public IEnumerable<T> Flatten(bool includeSelf = true)
-        {
-            return this.Flatten(null, includeSelf);
-        }
-
-        public IEnumerable<T> Flatten(Expression<Func<T, bool>> expression, bool includeSelf = true)
-        {
-            IEnumerable<T> list;
-            if (includeSelf)
-            {
-                list = new[] { Value };
-            }
-            else
-            {
-                list = Enumerable.Empty<T>();
-            }
-
-            var result = list.Union(_children.SelectMany(x => x.Flatten()));
-            if (expression != null)
-            {
-                result = result.Where(expression.Compile());
-            }
-
-            return result;
-        }
-
-        internal IEnumerable<TreeNode<T>> FlattenNodes(bool includeSelf = true)
-        {
-            return this.FlattenNodes(null, includeSelf);
-        }
-
-        internal IEnumerable<TreeNode<T>> FlattenNodes(Expression<Func<TreeNode<T>, bool>> expression, bool includeSelf = true)
-        {
-            IEnumerable<TreeNode<T>> list;
-            if (includeSelf)
-            {
-                list = new[] { this };
-            }
-            else
-            {
-                list = Enumerable.Empty<TreeNode<T>>();
-            }
-
-            var result = list.Union(_children.SelectMany(x => x.FlattenNodes()));
-            if (expression != null)
-            {
-                result = result.Where(expression.Compile());
-            }
-
-            return result;
-        }
-
-        public TreeNode<T> Find(T value)
-        {
-            //Guard.ArgumentNotNull(value, "value"); 
-
-            if (this.Value.Equals(value))
-            {
-                return this;
-            }
-
-            TreeNode<T> item = null;
-
-            foreach (var child in _children) {
-                item = child.Find(value);
-                if (item != null)
-                    break;
-            }
-
-            return item;
-        }
-
-        public TreeNode<T> Clone()
-        {
-            return Clone(true);
-        }
-
-        public TreeNode<T> Clone(bool deep)
-        {
-            T value = this.Value;
-
-            if (value is ICloneable)
-            {
-                value = (T)((ICloneable)value).Clone();
-            }
-
-            var clone = new TreeNode<T>(value);
-            if (deep)
-            {
-                clone.AppendChildrenOf(this);
-            }
-            return clone;
-        }
-
-        object ICloneable.Clone()
-        {
-            return Clone(true);
-        }
-
-        #endregion
-    }
+		private object GetPropValue(string name, object instance)
+		{
+			return FastProperty.GetProperty(instance.GetType(), name, PropertyCachingStrategy.Cached).GetValue(instance);
+		}
+	}
 }

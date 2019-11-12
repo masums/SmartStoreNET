@@ -12,6 +12,8 @@ using SmartStore.Web.Framework.Controllers;
 using SmartStore.Web.Framework;
 using Telerik.Web.Mvc;
 using System.Collections.Generic;
+using SmartStore.Web.Framework.Filters;
+using SmartStore.Web.Framework.Security;
 
 namespace SmartStore.Admin.Controllers
 {
@@ -38,7 +40,6 @@ namespace SmartStore.Admin.Controllers
             this._localizationService = localizationService;
             this._customerActivityService = customerActivityService;
             this._permissionService = permissionService;
-            //codehint: sm-add
             this._taxSettings = taxSettings;
 		}
 
@@ -101,18 +102,25 @@ namespace SmartStore.Admin.Controllers
 		[HttpPost, GridAction(EnableCustomBinding = true)]
 		public ActionResult List(GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCustomerRoles))
-                return AccessDeniedView();
-            
-            var customerRoles = _customerService.GetAllCustomerRoles(true);
-            var gridModel = new GridModel<CustomerRoleModel>
+			var model = new GridModel<CustomerRoleModel>();
+
+			if (_permissionService.Authorize(StandardPermissionProvider.ManageCustomerRoles))
 			{
-                Data = customerRoles.Select(x => x.ToModel()),
-                Total = customerRoles.Count()
-			};
+				var customerRoles = _customerService.GetAllCustomerRoles(true);
+
+				model.Data = customerRoles.Select(x => x.ToModel());
+				model.Total = customerRoles.Count();
+			}
+			else
+			{
+				model.Data = Enumerable.Empty<CustomerRoleModel>();
+
+				NotifyAccessDenied();
+			}
+
 			return new JsonResult
 			{
-				Data = gridModel
+				Data = model
 			};
 		}
 
@@ -128,7 +136,7 @@ namespace SmartStore.Admin.Controllers
             return View(model);
         }
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
         public ActionResult Create(CustomerRoleModel model, bool continueEditing)
         {
             if (!_permissionService.Authorize(StandardPermissionProvider.ManageCustomerRoles))
@@ -166,7 +174,7 @@ namespace SmartStore.Admin.Controllers
             return View(model);
 		}
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
         public ActionResult Edit(CustomerRoleModel model, bool continueEditing)
         {
             if (!_permissionService.Authorize(StandardPermissionProvider.ManageCustomerRoles))
@@ -174,7 +182,7 @@ namespace SmartStore.Admin.Controllers
             
             var customerRole = _customerService.GetCustomerRoleById(model.Id);
             if (customerRole == null)
-                //No customer role found with the specified id
+                // No customer role found with the specified id
                 return RedirectToAction("List");
 
             try
@@ -187,18 +195,16 @@ namespace SmartStore.Admin.Controllers
                     if (customerRole.IsSystemRole && !customerRole.SystemName.Equals(model.SystemName, StringComparison.InvariantCultureIgnoreCase))
                         throw new SmartException(_localizationService.GetResource("Admin.Customers.CustomerRoles.Fields.SystemName.CantEditSystem"));
 
-
                     customerRole = model.ToEntity(customerRole);
                     _customerService.UpdateCustomerRole(customerRole);
 
-                    //activity log
                     _customerActivityService.InsertActivity("EditCustomerRole", _localizationService.GetResource("ActivityLog.EditCustomerRole"), customerRole.Name);
 
                     NotifySuccess(_localizationService.GetResource("Admin.Customers.CustomerRoles.Updated"));
                     return continueEditing ? RedirectToAction("Edit", customerRole.Id) : RedirectToAction("List");
                 }
 
-                //If we got this far, something failed, redisplay form
+                // If we got this far, something failed, redisplay form
                 return View(model);
             }
             catch (Exception exc)

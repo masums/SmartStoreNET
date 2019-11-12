@@ -76,7 +76,7 @@ namespace SmartStore.Core.Domain.Orders
         /// </summary>
         public virtual ICollection<GiftCardUsageHistory> GiftCardUsageHistory
         {
-            get { return _giftCardUsageHistory ?? (_giftCardUsageHistory = new List<GiftCardUsageHistory>()); }
+			get { return _giftCardUsageHistory ?? (_giftCardUsageHistory = new HashSet<GiftCardUsageHistory>()); }
             protected set { _giftCardUsageHistory = value; }
         }
         
@@ -122,13 +122,22 @@ namespace SmartStore.Core.Domain.Orders
         /// <summary>
         /// Is gift card valid
         /// </summary>
+		/// <param name="storeId">Store identifier. 0 validates the gift card for all stores</param>
         /// <returns>Result</returns>
-        public bool IsGiftCardValid()
+        public bool IsGiftCardValid(int storeId)
         {
             if (!this.IsGiftCardActivated)
                 return false;
 
-            decimal remainingAmount = GetGiftCardRemainingAmount();
+			if (storeId != 0 && 
+				PurchasedWithOrderItemId.HasValue && PurchasedWithOrderItem != null &&
+				PurchasedWithOrderItem.Order != null)
+			{
+				if (PurchasedWithOrderItem.Order.StoreId != storeId)
+					return false;
+			}
+
+			decimal remainingAmount = GetGiftCardRemainingAmount();
             if (remainingAmount > decimal.Zero)
                 return true;
 

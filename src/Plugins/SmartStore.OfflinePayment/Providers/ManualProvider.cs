@@ -1,10 +1,8 @@
-using System;
 using System.Collections.Generic;
-using SmartStore.Core.Domain.Orders;
+using System.Web.Mvc;
 using SmartStore.Core.Domain.Payments;
 using SmartStore.Core.Plugins;
 using SmartStore.OfflinePayment.Settings;
-using SmartStore.Services.Orders;
 using SmartStore.Services.Payments;
 
 namespace SmartStore.OfflinePayment
@@ -12,29 +10,31 @@ namespace SmartStore.OfflinePayment
 	[SystemName("Payments.Manual")]
 	[FriendlyName("Credit Card (manual)")]
 	[DisplayOrder(1)]
-	public class ManualProvider : OfflinePaymentProviderBase, IConfigurable
+	public class ManualProvider : OfflinePaymentProviderBase<ManualPaymentSettings>, IConfigurable
 	{
-		private readonly ManualPaymentSettings _settings;
-		private readonly IOrderTotalCalculationService _orderTotalCalculationService;
-
-		public ManualProvider(ManualPaymentSettings settings, IOrderTotalCalculationService orderTotalCalculationService)
+		public static List<SelectListItem> CreditCardTypes
 		{
-			this._settings = settings;
-			this._orderTotalCalculationService = orderTotalCalculationService;
-		}
-
-		public override decimal GetAdditionalHandlingFee(IList<OrganizedShoppingCartItem> cart)
-		{
-			var result = this.CalculateAdditionalFee(_orderTotalCalculationService, cart, _settings.AdditionalFee, _settings.AdditionalFeePercentage);
-			return result;
+			get
+			{
+				var creditCardTypes = new List<SelectListItem>
+				{
+					new SelectListItem { Text = "Visa", Value = "Visa" },
+					new SelectListItem { Text = "Master Card", Value = "MasterCard" },
+					new SelectListItem { Text = "Discover", Value = "Discover" },
+					new SelectListItem { Text = "Amex", Value = "Amex" }
+				};
+				return creditCardTypes;
+			}
 		}
 
 		public override ProcessPaymentResult ProcessPayment(ProcessPaymentRequest processPaymentRequest)
 		{
 			var result = new ProcessPaymentResult();
+			var settings = CommonServices.Settings.LoadSetting<ManualPaymentSettings>(processPaymentRequest.StoreId);
 
 			result.AllowStoringCreditCardNumber = true;
-			switch (_settings.TransactMode)
+
+			switch (settings.TransactMode)
 			{
 				case TransactMode.Pending:
 					result.NewPaymentStatus = PaymentStatus.Pending;
@@ -42,14 +42,12 @@ namespace SmartStore.OfflinePayment
 				case TransactMode.Authorize:
 					result.NewPaymentStatus = PaymentStatus.Authorized;
 					break;
-				case TransactMode.AuthorizeAndCapture:
+				case TransactMode.Paid:
 					result.NewPaymentStatus = PaymentStatus.Paid;
 					break;
 				default:
-					{
-						result.AddError(T("Common.Payment.TranactionTypeNotSupported"));
-						return result;
-					}
+					result.AddError(T("Common.Payment.TranactionTypeNotSupported"));
+					return result;
 			}
 
 			return result;
@@ -58,9 +56,10 @@ namespace SmartStore.OfflinePayment
 		public override ProcessPaymentResult ProcessRecurringPayment(ProcessPaymentRequest processPaymentRequest)
 		{
 			var result = new ProcessPaymentResult();
+			var settings = CommonServices.Settings.LoadSetting<ManualPaymentSettings>(processPaymentRequest.StoreId);
 
 			result.AllowStoringCreditCardNumber = true;
-			switch (_settings.TransactMode)
+			switch (settings.TransactMode)
 			{
 				case TransactMode.Pending:
 					result.NewPaymentStatus = PaymentStatus.Pending;
@@ -68,7 +67,7 @@ namespace SmartStore.OfflinePayment
 				case TransactMode.Authorize:
 					result.NewPaymentStatus = PaymentStatus.Authorized;
 					break;
-				case TransactMode.AuthorizeAndCapture:
+				case TransactMode.Paid:
 					result.NewPaymentStatus = PaymentStatus.Paid;
 					break;
 				default:
@@ -106,6 +105,5 @@ namespace SmartStore.OfflinePayment
 				return true;
 			}
 		}
-
 	}
 }

@@ -1,5 +1,5 @@
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Orders
 {
@@ -13,5 +13,7 @@ namespace SmartStore.Admin.Models.Orders
 
         [SmartResourceDisplayName("Admin.SalesReport.Incomplete.Count")]
         public int Count { get; set; }
+
+		public string Url { get; set; }
     }
 }

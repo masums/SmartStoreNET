@@ -1,11 +1,10 @@
-﻿using System.Collections.Generic;
-using System.Web.Mvc;
+﻿using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Models.Stores;
-using SmartStore.Admin.Validators.Plugins;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Localization;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
+using System.Collections.Generic;
+using System.Web.Mvc;
 
 namespace SmartStore.Admin.Models.Plugins
 {
@@ -15,7 +14,9 @@ namespace SmartStore.Admin.Models.Plugins
         public PluginModel()
         {
             Locales = new List<PluginLocalizedModel>();
+			LicenseLabel = new LicenseLabelModel();
         }
+
         [SmartResourceDisplayName("Admin.Configuration.Plugins.Fields.Group")]
         [AllowHtml]
         public string Group { get; set; }
@@ -40,14 +41,18 @@ namespace SmartStore.Admin.Models.Plugins
         [AllowHtml]
         public string Author { get; set; }
 
-        [SmartResourceDisplayName("Admin.Configuration.Plugins.Fields.DisplayOrder")] 
+        [SmartResourceDisplayName("Common.DisplayOrder")] 
         public int DisplayOrder { get; set; }
 
         [SmartResourceDisplayName("Admin.Configuration.Plugins.Fields.Configure")]
         public string ConfigurationUrl { get; set; }
 
+		public string Url { get; set; }
+
         [SmartResourceDisplayName("Admin.Configuration.Plugins.Fields.Installed")]
         public bool Installed { get; set; }
+
+		public LicenseLabelModel LicenseLabel { get; set; }
 
 		public bool IsConfigurable { get; set; }
 
@@ -61,7 +66,7 @@ namespace SmartStore.Admin.Models.Plugins
     }
 
 
-    public class PluginLocalizedModel : ILocalizedModelLocal
+	public class PluginLocalizedModel : ILocalizedModelLocal
     {
         public int LanguageId { get; set; }
 
@@ -72,5 +77,13 @@ namespace SmartStore.Admin.Models.Plugins
 		[SmartResourceDisplayName("Common.Description")]
 		[AllowHtml]
 		public string Description { get; set; }
+    }
+
+    public partial class PluginValidator : AbstractValidator<PluginModel>
+    {
+        public PluginValidator()
+        {
+            RuleFor(x => x.FriendlyName).NotEmpty();
+        }
     }
 }

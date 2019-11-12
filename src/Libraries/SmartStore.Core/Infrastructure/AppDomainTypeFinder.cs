@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using SmartStore.Core.Logging;
 using SmartStore.Core.Plugins;
 
 namespace SmartStore.Core.Infrastructure
@@ -17,81 +18,52 @@ namespace SmartStore.Core.Infrastructure
     /// </summary>
     public class AppDomainTypeFinder : ITypeFinder
     {
-        #region Private Fields
+		private static object s_lock = new object();
 
-		private string _assemblySkipLoadingPattern = @"^System|^mscorlib|^Microsoft|^CppCodeProvider|^VJSharpCodeProvider|^WebDev|^Nuget|^Castle|^Iesi|^log4net|^Autofac|^AutoMapper|^dotless|^EntityFramework|^EPPlus|^Fasterflect|^FiftyOne|^nunit|^TestDriven|^MbUnit|^Rhino|^QuickGraph|^TestFu|^Telerik|^Antlr3|^Recaptcha|^FluentValidation|^ImageResizer|^itextsharp|^MiniProfiler|^Newtonsoft|^Pandora|^WebGrease|^Noesis|^DotNetOpenAuth|^Facebook|^LinqToTwitter|^PerceptiveMCAPI|^CookComputing|^GCheckout|^Mono\.Math|^Org\.Mentalis|^App_Web|^BundleTransformer|^ClearScript|^JavaScriptEngineSwitcher|^Glimpse|^Ionic|^App_GlobalResources|^AjaxMin";
+		private readonly Regex _systemAssembliesPattern = new Regex(@"^System|^mscorlib|^Microsoft", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
 		private bool _ignoreReflectionErrors = true;
 		private bool _loadAppDomainAssemblies = true;
-        private string _assemblyRestrictToLoadingPattern = ".*";
         private IList<string> _customAssemblyNames = new List<string>();
 
-        #endregion
+		public AppDomainTypeFinder()
+		{
+			Logger = NullLogger.Instance;
+		}
 
-        #region Constructors
+		public ILogger Logger
+		{
+			get;
+			set;
+		}
 
-        /// <summary>Creates a new instance of the AppDomainTypeFinder.</summary>
-        public AppDomainTypeFinder()
-        {
-        }
-
-        #endregion
-
-        #region Properties
-
-        /// <summary>The app domain to look for types in.</summary>
-        public virtual AppDomain App
+		public virtual AppDomain App
         {
             get { return AppDomain.CurrentDomain; }
         }
 
-        /// <summary>Gets or sets wether SmartStore should iterate assemblies in the app domain when loading SmartStore types. Loading patterns are applied when loading these assemblies.</summary>
+        /// <summary>
+		/// Gets or sets wether SmartStore should iterate assemblies in the app domain when loading SmartStore types. Loading patterns are applied when loading these assemblies.
+		/// </summary>
         public bool LoadAppDomainAssemblies
         {
             get { return _loadAppDomainAssemblies; }
             set { _loadAppDomainAssemblies = value; }
         }
 
-        /// <summary>Gets or sets assemblies loaded at startup in addition to those loaded in the AppDomain.</summary>
+        /// <summary>
+		/// Gets or sets assemblies to load at startup in addition to those loaded in the AppDomain.
+		/// </summary>
         public IList<string> CustomAssemblyNames
         {
             get { return _customAssemblyNames; }
             set { _customAssemblyNames = value; }
         }
 
-        /// <summary>Gets the pattern for dlls that we know don't need to be investigated.</summary>
-        public string AssemblySkipLoadingPattern
-        {
-            get { return _assemblySkipLoadingPattern; }
-            set { _assemblySkipLoadingPattern = value; }
-        }
-
-        /// <summary>Gets or sets the pattern for dll that will be investigated. For ease of use this defaults to match all but to increase performance you might want to configure a pattern that includes assemblies and your own.</summary>
-        /// <remarks>If you change this so that SmartStore assemblies arn't investigated (e.g. by not including something like "^SmartStore|..." you may break core functionality.</remarks>
-        public string AssemblyRestrictToLoadingPattern
-        {
-            get { return _assemblyRestrictToLoadingPattern; }
-            set { _assemblyRestrictToLoadingPattern = value; }
-        }
-
-        #endregion
-
-        #region Internal Attributed Assembly class
-
-        private class AttributedAssembly
-        {
-            internal Assembly Assembly { get; set; }
-            internal Type PluginAttributeType { get; set; }
-        }
-
-        #endregion
-
-        #region ITypeFinder
-
         public IEnumerable<Type> FindClassesOfType(Type assignTypeFrom, IEnumerable<Assembly> assemblies, bool onlyConcreteClasses = true)
         {
             var result = new List<Type>();
-            
+
             try
             {
 				foreach (var a in assemblies)
@@ -99,35 +71,36 @@ namespace SmartStore.Core.Infrastructure
 					Type[] types = null;
 					try
 					{
-						types = a.GetTypes();
+						types = a.GetExportedTypes();
 					}
 					catch
 					{
-						//Entity Framework 6 doesn't allow getting types (throws an exception)
+						// Entity Framework 6 doesn't allow getting types (throws an exception)
 						if (!_ignoreReflectionErrors)
 						{
 							throw;
 						}
 					}
-					if (types != null)
+
+					if (types == null)
+						continue;
+
+					foreach (var t in types)
 					{
-						foreach (var t in types)
+						if (assignTypeFrom.IsAssignableFrom(t) || (assignTypeFrom.IsGenericTypeDefinition && DoesTypeImplementOpenGeneric(t, assignTypeFrom)))
 						{
-							if (assignTypeFrom.IsAssignableFrom(t) || (assignTypeFrom.IsGenericTypeDefinition && DoesTypeImplementOpenGeneric(t, assignTypeFrom)))
+							if (!t.IsInterface)
 							{
-								if (!t.IsInterface)
+								if (onlyConcreteClasses)
 								{
-									if (onlyConcreteClasses)
-									{
-										if (t.IsClass && !t.IsAbstract)
-										{
-											result.Add(t);
-										}
-									}
-									else
+									if (t.IsClass && !t.IsAbstract)
 									{
 										result.Add(t);
 									}
+								}
+								else
+								{
+									result.Add(t);
 								}
 							}
 						}
@@ -136,62 +109,53 @@ namespace SmartStore.Core.Infrastructure
             }
             catch (ReflectionTypeLoadException ex)
             {
-                var msg = string.Empty;
-                foreach (var e in ex.LoaderExceptions)
-                    msg += e.Message + Environment.NewLine;
+				Logger.Error(ex);
 
-                var fail = new Exception(msg, ex);
-                Debug.WriteLine(fail.Message, fail);
+				var msg = string.Empty;
+				foreach (var e in ex.LoaderExceptions)
+				{
+					msg += e.Message + Environment.NewLine;
+				}
 
-                throw fail;
+				var fail = new Exception(msg, ex);
+				throw fail;
             }
             return result;
         }
 
-        /// <summary>
-        /// Caches attributed assembly information so they don't have to be re-read
-        /// </summary>
-        private readonly List<AttributedAssembly> _attributedAssemblies = new List<AttributedAssembly>();
+		public virtual IEnumerable<Assembly> GetAssemblies(bool ignoreInactivePlugins = false)
+		{
+			var assemblies = new HashSet<Assembly>();
 
-        /// <summary>
-        /// Caches the assembly attributes that have been searched for
-        /// </summary>
-        private readonly List<Type> _assemblyAttributesSearched = new List<Type>();
+			var addedAssemblyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>Gets the assemblies related to the current implementation.</summary>
-		/// <param name="ignoreInactivePlugins">Indicates whether uninstalled plugin's assemblies should be filtered out</param>
-        /// <returns>A list of assemblies that should be loaded by the SmartStore factory.</returns>
-		public virtual IList<Assembly> GetAssemblies(bool ignoreInactivePlugins = false)
-        {
-			var addedAssemblyNames = new List<string>();
-            var assemblies = new List<Assembly>();
-
-			if (LoadAppDomainAssemblies)
+			if (_loadAppDomainAssemblies)
 			{
-				AddAssembliesInAppDomain(addedAssemblyNames, assemblies);
+				AddAppDomainAssemblies(addedAssemblyNames, assemblies);
 			}
-            AddCustomAssemblies(addedAssemblyNames, assemblies);
+
+			AddCustomAssemblies(addedAssemblyNames, assemblies);
 
 			if (ignoreInactivePlugins)
 			{
-				return assemblies.Where(x => PluginManager.IsActivePluginAssembly(x)).ToList();
+				return assemblies.Where(x => PluginManager.IsActivePluginAssembly(x)).AsReadOnly();
 			}
-			else
-			{
-				return assemblies;
-			}
-        }
 
-        #endregion
+			return assemblies.AsReadOnly();
+		}
 
-        /// <summary>Iterates all assemblies in the AppDomain and if it's name matches the configured patterns add it to our list.</summary>
-        /// <param name="addedAssemblyNames"></param>
-        /// <param name="assemblies"></param>
-        private void AddAssembliesInAppDomain(List<string> addedAssemblyNames, List<Assembly> assemblies)
+		/// <summary>
+		/// Iterates all assemblies in the AppDomain and if its name matches the configured patterns adds it to our list.
+		/// </summary>
+		/// <param name="addedAssemblyNames"></param>
+		/// <param name="assemblies"></param>
+		private void AddAppDomainAssemblies(HashSet<string> addedAssemblyNames, HashSet<Assembly> assemblies)
         {
-            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+			var domainAssemblies = AppDomain.CurrentDomain.GetAssemblies();
+
+			foreach (var assembly in domainAssemblies)
             {
-                if (Matches(assembly.FullName))
+                if (Matches(assembly))
                 {
                     if (!addedAssemblyNames.Contains(assembly.FullName))
                     {
@@ -202,76 +166,59 @@ namespace SmartStore.Core.Infrastructure
             }
         }
 
-        /// <summary>Adds specificly configured assemblies.</summary>
-        protected virtual void AddCustomAssemblies(List<string> addedAssemblyNames, List<Assembly> assemblies)
+        /// <summary>
+		/// Explicitly adds custom assemblies.
+		/// </summary>
+        protected virtual void AddCustomAssemblies(HashSet<string> addedAssemblyNames, HashSet<Assembly> assemblies)
         {
             foreach (string assemblyName in CustomAssemblyNames)
             {
-                Assembly assembly = Assembly.Load(assemblyName);
-                if (!addedAssemblyNames.Contains(assembly.FullName))
+                if (!addedAssemblyNames.Contains(assemblyName))
                 {
-                    assemblies.Add(assembly);
-                    addedAssemblyNames.Add(assembly.FullName);
+					try
+					{
+						var assembly = Assembly.Load(assemblyName);
+						assemblies.Add(assembly);
+						Logger.DebugFormat("Loaded custom assembly '{0}'", assemblyName);
+					}
+					finally
+					{
+						addedAssemblyNames.Add(assemblyName);
+					}  
                 }
             }
         }
 
-        /// <summary>Check if a dll is one of the shipped dlls that we know don't need to be investigated.</summary>
-        /// <param name="assemblyFullName">The name of the assembly to check.</param>
-        /// <returns>True if the assembly should be loaded into SmartStore.</returns>
-        public virtual bool Matches(string assemblyFullName)
-        {
-            return !Matches(assemblyFullName, AssemblySkipLoadingPattern)
-                   && Matches(assemblyFullName, AssemblyRestrictToLoadingPattern);
-        }
+		/// <summary>
+		/// Checks whether an assembly is one of the shipped system or 3rd party assemblies that don't need to be investigated.
+		/// </summary>
+		/// <param name="assembly">The assembly to check.</param>
+		/// <returns>True if the assembly should be loaded into SmartStore.</returns>
+		public virtual bool Matches(Assembly assembly)
+		{
+            var name = assembly.FullName;
 
-        /// <summary>Check if a dll is one of the shipped dlls that we know don't need to be investigated.</summary>
-        /// <param name="assemblyFullName">The assembly name to match.</param>
-        /// <param name="pattern">The regular expression pattern to match against the assembly name.</param>
-        /// <returns>True if the pattern matches the assembly name.</returns>
-        protected virtual bool Matches(string assemblyFullName, string pattern)
-        {
-            return Regex.IsMatch(assemblyFullName, pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        }
+			// Check if passed assembly is a system assembly
+			if (_systemAssembliesPattern.IsMatch(name))
+			{
+				return false;
+			}
+			
+			// Check if the passed assembly starts with "SmartStore."
+			if (name.StartsWith("SmartStore.", StringComparison.OrdinalIgnoreCase))
+			{
+				return true;
+			}
 
-        /// <summary>Makes sure matching assemblies in the supplied folder are loaded in the app domain.</summary>
-        /// <param name="directoryPath">The physical path to a directory containing dlls to load in the app domain.</param>
-        protected virtual void LoadMatchingAssemblies(string directoryPath)
-        {
-            var loadedAssemblyNames = new List<string>();
-            foreach (Assembly a in GetAssemblies())
-            {
-                loadedAssemblyNames.Add(a.FullName);
-            }
+			// Check if any of the referenced assemblies of the passed assembly start with "SmartStore."
+			// In this case it's obviously a SmartStore plugin.
+			if (assembly.GetReferencedAssemblies().Any(x => x.FullName.StartsWith("SmartStore.", StringComparison.OrdinalIgnoreCase)))
+			{
+				return true;
+			}
 
-            if (!Directory.Exists(directoryPath))
-            {
-                return;
-            }
-
-            foreach (string dllPath in Directory.GetFiles(directoryPath, "*.dll"))
-            {
-                try
-                {
-                    var an = AssemblyName.GetAssemblyName(dllPath);
-                    if (Matches(an.FullName) && !loadedAssemblyNames.Contains(an.FullName))
-                    {
-                        App.Load(an);
-                    }
-                    
-                    //old loading stuff
-                    //Assembly a = Assembly.ReflectionOnlyLoadFrom(dllPath);
-                    //if (Matches(a.FullName) && !loadedAssemblyNames.Contains(a.FullName))
-                    //{
-                    //    App.Load(a.FullName);
-                    //}
-                }
-                catch (BadImageFormatException ex)
-                {
-                    Trace.TraceError(ex.ToString());
-                }
-            }
-        }
+			return false;
+		}
 
         protected virtual bool DoesTypeImplementOpenGeneric(Type type, Type openGeneric)
         {
@@ -286,8 +233,10 @@ namespace SmartStore.Core.Infrastructure
                     var isMatch = genericTypeDefinition.IsAssignableFrom(implementedInterface.GetGenericTypeDefinition());
                     return isMatch;
                 }
+
                 return false;
-            }catch
+            }
+			catch
             {
                 return false;
             }

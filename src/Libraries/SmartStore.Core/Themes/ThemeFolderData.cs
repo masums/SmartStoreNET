@@ -7,6 +7,7 @@ namespace SmartStore.Core.Themes
 	{
 		public string FolderName { get; set; }
 		public string FullPath { get; set; }
+		public bool IsSymbolicLink { get; set; }
 		public string VirtualBasePath { get; set; }
 		public XmlDocument Configuration { get; set; }
 		public string BaseTheme { get; set; }
@@ -23,7 +24,7 @@ namespace SmartStore.Core.Themes
 				if (BaseTheme == null)
 					return null;
 
-				return new string[] { BaseTheme };
+				return new [] { BaseTheme };
 			}
 		}
 	}

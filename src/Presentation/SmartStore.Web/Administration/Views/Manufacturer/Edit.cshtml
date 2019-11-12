@@ -1,32 +1,37 @@
 ﻿@model ManufacturerModel
 @{
-    //page title
     ViewBag.Title = T("Admin.Catalog.Manufacturers.EditManufacturerDetails").Text;
 }
 @using (Html.BeginForm(null, null, FormMethod.Post, new { id = "manufacturer-form" }))
 {
     <div class="section-header">
         <div class="title">
-            @T("Admin.Catalog.Manufacturers.EditManufacturerDetails") - @Model.Name @Html.ActionLink("(" + T("Admin.Catalog.Manufacturers.BackToList") + ")", "List")
+            @T("Admin.Catalog.Manufacturers.EditManufacturerDetails") - @Model.Name 
+			<a href='@Url.Action("List")'>(@T("Admin.Catalog.Manufacturers.BackToList"))</a>
         </div>
         <div class="options">
-            <button type="button" onclick="OpenWindow('@Url.RouteUrl("Manufacturer", new { SeName = Model.SeName })', 800, 600, true); return false;" class="btn">
-				<i class="fa fa-eye"></i>
-				@T("Admin.Common.Preview")
+			@{ Html.RenderWidget("admin_button_toolbar_before"); }
+
+            <button type="button" onclick="openWindow('@Url.RouteUrl("Manufacturer", new { SeName = Model.SeName })', true); return false;" class="btn btn-secondary">
+				<i class="far fa-eye"></i>
+				<span>@T("Admin.Common.Preview")</span>
             </button>
-            <button type="submit" name="save" value="save" class="btn btn-primary">
+            <button type="submit" name="save" value="save" class="btn btn-warning">
                 <i class="fa fa-check"></i>
-                @T("Admin.Common.Save")
+                <span>@T("Admin.Common.Save")</span>
             </button>
-            <button type="submit" name="save" value="save-continue" class="btn">
-                @T("Admin.Common.SaveContinue")
+            <button type="submit" name="save" value="save-continue" class="btn btn-secondary">
+                <span>@T("Admin.Common.SaveContinue")</span>
             </button>
             <button type="submit" name="manufacturer-delete" id="manufacturer-delete" class="btn btn-danger">
-                <i class="fa fa-trash-o"></i>
-                @T("Admin.Common.Delete")
+                <i class="far fa-trash-alt"></i>
+                <span>@T("Admin.Common.Delete")</span>
             </button>
+
+			@{ Html.RenderWidget("admin_button_toolbar_after"); }
         </div>
     </div>
-    @Html.Partial("_CreateOrUpdate", Model)
+
+    Html.RenderPartial("_CreateOrUpdate", Model);
 }
 @Html.DeleteConfirmation("manufacturer-delete")

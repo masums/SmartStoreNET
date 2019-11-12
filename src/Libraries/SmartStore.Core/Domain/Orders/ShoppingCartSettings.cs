@@ -1,14 +1,16 @@
 ﻿using SmartStore.Core.Configuration;
+using SmartStore.Core.Domain.Localization;
 
 namespace SmartStore.Core.Domain.Orders
 {
-    public class ShoppingCartSettings : ISettings
-    {
+    public class ShoppingCartSettings : BaseEntity, ISettings, ILocalizedEntity
+	{
 		public ShoppingCartSettings()
 		{
 			MaximumShoppingCartItems = 1000;
 			MaximumWishlistItems = 1000;
 			MoveItemsFromWishlistToCart = true;
+			ShowItemsFromWishlistToCartButton = true;
 			ShowProductImagesOnShoppingCart = true;
 			ShowProductBundleImagesOnShoppingCart = true;
 			ShowProductImagesOnWishList = true;
@@ -16,15 +18,15 @@ namespace SmartStore.Core.Domain.Orders
 			ShowDiscountBox = true;
 			ShowGiftCardBox = true;
             ShowCommentBox = true;
+			ShowEsdRevocationWaiverBox = true;
 			CrossSellsNumber = 8;
 			EmailWishlistEnabled = true;
 			MiniShoppingCartEnabled = true;
 			ShowProductImagesInMiniShoppingCart = true;
-			MiniShoppingCartProductNumber = 5;
-			//RoundPricesDuringCalculation = false;
             ShowBasePrice = true;
             ShowDeliveryTimes = true;
             ShowShortDesc = true;
+			AllowAnonymousUsersToEmailWishlist = false;
 		}
 		
 		/// <summary>
@@ -56,6 +58,11 @@ namespace SmartStore.Core.Domain.Orders
         /// Gets or sets a value indicating whether to move items from wishlist to cart when clicking "Add to cart" button. Otherwise, they are copied.
         /// </summary>
         public bool MoveItemsFromWishlistToCart { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether to show the items from wishlist to ahopping cart button.
+		/// </summary>
+		public bool ShowItemsFromWishlistToCartButton { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether to show product image on shopping cart page
@@ -91,11 +98,31 @@ namespace SmartStore.Core.Domain.Orders
         /// Gets or sets a value indicating whether to show a comment box on shopping cart page
         /// </summary>
         public bool ShowCommentBox { get; set; }
-        
-        /// <summary>
-        /// Gets or sets a number of "Cross-sells" on shopping cart page
-        /// </summary>
-        public int CrossSellsNumber { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether to show a revocation waiver checkbox box for ESD products
+		/// </summary>
+		public bool ShowEsdRevocationWaiverBox { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether to show a checkbox to subscribe to newsletters
+		/// </summary>
+		public CheckoutNewsLetterSubscription NewsLetterSubscription { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether to show a checkbox to let the customer accept to hand over email address to third party
+		/// </summary>
+		public CheckoutThirdPartyEmailHandOver ThirdPartyEmailHandOver { get; set; }
+
+		/// <summary>
+		/// Gets or sets the label to accept to hand over the email to third party
+		/// </summary>
+		public string ThirdPartyEmailHandOverLabel { get; set; }
+
+		/// <summary>
+		/// Gets or sets a number of "Cross-sells" on shopping cart page
+		/// </summary>
+		public int CrossSellsNumber { get; set; }
         
         /// <summary>
         /// Gets or sets a value indicating whether "email a wishlist" feature is enabled
@@ -116,17 +143,6 @@ namespace SmartStore.Core.Domain.Orders
         /// </summary>
         public bool ShowProductImagesInMiniShoppingCart { get; set; }
 
-        /// <summary>Gets or sets a maximum number of products which can be displayed in the mini-shopping cart block
-        /// </summary>
-        public int MiniShoppingCartProductNumber { get; set; }
-        
-        //Round is already an issue. 
-        /// <summary>
-        /// Gets or sets a value indicating whether to round calculated prices and total during calculation
-        /// </summary>
-        public bool RoundPricesDuringCalculation { get; set; }
-
-        // codehint: sm-add
         /// <summary>
         /// Gets or sets a value indicating whether to show a legal hint in the order summary
         /// </summary>

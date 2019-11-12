@@ -2,22 +2,16 @@
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Web.Mvc;
+using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Models.Stores;
-using SmartStore.Admin.Validators.News;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.News
 {
     [Validator(typeof(NewsItemValidator))]
-    public class NewsItemModel : EntityModelBase
+    public class NewsItemModel : TabbableModel, IStoreSelector
     {
-		public NewsItemModel()
-		{
-			this.AvailableStores = new List<StoreModel>();
-		}
-
         [SmartResourceDisplayName("Admin.ContentManagement.News.NewsItems.Fields.Language")]
         public int LanguageId { get; set; }
 
@@ -25,14 +19,14 @@ namespace SmartStore.Admin.Models.News
         [AllowHtml]
         public string LanguageName { get; set; }
 
-		//Store mapping
+		// Store mapping
 		[SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
 		public bool LimitedToStores { get; set; }
-		[SmartResourceDisplayName("Admin.Common.Store.AvailableFor")]
-		public List<StoreModel> AvailableStores { get; set; }
+		public IEnumerable<SelectListItem> AvailableStores { get; set; }
 		public int[] SelectedStoreIds { get; set; }
 
-        [SmartResourceDisplayName("Admin.ContentManagement.News.NewsItems.Fields.Title")]
+
+		[SmartResourceDisplayName("Admin.ContentManagement.News.NewsItems.Fields.Title")]
         [AllowHtml]
         public string Title { get; set; }
 
@@ -75,7 +69,17 @@ namespace SmartStore.Admin.Models.News
         [SmartResourceDisplayName("Admin.ContentManagement.News.NewsItems.Fields.Comments")]
         public int Comments { get; set; }
 
-        [SmartResourceDisplayName("Admin.ContentManagement.News.NewsItems.Fields.CreatedOn")]
+        [SmartResourceDisplayName("Common.CreatedOn")]
         public DateTime CreatedOn { get; set; }
+    }
+
+    public partial class NewsItemValidator : AbstractValidator<NewsItemModel>
+    {
+        public NewsItemValidator()
+        {
+            RuleFor(x => x.Title).NotEmpty();
+            RuleFor(x => x.Short).NotEmpty();
+            RuleFor(x => x.Full).NotEmpty();
+        }
     }
 }

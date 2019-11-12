@@ -1,73 +1,97 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Web;
-using System.Web.Mvc;
-using SmartStore.Core;
+﻿using System.Web.Mvc;
+using SmartStore.DevTools.Blocks;
+using SmartStore.DevTools.Models;
 using SmartStore.Services;
-using SmartStore.Services.Configuration;
-using SmartStore.Services.Stores;
+using SmartStore.Services.Cms.Blocks;
 using SmartStore.Web.Framework.Controllers;
+using SmartStore.Web.Framework.Security;
 using SmartStore.Web.Framework.Settings;
+using SmartStore.Web.Framework.Theming;
 
 namespace SmartStore.DevTools.Controllers
 {
-
-	public class DevToolsController : SmartController
+    public class DevToolsController : SmartController
     {
-		private readonly IWorkContext _workContext;
-		private readonly IStoreContext _storeContext;
-		private readonly IStoreService _storeService;
-		private readonly ISettingService _settingService;
+        private readonly ICommonServices _services;
 
-		public DevToolsController(
-			IWorkContext workContext,
-			IStoreContext storeContext,
-			IStoreService storeService,
-			ISettingService settingService)
-		{
-			_workContext = workContext;
-			_storeContext = storeContext;
-			_storeService = storeService;
-			_settingService = settingService;
-		}
+        public DevToolsController(ICommonServices services)
+        {
+            _services = services;
+        }
 
-		[AdminAuthorize]
+        [LoadSetting, ChildActionOnly]
+        public ActionResult Configure(ProfilerSettings settings)
+        {
+            return View(settings);
+        }
+
+        [SaveSetting(false), HttpPost, ChildActionOnly, ActionName("Configure")]
+        public ActionResult ConfigurePost(ProfilerSettings settings)
+        {
+			return RedirectToConfiguration("SmartStore.DevTools");
+        }
+
+        public ActionResult MiniProfiler()
+        {
+            return View();
+        }
+
+        public ActionResult MachineName()
+        {
+            ViewBag.EnvironmentIdentifier = _services.ApplicationEnvironment.EnvironmentIdentifier;
+
+            return View();
+        }
+        
+        public ActionResult WidgetZone(string widgetZone)
+        {
+			var storeScope = this.GetActiveStoreScopeConfiguration(_services.StoreService, _services.WorkContext);
+			var settings = _services.Settings.LoadSetting<ProfilerSettings>(storeScope);
+
+            if (settings.DisplayWidgetZones)
+            { 
+                ViewData["widgetZone"] = widgetZone;
+
+                return View();
+            }
+
+            return new EmptyResult();
+        }
+
 		[ChildActionOnly]
-		public ActionResult Configure()
+		public ActionResult SampleBlock(SampleBlock block)
 		{
-			// load settings for a chosen store scope
-			var storeScope = this.GetActiveStoreScopeConfiguration(_storeService, _workContext);
-			var settings = _settingService.LoadSetting<ProfilerSettings>(storeScope);
-
-			var storeDependingSettingHelper = new StoreDependingSettingHelper(ViewData);
-			storeDependingSettingHelper.GetOverrideKeys(settings, settings, storeScope, _settingService);
-
-			return View(settings);
+			// Do something here with your block instance and return a result that should be rendered by the Page Builder.
+			return View(block);
 		}
 
-		[AdminAuthorize]
-		[HttpPost]
-		[ChildActionOnly]
-		public ActionResult Configure(ProfilerSettings model, FormCollection form)
+		[AdminAuthorize, AdminThemed]
+		public ActionResult BackendExtension()
 		{
-			if (!ModelState.IsValid)
-				return Configure();
+			var model = new BackendExtensionModel
+			{
+				Welcome = "Hello world!"
+			};
 
-			// load settings for a chosen store scope
-			var storeDependingSettingHelper = new StoreDependingSettingHelper(ViewData);
-			var storeScope = this.GetActiveStoreScopeConfiguration(_storeService, _workContext);
-
-			storeDependingSettingHelper.UpdateSettings(model /*settings*/, form, storeScope, _settingService);
-			_settingService.ClearCache();
-
-			return Configure();
+			return View(model);
 		}
 
-		public ActionResult MiniProfiler()
-		{
-			return View();
-		}
+        [AdminAuthorize]
+        public ActionResult ProductEditTab(int productId, FormCollection form)
+        {
+            var model = new BackendExtensionModel
+            {
+                Welcome = "Hello world!"
+            };
 
+            var result = PartialView(model);
+            result.ViewData.TemplateInfo = new TemplateInfo { HtmlFieldPrefix = "CustomProperties[DevTools]" };
+            return result;
+        }
+
+		public ActionResult MyDemoWidget()
+		{
+			return Content("Hello world! This is a sample widget created for demonstration purposes by Dev-Tools plugin.");
+		}
 	}
 }

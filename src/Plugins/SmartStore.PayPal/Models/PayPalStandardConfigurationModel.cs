@@ -1,13 +1,11 @@
-﻿using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+﻿using SmartStore.ComponentModel;
+using SmartStore.PayPal.Settings;
+using SmartStore.Web.Framework;
 
 namespace SmartStore.PayPal.Models
 {
-    public class PayPalStandardConfigurationModel : ModelBase
+	public class PayPalStandardConfigurationModel : ApiConfigurationModel
 	{
-        [SmartResourceDisplayName("Plugins.Payments.PayPal.UseSandbox")]
-		public bool UseSandbox { get; set; }
-
 		[SmartResourceDisplayName("Plugins.Payments.PayPalStandard.Fields.BusinessEmail")]
 		public string BusinessEmail { get; set; }
 
@@ -17,11 +15,14 @@ namespace SmartStore.PayPal.Models
 		[SmartResourceDisplayName("Plugins.Payments.PayPalStandard.Fields.PDTValidateOrderTotal")]
 		public bool PdtValidateOrderTotal { get; set; }
 
-		[SmartResourceDisplayName("Plugins.Payments.PayPalStandard.Fields.AdditionalFee")]
-		public decimal AdditionalFee { get; set; }
+		[SmartResourceDisplayName("Plugins.Payments.PayPalStandard.Fields.PdtValidateOnlyWarn")]
+		public bool PdtValidateOnlyWarn { get; set; }
 
-		[SmartResourceDisplayName("Plugins.Payments.PayPalStandard.Fields.AdditionalFeePercentage")]
-		public bool AdditionalFeePercentage { get; set; }
+		[SmartResourceDisplayName("Plugins.Payments.PayPal.IsShippingAddressRequired")]
+		public bool IsShippingAddressRequired { get; set; }
+
+		[SmartResourceDisplayName("Plugins.Payments.PayPal.UsePayPalAddress")]
+		public bool UsePayPalAddress { get; set; }
 
 		[SmartResourceDisplayName("Plugins.Payments.PayPalStandard.Fields.PassProductNamesAndTotals")]
 		public bool PassProductNamesAndTotals { get; set; }
@@ -31,5 +32,18 @@ namespace SmartStore.PayPal.Models
 
 		[SmartResourceDisplayName("Plugins.Payments.PayPalStandard.Fields.IpnUrl")]
 		public string IpnUrl { get; set; }
+
+		public void Copy(PayPalStandardPaymentSettings settings, bool fromSettings)
+        {
+            if (fromSettings)
+			{
+				MiniMapper.Map(settings, this);
+			}
+            else
+			{
+				MiniMapper.Map(this, settings);
+				settings.BusinessEmail = BusinessEmail.TrimSafe();
+			}
+        }
 	}
 }

@@ -2,35 +2,29 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
-using System.Data.SqlClient;
 using System.Data.Entity;
+using System.Data.Entity.Core.Objects;
 using System.Data.Entity.Infrastructure;
-using System.Data.Entity.Validation;
 using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
+using SmartStore.ComponentModel;
 using SmartStore.Core;
 using SmartStore.Core.Data;
 using SmartStore.Core.Data.Hooks;
-using Microsoft.SqlServer;
-using Microsoft.SqlServer.Management.Common;
-using Microsoft.SqlServer.Management.Smo;
-using SmartStore.Core.Infrastructure;
-using SmartStore.Core.Events;
+using SmartStore.Data.Setup;
+using SmartStore.Utilities;
+using EfState = System.Data.Entity.EntityState;
 
 namespace SmartStore.Data
 {
-    /// <summary>
-    /// Object context
-    /// </summary>
 	[DbConfigurationType(typeof(SmartDbConfiguration))]
-    public abstract class ObjectContextBase : DbContext, IDbContext
+    public abstract partial class ObjectContextBase : DbContext, IDbContext
     {
-		private static bool? s_isSqlServer2012OrHigher = null;
+		private static bool? _isSqlServer2012OrHigher = null;
+		private static int? _commandTimeoutInSeconds = CommonHelper.GetAppSetting<int?>("sm:EfCommandTimeout");
 
-        #region Ctor
+		// Instance of the internal ObjectStateManager.TransactionManager
+		// required for detecting if EF performs change detection
+		private object _transactionManager;
 
 		/// <summary>
 		/// Parameterless constructor for tooling support, e.g. EF Migrations.
@@ -40,91 +34,17 @@ namespace SmartStore.Data
 		{
 		}
 
-        protected ObjectContextBase(string nameOrConnectionString, string alias = null)
+		protected ObjectContextBase(string nameOrConnectionString, string alias = null)
             : base(nameOrConnectionString)
         {
 			this.HooksEnabled = true;
+			this.AutoCommitEnabled = true;
             this.Alias = null;
-			this.EventPublisher = NullEventPublisher.Instance;
-        }
+			this.DbHookHandler = NullDbHookHandler.Instance;
 
-        #endregion
-
-		#region Properties
-
-		public IEventPublisher EventPublisher
-		{
-			get;
-			set;
-		}
-
-		#endregion
-
-		#region Hooks
-
-		private readonly IList<DbEntityEntry> _hookedEntries = new List<DbEntityEntry>();
-
-		private void PerformPreSaveActions(out IList<DbEntityEntry> modifiedEntries, out HookedEntityEntry[] modifiedHookEntries)
-		{
-			modifiedHookEntries = null;
-
-			modifiedEntries = this.ChangeTracker.Entries()
-				.Where(x => x.State != System.Data.Entity.EntityState.Unchanged && x.State != System.Data.Entity.EntityState.Detached)
-				.Except(_hookedEntries)
-				.ToList();
-
-			// prevents stack overflow
-			_hookedEntries.AddRange(modifiedEntries);
-
-			var hooksEnabled = this.HooksEnabled && modifiedEntries.Any();
-			if (hooksEnabled)
+			if (_commandTimeoutInSeconds >= 0 && DataSettings.Current.IsSqlServer)
 			{
-				modifiedHookEntries = modifiedEntries
-								.Select(x => new HookedEntityEntry()
-								{
-									Entity = x.Entity,
-									PreSaveState = (SmartStore.Core.Data.EntityState)((int)x.State)
-								})
-								.ToArray();
-
-				// Regardless of validation (possible fixing validation errors too)
-				this.EventPublisher.Publish(new PreActionHookEvent { ModifiedEntries = modifiedHookEntries, RequiresValidation = false });
-			}
-
-			if (this.Configuration.ValidateOnSaveEnabled)
-			{
-				var results = from entry in this.ChangeTracker.Entries()
-							  where this.ShouldValidateEntity(entry)
-							  let validationResult = entry.GetValidationResult()
-							  where !validationResult.IsValid
-							  select validationResult;
-
-				if (results.Any())
-				{
-
-					var fail = new DbEntityValidationException(FormatValidationExceptionMessage(results), results);
-					//Debug.WriteLine(fail.Message, fail);
-					throw fail;
-				}
-			}
-
-			if (hooksEnabled)
-			{
-				this.EventPublisher.Publish(new PreActionHookEvent { ModifiedEntries = modifiedHookEntries, RequiresValidation = true });
-			}
-
-			modifiedEntries.Each(x => _hookedEntries.Remove(x));
-
-			IgnoreMergedData(modifiedEntries, true);
-		}
-
-		private void PerformPostSaveActions(IList<DbEntityEntry> modifiedEntries, HookedEntityEntry[] modifiedHookEntries)
-		{
-			IgnoreMergedData(modifiedEntries, false);
-
-			if (this.HooksEnabled && modifiedHookEntries != null && modifiedHookEntries.Any())
-			{
-				this.EventPublisher.Publish(new PostActionHookEvent { ModifiedEntries = modifiedHookEntries });
+				Database.CommandTimeout = _commandTimeoutInSeconds;
 			}
 		}
 
@@ -134,11 +54,9 @@ namespace SmartStore.Data
 			set;
 		}
 
-        #endregion
+		#region IDbContext members
 
-        #region IDbContext members
-
-        public virtual string CreateDatabaseScript()
+		public virtual string CreateDatabaseScript()
         {
             return ((IObjectContextAdapter)this).ObjectContext.CreateDatabaseScript();
         }
@@ -193,7 +111,7 @@ namespace SmartStore.Data
 				{
 					for (int i = 0; i < result.Count; i++)
 					{
-						result[i] = AttachEntityToContext(result[i]);
+						result[i] = Attach(result[i]);
 					}
 				}
 			}
@@ -226,7 +144,7 @@ namespace SmartStore.Data
 				{
 					for (int i = 0; i < result.Count; i++)
 					{
-						result[i] = AttachEntityToContext(result[i]);
+						result[i] = Attach(result[i]);
 					}
 				}
 				// close up the reader, we're done saving results
@@ -250,16 +168,9 @@ namespace SmartStore.Data
             return this.Database.SqlQuery<TElement>(sql, parameters);
         }
 
-        /// <summary>
-        /// Executes the given DDL/DML command against the database.
-        /// </summary>
-        /// <param name="sql">The command string</param>
-        /// <param name="timeout">Timeout value, in seconds. A null value indicates that the default value of the underlying provider will be used</param>
-        /// <param name="parameters">The parameters to apply to the command string.</param>
-        /// <returns>The result returned by the database after executing the command.</returns>
         public int ExecuteSqlCommand(string sql, bool doNotEnsureTransaction = false, int? timeout = null, params object[] parameters)
         {
-            Guard.ArgumentNotEmpty(sql, "sql");
+            Guard.NotEmpty(sql, "sql");
 
             int? previousTimeout = null;
             if (timeout.HasValue)
@@ -276,113 +187,83 @@ namespace SmartStore.Data
 
             if (timeout.HasValue)
             {
-                //Set previous timeout back
+                // Set previous timeout back
                 ((IObjectContextAdapter)this).ObjectContext.CommandTimeout = previousTimeout;
             }
 
             return result;
         }
 
-		/// <summary>Executes sql by using SQL-Server Management Objects which supports GO statements.</summary>
-		public int ExecuteSqlThroughSmo(string sql)
+		/// <summary>
+		/// Checks whether the underlying ORM mapper is currently in the process of detecting changes.
+		/// </summary>
+		/// <returns></returns>
+		public virtual bool IsDetectingChanges()
 		{
-			Guard.ArgumentNotEmpty(sql, "sql");
-
-			int result = 0;
-
-			try
+			if (_transactionManager == null && DataSettings.DatabaseIsInstalled())
 			{
-				bool isSqlServer = DataSettings.Current.IsSqlServer;
-
-				if (!isSqlServer)
+				var stateManager = ((IObjectContextAdapter)this).ObjectContext.ObjectStateManager;
+				if (stateManager != null)
 				{
-					result = ExecuteSqlCommand(sql);
-				}
-				else
-				{
-					using (var sqlConnection = new SqlConnection(GetConnectionString()))
-					{
-						var serverConnection = new ServerConnection(sqlConnection);
-						var server = new Server(serverConnection);
-
-						result = server.ConnectionContext.ExecuteNonQuery(sql);
-					}
+					// Get the internal TransactionManager property instance from ObjectStateManager
+					_transactionManager = FastProperty.GetProperty(stateManager.GetType(), "TransactionManager")?.GetValue(stateManager);
 				}
 			}
-			catch (Exception)
-			{
-				// remove the GO statements
-				sql = Regex.Replace(sql, @"\r{0,1}\n[Gg][Oo]\r{0,1}\n", "\n");
 
-				result = ExecuteSqlCommand(sql);
+			if (_transactionManager != null)
+			{
+				// Get the "IsDetectChanges" property of the internal TransactionManager
+				var prop = FastProperty.GetProperty(_transactionManager.GetType(), "IsDetectChanges");
+				if (prop != null)
+				{
+					return (bool)prop.GetValue(_transactionManager);
+				}
 			}
-			return result;
+
+			return false;
+		}
+
+		public void DetectChanges()
+		{
+			base.ChangeTracker.DetectChanges();
 		}
 
         public bool HasChanges
         {
             get
             {
-                return this.ChangeTracker.Entries()
-                           .Where(x => x.State != System.Data.Entity.EntityState.Unchanged && x.State != System.Data.Entity.EntityState.Detached)
-                           .Any();
+                return GetChangedEntries().Any();
             }
         }
 
+		public virtual bool IsModified(BaseEntity entity)
+		{
+			Guard.NotNull(entity, nameof(entity));
+
+			var entry = this.Entry((object)entity);
+			return entry.HasChanges(this);
+		}
+
+		public bool TryGetModifiedProperty(BaseEntity entity, string propertyName, out object originalValue)
+		{
+			Guard.NotNull(entity, nameof(entity));
+
+			if (entity.IsTransientRecord())
+			{
+				originalValue = null;
+				return false;
+			}				
+
+			var entry = this.Entry((object)entity);
+			return entry.TryGetModifiedProperty(this, propertyName, out originalValue);
+		}
+
 		public IDictionary<string, object> GetModifiedProperties(BaseEntity entity)
 		{
-			var props = new Dictionary<string, object>();
-
-			var entry = this.Entry(entity);
-			var modifiedPropertyNames = from p in entry.CurrentValues.PropertyNames
-										where entry.Property(p).IsModified
-										select p;
-			foreach (var name in modifiedPropertyNames)
-			{
-				props.Add(name, entry.Property(name).OriginalValue);
-			}
-
-			return props;
+			return this.Entry((object)entity).GetModifiedProperties(this);
 		}
 
-        public override int SaveChanges()
-        {
-			IList<DbEntityEntry> modifiedEntries;
-			HookedEntityEntry[] modifiedHookEntries;
-			PerformPreSaveActions(out modifiedEntries, out modifiedHookEntries);
-
-			// SAVE NOW!!!
-			bool validateOnSaveEnabled = this.Configuration.ValidateOnSaveEnabled;
-			this.Configuration.ValidateOnSaveEnabled = false;
-            int result = this.Commit();
-            this.Configuration.ValidateOnSaveEnabled = validateOnSaveEnabled;
-
-			PerformPostSaveActions(modifiedEntries, modifiedHookEntries);
-
-            return result;
-        }
-
-		public override Task<int> SaveChangesAsync()
-		{
-			IList<DbEntityEntry> modifiedEntries;
-			HookedEntityEntry[] modifiedHookEntries;
-			PerformPreSaveActions(out modifiedEntries, out modifiedHookEntries);
-
-			// SAVE NOW!!!
-			bool validateOnSaveEnabled = this.Configuration.ValidateOnSaveEnabled;
-			this.Configuration.ValidateOnSaveEnabled = false;
-			var result = this.CommitAsync();
-
-			result.ContinueWith((t) =>
-			{
-				this.Configuration.ValidateOnSaveEnabled = validateOnSaveEnabled;
-				PerformPostSaveActions(modifiedEntries, modifiedHookEntries);
-			});
-
-			return result;
-		}
-
-        // codehint: sm-add (required for UoW implementation)
+        // required for UoW implementation
         public string Alias { get; internal set; }
 
         // performance on bulk inserts
@@ -423,7 +304,40 @@ namespace SmartStore.Data
             }
         }
 
+		public bool LazyLoadingEnabled
+		{
+			get
+			{
+				return this.Configuration.LazyLoadingEnabled;
+			}
+			set
+			{
+				this.Configuration.LazyLoadingEnabled = value;
+			}
+		}
+
 		public bool ForceNoTracking { get; set; }
+
+		public bool AutoCommitEnabled { get; set; }
+
+		public ITransaction BeginTransaction(IsolationLevel isolationLevel = IsolationLevel.Unspecified)
+		{
+			var dbContextTransaction = this.Database.BeginTransaction(isolationLevel);
+			return new DbContextTransactionWrapper(dbContextTransaction);
+		}
+
+		public void UseTransaction(DbTransaction transaction)
+		{
+			this.Database.UseTransaction(transaction);
+		}
+
+		private IEnumerable<IMergedData> GetMergeableEntitiesFromChangeTracker()
+		{
+			return base.ChangeTracker.Entries()
+				.Where(x => x.State > EfState.Detached)
+				.Select(x => x.Entity)
+				.OfType<IMergedData>();
+		}
 
         #endregion
 
@@ -433,7 +347,7 @@ namespace SmartStore.Data
 		/// Resolves the connection string from the <c>Settings.txt</c> file
 		/// </summary>
 		/// <returns>The connection string</returns>
-		/// <remarks>This helper is called from parameterless DbContext constructors which are required for EF tooling support.</remarks>
+		/// <remarks>This helper is called from parameterless DbContext constructors which are required for EF tooling support or during installation.</remarks>
 		public static string GetConnectionString()
 		{
 			if (DataSettings.Current.IsValid())
@@ -446,7 +360,7 @@ namespace SmartStore.Data
 
 		protected internal bool IsSqlServer2012OrHigher()
 		{
-			if (!s_isSqlServer2012OrHigher.HasValue)
+			if (!_isSqlServer2012OrHigher.HasValue)
 			{
 				try
 				{
@@ -455,192 +369,122 @@ namespace SmartStore.Data
 					var info = this.GetSqlServerInfo();
 					string productVersion = info.ProductVersion;
 					int version = productVersion.Split(new char[] { '.' })[0].ToInt();
-					s_isSqlServer2012OrHigher = version >= 11;
+					_isSqlServer2012OrHigher = version >= 11;
 				}
 				catch
 				{
-					s_isSqlServer2012OrHigher = false;
+					_isSqlServer2012OrHigher = false;
 				}
 			}
 			
-			return s_isSqlServer2012OrHigher.Value;
+			return _isSqlServer2012OrHigher.Value;
 		}
 
-        /// <summary>
-        /// Attach an entity to the context or return an already attached entity (if it was already attached)
-        /// </summary>
-        /// <typeparam name="TEntity">TEntity</typeparam>
-        /// <param name="entity">Entity</param>
-        /// <returns>Attached entity</returns>
-        protected virtual TEntity AttachEntityToContext<TEntity>(TEntity entity) where TEntity : BaseEntity, new()
+		public TEntity Attach<TEntity>(TEntity entity) where TEntity : BaseEntity
         {
-			// little hack here until Entity Framework really supports stored procedures
-			// otherwise, navigation properties of loaded entities are not loaded until an entity is attached to the context
-			var alreadyAttached = Set<TEntity>().Local.Where(x => x.Id == entity.Id).FirstOrDefault();
+			var dbSet = Set<TEntity>();
+			var alreadyAttached = dbSet.Local.FirstOrDefault(x => x.Id == entity.Id);
+
 			if (alreadyAttached == null)
 			{
-				// attach new entity
-				Set<TEntity>().Attach(entity);
+				dbSet.Attach(entity);
 				return entity;
 			}
-			else
-			{
-				// entity is already loaded.
-				return alreadyAttached;
-			}
-        }
 
-        public bool IsAttached<TEntity>(TEntity entity) where TEntity : BaseEntity, new()
-        {
-            Guard.ArgumentNotNull(() => entity);
-            return Set<TEntity>().Local.Where(x => x.Id == entity.Id).FirstOrDefault() != null;
-        }
-
-        public void DetachEntity<TEntity>(TEntity entity) where TEntity : BaseEntity, new()
-        {
-            Guard.ArgumentNotNull(() => entity);
-			if (this.IsAttached(entity))
-			{
-				((IObjectContextAdapter)this).ObjectContext.Detach(entity);
-			}
-        }
-
-		public void Detach(object entity)
-		{
-			((IObjectContextAdapter)this).ObjectContext.Detach(entity);
+			return alreadyAttached;
 		}
 
-		public int DetachAll() 
+		public bool IsAttached<TEntity>(TEntity entity) where TEntity : BaseEntity
+        {
+			if (entity != null)
+			{
+				return Set<TEntity>().Local.Any(x => x.Id == entity.Id);
+			}
+
+			return false;
+        }
+
+        public void DetachEntity<TEntity>(TEntity entity) where TEntity : BaseEntity
+        {
+			this.Entry(entity).State = EfState.Detached;
+        }
+
+		public int DetachEntities<TEntity>(bool unchangedEntitiesOnly = true) where TEntity : class
 		{
-			var attachedEntities = this.ChangeTracker.Entries()
-				.Where(x => x.State != System.Data.Entity.EntityState.Detached)
-				.ToList();
-			attachedEntities.Each(x => this.Entry(x.Entity).State = System.Data.Entity.EntityState.Detached);
+			return DetachEntities(o => o is TEntity, unchangedEntitiesOnly);
+		}
+
+		public int DetachEntities(Func<object, bool> predicate, bool unchangedEntitiesOnly = true)
+		{
+			Guard.NotNull(predicate, nameof(predicate));
+
+			Func<DbEntityEntry, bool> predicate2 = x =>
+			{
+				if (x.State > EfState.Detached && predicate(x.Entity))
+				{
+					return unchangedEntitiesOnly 
+						? x.State == EfState.Unchanged
+						: true;
+				}
+
+				return false;
+			};
+
+			var attachedEntities = this.ChangeTracker.Entries().Where(predicate2).ToList();
+			attachedEntities.Each(entry => entry.State = EfState.Detached);
 			return attachedEntities.Count;
 		}
 
-		public void ChangeState<TEntity>(TEntity entity, System.Data.Entity.EntityState newState)
+		public void ChangeState<TEntity>(TEntity entity, EfState requestedState) where TEntity : BaseEntity
 		{
-			((IObjectContextAdapter)this).ObjectContext.ObjectStateManager.ChangeObjectState(entity, newState);
-		}
+			//Console.WriteLine("ChangeState ORIGINAL");
+			var entry = this.Entry(entity);
 
-		public bool SetToUnchanged<TEntity>(TEntity entity)
-		{
-			try
+			if (entry.State != requestedState)
 			{
-				ChangeState<TEntity>(entity, System.Data.Entity.EntityState.Unchanged);
-				return true;
-			}
-			catch (Exception exc)
-			{
-				exc.Dump();
-				return false;
+				// Only change state when requested state differs,
+				// because EF internally sets all properties to modified
+				// if necessary, even when requested state equals current state.
+				entry.State = requestedState;
 			}
 		}
 
-        private string FormatValidationExceptionMessage(IEnumerable<DbEntityValidationResult> results)
-        {
-            var sb = new StringBuilder();
-            sb.Append("Entity validation failed" + Environment.NewLine);
-
-            foreach (var res in results)
-            {
-                var baseEntity = res.Entry.Entity as BaseEntity;
-                sb.AppendFormat("Entity Name: {0} - Id: {0} - State: {1}",
-                    res.Entry.Entity.GetType().Name,
-                    baseEntity != null ? baseEntity.Id.ToString() : "N/A",
-                    res.Entry.State.ToString());
-                sb.AppendLine();
-
-                foreach (var validationError in res.ValidationErrors)
-                {
-                    sb.AppendFormat("\tProperty: {0} Error: {1}", validationError.PropertyName, validationError.ErrorMessage);
-                    sb.AppendLine();
-                }
-            }
-
-            return sb.ToString();
-        }
-
-		private void IgnoreMergedData(IList<DbEntityEntry> entries, bool ignore)
+		public void ReloadEntity<TEntity>(TEntity entity) where TEntity : BaseEntity
 		{
-			try
-			{
-				foreach (var entry in entries)
-				{
-					var entityWithPossibleMergedData = entry.Entity as IMergedData;
-
-					if (entityWithPossibleMergedData != null)
-						entityWithPossibleMergedData.MergedDataIgnore = ignore;
-				}
-			}
-			catch { }
-		}
-
-        #endregion
-
-		#region EF helpers
-
-		private int Commit()
-		{
-			int result = 0;
-			bool commitFailed = false;
-			do
-			{
-				commitFailed = false;
-
-				try
-				{
-					result = base.SaveChanges();
-				}
-				catch (DbUpdateConcurrencyException ex)
-				{
-					commitFailed = true;
-
-					foreach (var entry in ex.Entries)
-					{
-						entry.Reload();
-					}
-				}
-			}
-			while (commitFailed);
-
-			return result;
-		}
-
-		private Task<int> CommitAsync()
-		{
-			var tcs = new TaskCompletionSource<int>();
-
-			base.SaveChangesAsync().ContinueWith((t) =>
-			{
-				if (!t.IsFaulted)
-				{
-					//if (t.IsCanceled)
-					//{
-					//	tcs.TrySetCanceled();
-					//	return;
-					//}
-					tcs.TrySetResult(t.Result);
-					return;
-				}
-
-				var ex = t.Exception.InnerException;
-				if (ex != null && ex is DbUpdateConcurrencyException)
-				{
-					// try again
-					tcs.TrySetResult(this.CommitAsync().Result);
-				}
-				else
-				{
-					tcs.TrySetException(ex);
-				}
-			});
-
-			return tcs.Task;
+			this.Entry((object)entity).ReloadEntity();
 		}
 
 		#endregion
 
-    }
+		#region Nested classes
+
+		private class DbContextTransactionWrapper : ITransaction
+		{
+			private readonly DbContextTransaction _tx;
+
+			public DbContextTransactionWrapper(DbContextTransaction tx)
+			{
+				Guard.NotNull(tx, nameof(tx));
+
+				_tx = tx;
+			}
+			
+			public void Commit()
+			{
+				_tx.Commit();
+			}
+
+			public void Rollback()
+			{
+				_tx.Rollback();
+			}
+
+			public void Dispose()
+			{
+				_tx.Dispose();
+			}
+		}
+
+		#endregion
+	}
 }

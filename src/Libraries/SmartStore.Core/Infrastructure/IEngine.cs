@@ -18,8 +18,13 @@ namespace SmartStore.Core.Infrastructure
         /// <summary>
         /// Initialize components and plugins in the SmartStore environment.
         /// </summary>
-        /// <param name="config">Config</param>
         void Initialize();
+
+		/// <summary>
+		/// Determines whether the app has been installed, successfully bootstrapped
+		/// AND the very first HTTP request has been issued.
+		/// </summary>
+		bool IsFullyInitialized { get; set; }
 
         T Resolve<T>(string name = null) where T : class;
 

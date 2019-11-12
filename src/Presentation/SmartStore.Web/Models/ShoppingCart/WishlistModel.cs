@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.Web.Mvc;
 using SmartStore.Core.Domain.Catalog;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 using SmartStore.Web.Models.Media;
+using SmartStore.Web.Models.Catalog;
+using SmartStore.Services.Localization;
 
 namespace SmartStore.Web.Models.ShoppingCart
 {
@@ -32,16 +34,15 @@ namespace SmartStore.Web.Models.ShoppingCart
 
         public IList<string> Warnings { get; set; }
 
-        // codehint: sm-add
         public int ThumbSize { get; set; }
 		public int BundleThumbSize { get; set; }
-        public int IgnoredProductsCount { get; set; }
 		public bool DisplayShortDesc { get; set; }
 		public bool ShowProductBundleImages { get; set; }
+		public bool ShowItemsFromWishlistToCartButton { get; set; }
         
 		#region Nested Classes
 
-        public partial class ShoppingCartItemModel : EntityModelBase
+        public partial class ShoppingCartItemModel : EntityModelBase, IQuantityInput
         {
             public ShoppingCartItemModel()
             {
@@ -51,15 +52,18 @@ namespace SmartStore.Web.Models.ShoppingCart
 				ChildItems = new List<ShoppingCartItemModel>();
 				BundleItem = new BundleItemModel();
             }
+
             public string Sku { get; set; }
 
             public PictureModel Picture {get;set;}
 
             public int ProductId { get; set; }
 
-            public string ProductName { get; set; }
+            public LocalizedValue<string> ProductName { get; set; }
 
             public string ProductSeName { get; set; }
+
+			public string ProductUrl { get; set; }
 
 			public bool VisibleIndividually { get; set; }
 
@@ -71,21 +75,36 @@ namespace SmartStore.Web.Models.ShoppingCart
 
             public string Discount { get; set; }
 
-            public int Quantity { get; set; }
+            public int EnteredQuantity { get; set; }
+
+            public LocalizedValue<string> QuantityUnitName { get; set; }
+
             public List<SelectListItem> AllowedQuantities { get; set; }
-            
+
+            public int MinOrderAmount { get; set; }
+
+            public int MaxOrderAmount { get; set; }
+
+            public int QuantityStep { get; set; }
+
+            public QuantityControlType QuantiyControlType { get; set; }
+
             public string AttributeInfo { get; set; }
 
             public string RecurringInfo { get; set; }
 
             public IList<string> Warnings { get; set; }
 
-			public string ShortDesc { get; set; }
+			public LocalizedValue<string> ShortDesc { get; set; }
 
 			public bool BundlePerItemPricing { get; set; }
 			public bool BundlePerItemShoppingCart { get; set; }
 			public BundleItemModel BundleItem { get; set; }
 			public IList<ShoppingCartItemModel> ChildItems { get; set; }
+
+			public bool DisableBuyButton { get; set; }
+
+			public DateTime CreatedOnUtc { get; set; }
         }
 
 		public partial class BundleItemModel : EntityModelBase

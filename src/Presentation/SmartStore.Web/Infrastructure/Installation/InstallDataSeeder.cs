@@ -4,46 +4,49 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using SmartStore.Core;
+using SmartStore.Core.Caching;
+using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Common;
+using SmartStore.Core.Domain.Configuration;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Localization;
 using SmartStore.Core.Domain.Media;
+using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Security;
-using SmartStore.Core.Domain.Tax;
-using SmartStore.Services.Configuration;
 using SmartStore.Core.Domain.Seo;
 using SmartStore.Core.Domain.Stores;
-using SmartStore.Data;
-using SmartStore.Core.Caching;
+using SmartStore.Core.Domain.Tax;
 using SmartStore.Core.Domain.Themes;
-using SmartStore.Utilities;
-using SmartStore.Core.Domain.Configuration;
-using SmartStore.Data.Setup;
 using SmartStore.Core.Events;
-using SmartStore.Services.Common;
-using SmartStore.Services.Media;
+using SmartStore.Core.Infrastructure.DependencyManagement;
 using SmartStore.Core.Logging;
+using SmartStore.Data;
+using SmartStore.Data.Setup;
+using SmartStore.Data.Utilities;
+using SmartStore.Services.Common;
+using SmartStore.Services.Configuration;
 using SmartStore.Services.Localization;
+using SmartStore.Services.Media;
+using SmartStore.Services.Media.Storage;
 using SmartStore.Services.Security;
 using SmartStore.Services.Seo;
-using System.Data.Entity.Migrations;
-using SmartStore.Data.Migrations;
 using SmartStore.Services.Stores;
-using SmartStore.Core.Domain.Orders;
+using SmartStore.Utilities;
+using SmartStore.Web.Framework;
 
 namespace SmartStore.Web.Infrastructure.Installation
 {
     public partial class InstallDataSeeder : IDataSeeder<SmartObjectContext>
     {
-        #region Fields & Constants
+		#region Fields & Constants
 
+		private ILogger _logger;
 		private SmartObjectContext _ctx;
         private SeedDataConfiguration _config;
         private InvariantSeedData _data;
 		private ISettingService _settingService;
 		private IGenericAttributeService _gaService;
-		private IPictureService _pictureService;
 		private ILocalizationService _locService;
 		private IUrlRecordService _urlRecordService;
 		private int _defaultStoreId;
@@ -52,15 +55,15 @@ namespace SmartStore.Web.Infrastructure.Installation
 
         #region Ctor
 
-		public InstallDataSeeder(SeedDataConfiguration configuration)
+		public InstallDataSeeder(SeedDataConfiguration configuration, ILogger logger)
         {
-			Guard.ArgumentNotNull(() => configuration);
-
-			Guard.ArgumentNotNull(configuration.Language, "Language");
-			Guard.ArgumentNotNull(configuration.Data, "SeedData");
+			Guard.NotNull(configuration, nameof(configuration));
+			Guard.NotNull(configuration.Language, "Language");
+			Guard.NotNull(configuration.Data, "SeedData");
 
 			_config = configuration;
 			_data = configuration.Data;
+			_logger = logger;
         }
 
         #endregion Ctor
@@ -104,10 +107,10 @@ namespace SmartStore.Web.Infrastructure.Installation
         private void PopulateLocaleResources() 
         {
             // Default primary language
-            var language = _ctx.Set<Language>().Single();
+            var language = _ctx.Set<Language>().First();
 
             var locPath = CommonHelper.MapPath("~/App_Data/Localization/App/" + language.LanguageCulture);
-            if (!System.IO.Directory.Exists(locPath))
+            if (!Directory.Exists(locPath))
             {
                 // Fallback to neutral language folder (de, en etc.)
 				locPath = CommonHelper.MapPath("~/App_Data/Localization/App/" + language.UniqueSeoCode);
@@ -115,8 +118,11 @@ namespace SmartStore.Web.Infrastructure.Installation
 
 			var localizationService = this.LocalizationService;
 
+			// Perf
+			_ctx.DetachAll(false);
+
 			// save resources
-			foreach (var filePath in System.IO.Directory.EnumerateFiles(locPath, "*.smres.xml", SearchOption.TopDirectoryOnly))
+			foreach (var filePath in Directory.EnumerateFiles(locPath, "*.smres.xml", SearchOption.TopDirectoryOnly))
 			{
 				var doc = new XmlDocument();
 				doc.Load(filePath);
@@ -129,6 +135,9 @@ namespace SmartStore.Web.Infrastructure.Installation
 
 				// no need to call SaveChanges() here, as the above call makes it
 				// already without AutoDetectChanges(), so it's fast.
+
+				// Perf
+				_ctx.DetachAll(false);
 			}
 
 			MigratorUtils.ExecutePendingResourceMigrations(locPath, _ctx);
@@ -142,6 +151,7 @@ namespace SmartStore.Web.Infrastructure.Installation
 		private void PopulateCountriesAndStates()
         {
 			SaveRange(_data.Countries().Where(x => x != null));
+			DataMigrator.ImportAddressFormats(_ctx);
         }
 
 		private void PopulateShippingMethods()
@@ -155,7 +165,7 @@ namespace SmartStore.Web.Infrastructure.Installation
 			SaveRange(customerRoles.Where(x => x != null));
 
             //admin user
-            var adminUser = new Customer()
+            var adminUser = new Customer
             {
                 CustomerGuid = Guid.NewGuid(),
                 Email = defaultUserEmail,
@@ -179,11 +189,26 @@ namespace SmartStore.Web.Infrastructure.Installation
             Save(adminUser);
 
 			// Set default customer name
-			this.GenericAttributeService.SaveAttribute(adminUser, SystemCustomerAttributeNames.FirstName, adminUser.Addresses.FirstOrDefault().FirstName);
-			this.GenericAttributeService.SaveAttribute(adminUser, SystemCustomerAttributeNames.LastName, adminUser.Addresses.FirstOrDefault().LastName);
+			var firstAddress = adminUser.Addresses.FirstOrDefault();
+			GenericAttributeService.InsertAttribute(new GenericAttribute
+			{
+				EntityId = adminUser.Id,
+				Key = "FirstName",
+				KeyGroup = "Customer",
+				Value = firstAddress.FirstName,
+				StoreId = 0
+			});
+			GenericAttributeService.InsertAttribute(new GenericAttribute
+			{
+				EntityId = adminUser.Id,
+				Key = "LastName",
+				KeyGroup = "Customer",
+				Value = firstAddress.LastName,
+				StoreId = 0
+			});
 			_ctx.SaveChanges();
 
-            // search engine (crawler) built-in user
+			// Built-in user for search engines (crawlers)
             var customer = _data.SearchEngineUser();
             customer.CustomerRoles.Add(customerRoles.SingleOrDefault(x => x.SystemName == SystemCustomerRoleNames.Guests));
             Save(customer);
@@ -192,20 +217,23 @@ namespace SmartStore.Web.Infrastructure.Installation
             customer = _data.BackgroundTaskUser();
             customer.CustomerRoles.Add(customerRoles.SingleOrDefault(x => x.SystemName == SystemCustomerRoleNames.Guests));
             Save(customer);
+
+			// Built-in user for the PDF converter
+			customer = _data.PdfConverterUser();
+			customer.CustomerRoles.Add(customerRoles.SingleOrDefault(x => x.SystemName == SystemCustomerRoleNames.Guests));
+			Save(customer);
         }
 
 		private void HashDefaultCustomerPassword(string defaultUserEmail, string defaultUserPassword)
         {
-			var adminUser = _ctx.Set<Customer>().Where(x => x.Email == _config.DefaultUserName).Single();
+            var encryptionService = new EncryptionService(new SecuritySettings());
+			var saltKey = encryptionService.CreateSaltKey(5);
+            var adminUser = _ctx.Set<Customer>().FirstOrDefault(x => x.Email == _config.DefaultUserName);
 
-			var encryptionService = new EncryptionService(new SecuritySettings());
-
-			string saltKey = encryptionService.CreateSaltKey(5);
-			adminUser.PasswordSalt = saltKey;
+            adminUser.PasswordSalt = saltKey;
 			adminUser.PasswordFormat = PasswordFormat.Hashed;
 			adminUser.Password = encryptionService.CreatePasswordHash(defaultUserPassword, saltKey, new CustomerSettings().HashedPasswordFormat);
 
-			SetModified(adminUser);
 			_ctx.SaveChanges();
         }
 
@@ -231,7 +259,7 @@ namespace SmartStore.Web.Infrastructure.Installation
 				if (settingService != null)
 				{
 					var genericMethod = method.MakeGenericMethod(settingType);
-					int storeId = (settingType.Equals(typeof(ThemeSettings)) ? _defaultStoreId : 0);
+					int storeId = settingType.Equals(typeof(ThemeSettings)) ? _defaultStoreId : 0;
 
 					genericMethod.Invoke(settingService, new object[] { setting, storeId });
 				}
@@ -240,73 +268,41 @@ namespace SmartStore.Web.Infrastructure.Installation
 			_ctx.SaveChanges();
         }
 
+		private void PopulateMessageTemplates()
+		{
+			var converter = new MessageTemplateConverter(_ctx);
+			converter.ImportAll(_config.Language);
+		}
+
 		private void PopulateCategories()
         {
-            var categoriesFirstLevel = _data.CategoriesFirstLevel();
+			var categoriesFirstLevel = _data.CategoriesFirstLevel();
 			SaveRange(categoriesFirstLevel);
-            //search engine names
-            categoriesFirstLevel.Each(x =>
-            {
-                Save(new UrlRecord()
-                {
-                    EntityId = x.Id,
-                    EntityName = "Category",
-                    LanguageId = 0,
-                    Slug = ValidateSeName(x, x.Name),
-                    IsActive = true
-                });
-            });
+			PopulateUrlRecordsFor(categoriesFirstLevel);
 
             var categoriesSecondLevel = _data.CategoriesSecondLevel();
 			SaveRange(categoriesSecondLevel);
-            //search engine names
-            categoriesSecondLevel.Each(x =>
-            {
-                Save(new UrlRecord()
-                {
-                    EntityId = x.Id,
-                    EntityName = "Category",
-                    LanguageId = 0,
-					Slug = ValidateSeName(x, x.Name),
-                    IsActive = true
-                });
-            });
+			PopulateUrlRecordsFor(categoriesSecondLevel);
         }
 
 		private void PopulateManufacturers()
         {
             var manufacturers = _data.Manufacturers();
 			SaveRange(manufacturers);
-            //search engine names
-            manufacturers.Each(x =>
-            {
-                Save(new UrlRecord()
-                {
-                    EntityId = x.Id,
-                    EntityName = "Manufacturer",
-                    LanguageId = 0,
-					Slug = ValidateSeName(x, x.Name),
-                    IsActive = true
-                });
-            });
-        }
+			PopulateUrlRecordsFor(manufacturers);
+		}
 
 		private void PopulateProducts()
         {
             var products = _data.Products();
 			SaveRange(products);
-            //search engine names
-            products.Each(x =>
-            {
-                Save(new UrlRecord()
-                {
-                    EntityId = x.Id,
-                    EntityName = "Product",
-                    LanguageId = 0,
-					Slug = ValidateSeName(x, x.Name),
-                    IsActive = true
-                });
-            });
+
+            _data.AddDownloads(products);
+
+			// Fix MainPictureId
+			DataMigrator.FixProductMainPictureIds(_ctx);
+
+			PopulateUrlRecordsFor(products);
 
 			_data.AssignGroupedProducts(products);
         }
@@ -315,37 +311,15 @@ namespace SmartStore.Web.Infrastructure.Installation
         {
             var blogPosts = _data.BlogPosts();
 			SaveRange(blogPosts);
-            //search engine names
-            blogPosts.Each(x =>
-            {
-                Save(new UrlRecord()
-                {
-                    EntityId = x.Id,
-                    EntityName = "BlogPost",
-                    LanguageId = x.LanguageId,
-					Slug = ValidateSeName(x, x.Title),
-                    IsActive = true
-                });
-            });
-        }
+			PopulateUrlRecordsFor(blogPosts);
+		}
 
 		private void PopulateNews()
         {
             var newsItems = _data.NewsItems();
 			SaveRange(newsItems);
-            //search engine names
-            newsItems.Each(x =>
-            {
-                Save(new UrlRecord()
-                {
-                    EntityId = x.Id,
-                    EntityName = "NewsItem",
-                    LanguageId = x.LanguageId,
-                    IsActive = true,
-					Slug = ValidateSeName(x, x.Title)
-                });
-            });
-        }
+			PopulateUrlRecordsFor(newsItems);
+		}
 
 		private void PopulateManufacturerTemplates()
         {
@@ -361,12 +335,24 @@ namespace SmartStore.Web.Infrastructure.Installation
             SaveRange(_data.ManufacturerTemplates());
         }
 
+		private void PopulateTopics()
+		{
+			var topics = _data.Topics();
+			SaveRange(topics);
+			PopulateUrlRecordsFor(topics);
+		}
+
+        private void PopulateMenus()
+        {
+            DataMigrator.CreateSystemMenus(_ctx);
+        }
+
         private void AddProductTag(Product product, string tag)
         {
 			var productTag = _ctx.Set<ProductTag>().FirstOrDefault(pt => pt.Name == tag);
             if (productTag == null)
             {
-                productTag = new ProductTag()
+                productTag = new ProductTag
                 {
                     Name = tag
                 };
@@ -375,17 +361,59 @@ namespace SmartStore.Web.Infrastructure.Installation
 			Save(product);
         }
 
-		private void MovePictures()
+		private void MoveMedia()
 		{
 			if (!_config.StoreMediaInDB)
 			{
-				// All pictures have initially been stored in the DB.
-				// Move the binaries to disk
-				var pics = _ctx.Set<Picture>().ToList();
+				// All pictures have initially been stored in the DB. Move the binaries to disk.
+				var fileSystemStorageProvider = new FileSystemMediaStorageProvider(new MediaFileSystem());
+				var mediaStorages = _ctx.Set<MediaStorage>();
+
+				// pictures
+				var pics = _ctx.Set<Picture>()
+					.Expand(x => x.MediaStorage)
+					.Where(x => x.MediaStorageId != null)
+					.ToList();
+
 				foreach (var pic in pics)
 				{
-					this.PictureService.UpdatePicture(pic.Id, pic.PictureBinary, pic.MimeType, pic.SeoFilename, pic.IsNew, false);
+					if (pic.MediaStorage != null && pic.MediaStorage.Data != null && pic.MediaStorage.Data.LongLength > 0)
+					{
+						fileSystemStorageProvider.Save(pic.ToMedia(), pic.MediaStorage.Data);
+
+						try
+						{
+							mediaStorages.Remove(pic.MediaStorage);
+						}
+						catch { }
+
+						pic.MediaStorageId = null;
+					}
 				}
+
+				_ctx.SaveChanges();
+
+				// downloads
+				var downloads = _ctx.Set<Download>()
+					.Expand(x => x.MediaStorage)
+					.ToList();
+
+				foreach (var download in downloads)
+				{
+					if (download.MediaStorage != null && download.MediaStorage.Data != null && download.MediaStorage.Data.LongLength > 0)
+					{
+						fileSystemStorageProvider.Save(download.ToMedia(), download.MediaStorage.Data);
+
+						try
+						{
+							mediaStorages.Remove(download.MediaStorage);
+						}
+						catch { }
+
+						download.MediaStorageId = null;
+					}
+				}
+
 				_ctx.SaveChanges();
 			}
 		}
@@ -420,7 +448,7 @@ namespace SmartStore.Web.Infrastructure.Installation
 					var rs = new EfRepository<Setting>(_ctx);
 					rs.AutoCommitEnabled = false;
 
-					_settingService = new SettingService(NullCache.Instance, NullEventPublisher.Instance, rs);
+					_settingService = new SettingService(NullCache.Instance, rs);
 				}
 
 				return _settingService;
@@ -439,41 +467,10 @@ namespace SmartStore.Web.Infrastructure.Installation
 					var rsOrder = new EfRepository<Order>(_ctx);
 					rs.AutoCommitEnabled = false;
 
-					_gaService = new GenericAttributeService(NullCache.Instance, rs, NullEventPublisher.Instance, rsOrder);
+					_gaService = new GenericAttributeService(rs, NullEventPublisher.Instance, rsOrder);
 				}
 
 				return _gaService;
-			}
-		}
-
-		protected IPictureService PictureService
-		{
-			get
-			{
-				if (_pictureService == null)
-				{
-					var rs = new EfRepository<Picture>(_ctx);
-					rs.AutoCommitEnabled = false;
-
-					var rsMap = new EfRepository<ProductPicture>(_ctx);
-					rs.AutoCommitEnabled = false;
-					
-					var mediaSettings = new MediaSettings();
-					var webHelper = new WebHelper(null);
-
-					_pictureService = new PictureService(
-						rs, 
-						rsMap,
-						this.SettingService,
-						webHelper,
-						NullLogger.Instance,
-						NullEventPublisher.Instance,
-						mediaSettings,
-						new ImageResizerService(),
-						new ImageCache(mediaSettings, webHelper, null, null));
-				}
-
-				return _pictureService;
 			}
 		}
 
@@ -489,17 +486,25 @@ namespace SmartStore.Web.Infrastructure.Installation
 					var rsResources = new EfRepository<LocaleStringResource>(_ctx);
 					rsResources.AutoCommitEnabled = false;
 
-					var storeMappingService = new StoreMappingService(NullCache.Instance, null, null, null);
+					var rsStore = new EfRepository<Store>(_ctx);
+					rsStore.AutoCommitEnabled = false;
 
+					var storeMappingService = new StoreMappingService(NullCache.Instance, null, null, null);
+					var storeService = new StoreService(rsStore);
+					var storeContext = new WebStoreContext(new Lazy<IRepository<Store>>(() => rsStore), null, NullCache.Instance);
+                    
 					var locSettings = new LocalizationSettings();
 
 					var languageService = new LanguageService(
-						NullCache.Instance, 
+						NullRequestCache.Instance, 
+						NullCache.Instance,
 						rsLanguage,
 						this.SettingService,
 						locSettings,
 						NullEventPublisher.Instance,
-						storeMappingService);
+						storeMappingService,
+						storeService,
+						storeContext);
 
 					_locService = new LocalizationService(
 						NullCache.Instance,
@@ -507,7 +512,6 @@ namespace SmartStore.Web.Infrastructure.Installation
 						null /* IWorkContext: not needed during install */,
 						rsResources,
 						languageService,
-						locSettings,
 						NullEventPublisher.Instance);
 				}
 
@@ -521,51 +525,58 @@ namespace SmartStore.Web.Infrastructure.Installation
 
         public virtual void Seed(SmartObjectContext context)
         {
-			Guard.ArgumentNotNull(() => context);
+			Guard.NotNull(context, nameof(context));
 
 			_ctx = context;
 			_data.Initialize(_ctx);
 			
 			_ctx.Configuration.AutoDetectChangesEnabled = false;
 			_ctx.Configuration.ValidateOnSaveEnabled = false;
+			_ctx.HooksEnabled = false;
 
 			_config.ProgressMessageCallback("Progress.CreatingRequiredData");
 
             // special mandatory (non-visible) settings
 			_ctx.MigrateSettings(x =>
 			{
-				x.Add("Media.Images.StoreInDB", _config.StoreMediaInDB);
+				x.Add("Media.Storage.Provider", _config.StoreMediaInDB ? DatabaseMediaStorageProvider.SystemName : FileSystemMediaStorageProvider.SystemName);
 			});
 
 			Populate("PopulatePictures", _data.Pictures());
+			Populate("PopulateCurrencies", PopulateCurrencies);
 			Populate("PopulateStores", PopulateStores);
 			Populate("InstallLanguages", () => PopulateLanguage(_config.Language));
 			Populate("PopulateMeasureDimensions", _data.MeasureDimensions());
 			Populate("PopulateMeasureWeights", _data.MeasureWeights());
 			Populate("PopulateTaxCategories", PopulateTaxCategories);
-			Populate("PopulateCurrencies", PopulateCurrencies);
 			Populate("PopulateCountriesAndStates", PopulateCountriesAndStates);
 			Populate("PopulateShippingMethods", PopulateShippingMethods);
 			Populate("PopulateDeliveryTimes", _data.DeliveryTimes());
-			Populate("PopulateCustomersAndUsers", () => PopulateCustomersAndUsers(_config.DefaultUserName, _config.DefaultUserPassword));
+            Populate("PopulateQuantityUnits", _data.QuantityUnits());
+            Populate("PopulateCustomersAndUsers", () => PopulateCustomersAndUsers(_config.DefaultUserName, _config.DefaultUserPassword));
 			Populate("PopulateEmailAccounts", _data.EmailAccounts());
-			Populate("PopulateMessageTemplates", _data.MessageTemplates());
-			Populate("PopulateTopics", _data.Topics());
-			Populate("PopulateSettings", PopulateSettings);
-			Populate("PopulateLocaleResources", PopulateLocaleResources);
+			Populate("PopulateMessageTemplates", PopulateMessageTemplates);
+			Populate("PopulateTopics", PopulateTopics);
+            Populate("PopulateSettings", PopulateSettings);
 			Populate("PopulateActivityLogTypes", _data.ActivityLogTypes());
 			Populate("PopulateCustomersAndUsers", () => HashDefaultCustomerPassword(_config.DefaultUserName, _config.DefaultUserPassword));
 			Populate("PopulateProductTemplates", _data.ProductTemplates());
 			Populate("PopulateCategoryTemplates", _data.CategoryTemplates());
 			Populate("PopulateManufacturerTemplates", PopulateManufacturerTemplates);
 			Populate("PopulateScheduleTasks", _data.ScheduleTasks());
+			Populate("PopulateLocaleResources", PopulateLocaleResources);
+            Populate("PopulateMenus", PopulateMenus);
 
             if (_config.SeedSampleData)
             {
+				_logger.Info("Seeding sample data");
+
 				_config.ProgressMessageCallback("Progress.CreatingSampleData");
 
 				Populate("PopulateSpecificationAttributes", _data.SpecificationAttributes());
 				Populate("PopulateProductAttributes", _data.ProductAttributes());
+				Populate("PopulateProductAttributeOptionsSets", _data.ProductAttributeOptionsSets());
+				Populate("PopulateProductAttributeOptions", _data.ProductAttributeOptions());
 				Populate("PopulateCategories", PopulateCategories);
 				Populate("PopulateManufacturers", PopulateManufacturers);
 				Populate("PopulateProducts", PopulateProducts);
@@ -581,7 +592,10 @@ namespace SmartStore.Web.Infrastructure.Installation
 				Populate("PopulatePolls", _data.Polls());
             }
 
-			Populate("MovePictures", MovePictures);
+			Populate("MovePictures", MoveMedia);
+
+			// Perf
+			_ctx.DetachAll();
         }
 
 		public bool RollbackOnFailure
@@ -589,26 +603,39 @@ namespace SmartStore.Web.Infrastructure.Installation
 			get { return false; }
 		}
 
-        #endregion
+		#endregion
 
 		#region Utils
 
-		private void SetModified<TEntity>(TEntity entity) 
-			where TEntity : BaseEntity
+		private void PopulateUrlRecordsFor<T>(IEnumerable<T> entities) where T : BaseEntity, ISlugSupported, new()
 		{
-			_ctx.Set<TEntity>().Attach(entity);
-			_ctx.Entry(entity).State = System.Data.Entity.EntityState.Modified;
+			foreach (var entity in entities)
+			{
+				var ur = _data.CreateUrlRecordFor(entity);
+				if (ur != null)
+				{
+					ur.Slug = ValidateSeName(entity, ur.Slug);
+					Save(ur);
+				}
+			}
 		}
 
 		private string ValidateSeName<TEntity>(TEntity entity, string name)
 			where TEntity : BaseEntity, ISlugSupported
 		{
+			var seoSettings = new SeoSettings { LoadAllUrlAliasesOnStartup = false };
+			var perfSettings = new PerformanceSettings();
+
 			if (_urlRecordService == null)
 			{
-				_urlRecordService = new UrlRecordService(NullCache.Instance, new EfRepository<UrlRecord>(_ctx) { AutoCommitEnabled = false });
+				_urlRecordService = new UrlRecordService(
+					NullCache.Instance, 
+					new EfRepository<UrlRecord>(_ctx) { AutoCommitEnabled = false },
+					seoSettings,
+					perfSettings);
 			}
 
-			return entity.ValidateSeName<TEntity>("", name, true, _urlRecordService, new SeoSettings());
+			return entity.ValidateSeName<TEntity>("", name, true, _urlRecordService, seoSettings);
 		}
 
 		private void Populate<TEntity>(string stage, IEnumerable<TEntity> entities) 
@@ -616,11 +643,14 @@ namespace SmartStore.Web.Infrastructure.Installation
 		{
 			try
 			{
+				_logger.DebugFormat("Populate: {0}", stage);
 				SaveRange(entities);
 			}
 			catch (Exception ex)
 			{
-				throw new SeedDataException(stage, ex);
+				var ex2 = new SeedDataException(stage, ex);
+				_logger.Error(ex2);
+				throw ex2;
 			}
 		}
 
@@ -628,11 +658,14 @@ namespace SmartStore.Web.Infrastructure.Installation
 		{
 			try
 			{
+				_logger.DebugFormat("Populate: {0}", stage);
 				populateAction();
 			}
 			catch (Exception ex)
 			{
-				throw new SeedDataException(stage, ex);
+				var ex2 = new SeedDataException(stage, ex);
+				_logger.Error(ex2);
+				throw ex2;
 			}
 		}
 

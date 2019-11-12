@@ -3,23 +3,29 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using Rhino.Mocks;
+using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Payments;
-using SmartStore.Core.Plugins;
-using SmartStore.Services.Configuration;
+using SmartStore.Core.Domain.Stores;
+using SmartStore.Core.Infrastructure;
 using SmartStore.Services.Localization;
 using SmartStore.Services.Payments;
+using SmartStore.Services.Stores;
 using SmartStore.Tests;
 
 namespace SmartStore.Services.Tests.Payments
 {
-    [TestFixture]
+	[TestFixture]
     public class PaymentServiceTests : ServiceTest
     {
-        PaymentSettings _paymentSettings;
+		IRepository<PaymentMethod> _paymentMethodRepository;
+		IRepository<StoreMapping> _storeMappingRepository;
+		IStoreMappingService _storeMappingService;
+		PaymentSettings _paymentSettings;
         ShoppingCartSettings _shoppingCartSettings;
         IPaymentService _paymentService;
-		ISettingService _settingService;
+		ICommonServices _services;
+		ITypeFinder _typeFinder;
         
         [SetUp]
         public new void SetUp()
@@ -28,15 +34,20 @@ namespace SmartStore.Services.Tests.Payments
             _paymentSettings.ActivePaymentMethodSystemNames = new List<string>();
             _paymentSettings.ActivePaymentMethodSystemNames.Add("Payments.TestMethod");
 
-            var pluginFinder = new PluginFinder();
-
             _shoppingCartSettings = new ShoppingCartSettings();
-			_settingService = MockRepository.GenerateMock<ISettingService>();
+			_paymentMethodRepository = MockRepository.GenerateMock<IRepository<PaymentMethod>>();
+			_storeMappingRepository = MockRepository.GenerateMock<IRepository<StoreMapping>>();
+			_storeMappingService = MockRepository.GenerateMock<IStoreMappingService>();
+			_services = MockRepository.GenerateMock<ICommonServices>();
+
+			_typeFinder = MockRepository.GenerateMock<ITypeFinder>();
+			_typeFinder.Expect(x => x.FindClassesOfType((Type)null, null, true)).IgnoreArguments().Return(Enumerable.Empty<Type>()).Repeat.Any();
 
 			var localizationService = MockRepository.GenerateMock<ILocalizationService>();
 			localizationService.Expect(ls => ls.GetResource(null)).IgnoreArguments().Return("NotSupported").Repeat.Any();
 
-			_paymentService = new PaymentService(_paymentSettings, pluginFinder, _shoppingCartSettings, _settingService, localizationService, this.ProviderManager);
+			_paymentService = new PaymentService(_paymentMethodRepository, _storeMappingRepository, _storeMappingService, _paymentSettings, _shoppingCartSettings, 
+				this.ProviderManager, _services, _typeFinder);
         }
 
         [Test]

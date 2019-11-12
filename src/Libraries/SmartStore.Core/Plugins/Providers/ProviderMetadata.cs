@@ -1,12 +1,41 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using SmartStore.Core.Domain.DataExchange;
+using SmartStore.Utilities;
 
 namespace SmartStore.Core.Plugins
 {
-	public class ProviderMetadata
+	public interface IProviderMetadata
+	{
+		/// <summary>
+		/// Gets the provider system name
+		/// </summary>
+		string SystemName { get; }
+
+		/// <summary>
+		/// Gets the resource key pattern for user data (e.g. FriendlyName)
+		/// </summary>
+		/// <example>
+		/// Plugins.{1}.{0} > 0 = provider system name, 1 = propertyname
+		/// </example>
+		string ResourceKeyPattern { get; }
+
+		/// <summary>
+		/// Gets the provider friendly name
+		/// </summary>
+		string FriendlyName { get; }
+
+		/// <summary>
+		/// Gets the provider description
+		/// </summary>
+		string Description { get; }
+
+		/// <summary>
+		/// Gets the provider display order
+		/// </summary>
+		int DisplayOrder { get; }
+	}
+
+	public class ProviderMetadata : IProviderMetadata
 	{	
 		/// <summary>
 		/// Gets or sets the provider type
@@ -68,6 +97,16 @@ namespace SmartStore.Core.Plugins
 		public bool IsEditable { get; set; }
 
 		/// <summary>
+		/// Gets or sets a value indicating whether the provider is hidden (by decorating with <see cref="IsHiddenAttribute"/>)
+		/// </summary>
+		public bool IsHidden { get; set; }
+
+		/// <summary>
+		/// Gets or sets flags that reflects what features of export data processing is supported by a provider
+		/// </summary>
+		public ExportFeatures ExportFeatures { get; set; }
+
+		/// <summary>
 		/// Gets or sets an array of widget system names, which depend on the current provider
 		/// </summary>
 		/// <remarks>
@@ -101,7 +140,7 @@ namespace SmartStore.Core.Plugins
 
 		public override int GetHashCode()
 		{
-			return SystemName.GetHashCode();
+			return HashCodeCombiner.Start().Add(typeof(ProviderMetadata)).Add(SystemName).CombinedHash;
 		}
 	}
 }

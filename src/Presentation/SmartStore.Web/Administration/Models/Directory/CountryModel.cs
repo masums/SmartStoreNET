@@ -1,20 +1,21 @@
-﻿using System.Collections.Generic;
-using System.Web.Mvc;
+﻿using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Validators.Directory;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Localization;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
+using System.Collections.Generic;
+using System.Web.Mvc;
 
 namespace SmartStore.Admin.Models.Directory
 {
     [Validator(typeof(CountryValidator))]
-    public class CountryModel : EntityModelBase, ILocalizedModel<CountryLocalizedModel>
+    public class CountryModel : EntityModelBase, ILocalizedModel<CountryLocalizedModel>, IStoreSelector
     {
         public CountryModel()
         {
             Locales = new List<CountryLocalizedModel>();
         }
+
         [SmartResourceDisplayName("Admin.Configuration.Countries.Fields.Name")]
         [AllowHtml]
         public string Name { get; set; }
@@ -42,17 +43,22 @@ namespace SmartStore.Admin.Models.Directory
         [SmartResourceDisplayName("Admin.Configuration.Countries.Fields.Published")]
         public bool Published { get; set; }
 
-        [SmartResourceDisplayName("Admin.Configuration.Countries.Fields.DisplayOrder")]
+        [SmartResourceDisplayName("Common.DisplayOrder")]
         public int DisplayOrder { get; set; }
-
-
-
 
         [SmartResourceDisplayName("Admin.Configuration.Countries.Fields.NumberOfStates")]
         public int NumberOfStates { get; set; }
 
-        public IList<CountryLocalizedModel> Locales { get; set; }
-    }
+		[SmartResourceDisplayName("Admin.Configuration.Countries.Fields.AddressFormat")]
+		public string AddressFormat { get; set; }
+
+		public IList<CountryLocalizedModel> Locales { get; set; }
+
+		[SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
+		public bool LimitedToStores { get; set; }
+		public IEnumerable<SelectListItem> AvailableStores { get; set; }
+		public int[] SelectedStoreIds { get; set; }
+	}
 
     public class CountryLocalizedModel : ILocalizedModelLocal
     {
@@ -61,5 +67,17 @@ namespace SmartStore.Admin.Models.Directory
         [SmartResourceDisplayName("Admin.Configuration.Countries.Fields.Name")]
         [AllowHtml]
         public string Name { get; set; }
+    }
+
+    public partial class CountryValidator : AbstractValidator<CountryModel>
+    {
+        public CountryValidator()
+        {
+            RuleFor(x => x.Name).NotNull();
+            RuleFor(x => x.TwoLetterIsoCode).NotEmpty();
+            RuleFor(x => x.TwoLetterIsoCode).Length(2);
+            RuleFor(x => x.ThreeLetterIsoCode).NotEmpty();
+            RuleFor(x => x.ThreeLetterIsoCode).Length(3);
+        }
     }
 }

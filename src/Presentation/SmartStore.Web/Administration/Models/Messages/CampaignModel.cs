@@ -1,17 +1,18 @@
-﻿using System;
+﻿using FluentValidation;
+using FluentValidation.Attributes;
+using SmartStore.Collections;
+using SmartStore.Services.Messages;
+using SmartStore.Web.Framework;
+using SmartStore.Web.Framework.Modelling;
+using System;
 using System.Collections.Generic;
 using System.Web.Mvc;
-using FluentValidation.Attributes;
-using SmartStore.Admin.Models.Stores;
-using SmartStore.Admin.Validators.Messages;
-using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
 
 namespace SmartStore.Admin.Models.Messages
 {
     [Validator(typeof(CampaignValidator))]
-    public class CampaignModel : EntityModelBase
-    {
+    public class CampaignModel : EntityModelBase, IStoreSelector
+    {       
         [SmartResourceDisplayName("Admin.Promotions.Campaigns.Fields.Name")]
         [AllowHtml]
         public string Name { get; set; }
@@ -24,11 +25,11 @@ namespace SmartStore.Admin.Models.Messages
         [AllowHtml]
         public string Body { get; set; }
         
-        [SmartResourceDisplayName("Admin.Promotions.Campaigns.Fields.CreatedOn")]
+        [SmartResourceDisplayName("Common.CreatedOn")]
         public DateTime CreatedOn { get; set; }
 
         [SmartResourceDisplayName("Admin.Promotions.Campaigns.Fields.AllowedTokens")]
-        public string AllowedTokens { get; set; }
+        public TreeNode<ModelTreeMember> LastModelTree { get; set; }
 
         [SmartResourceDisplayName("Admin.Promotions.Campaigns.Fields.TestEmail")]
         [AllowHtml]
@@ -36,9 +37,17 @@ namespace SmartStore.Admin.Models.Messages
 
 		[SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
 		public bool LimitedToStores { get; set; }
-
-		[SmartResourceDisplayName("Admin.Common.Store.AvailableFor")]
-		public List<StoreModel> AvailableStores { get; set; }
+		public IEnumerable<SelectListItem> AvailableStores { get; set; }
 		public int[] SelectedStoreIds { get; set; }
+    }
+
+    public partial class CampaignValidator : AbstractValidator<CampaignModel>
+    {
+        public CampaignValidator()
+        {
+            RuleFor(x => x.Name).NotEmpty();
+            RuleFor(x => x.Subject).NotEmpty();
+            RuleFor(x => x.Body).NotEmpty();
+        }
     }
 }

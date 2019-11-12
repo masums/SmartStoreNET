@@ -1,8 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Web.Framework.Mvc;
-using SmartStore.Web.Validators.News;
+using SmartStore.Web.Framework.Modelling;
+using SmartStore.Web.Models.Common;
+using System;
 
 namespace SmartStore.Web.Models.News
 {
@@ -11,31 +11,38 @@ namespace SmartStore.Web.Models.News
     {
         public NewsItemModel()
         {
-            Comments = new List<NewsCommentModel>();
             AddNewComment = new AddNewsCommentModel();
-        }
+			Comments = new CommentListModel();
+		}
         public string MetaKeywords { get; set; }
         public string MetaDescription { get; set; }
         public string MetaTitle { get; set; }
         public string SeName { get; set; }
+		public DateTime CreatedOn { get; set; }
 
-        public string Title { get; set; }
-
+		public string Title { get; set; }
         public string Short { get; set; }
-
         public string Full { get; set; }
 
-        public bool AllowComments { get; set; }
+		public AddNewsCommentModel AddNewComment { get; set; }
+		public CommentListModel Comments { get; set; }
+    }
 
-        public int NumberOfComments { get; set; }
+    public class NewsItemValidator : AbstractValidator<NewsItemModel>
+    {
+        public NewsItemValidator()
+        {
+            RuleFor(x => x.AddNewComment.CommentTitle)
+                .NotEmpty()
+                .When(x => x.AddNewComment != null);
 
-        public DateTime CreatedOn { get; set; }
+            RuleFor(x => x.AddNewComment.CommentTitle)
+                .Length(1, 200)
+                .When(x => x.AddNewComment != null && !string.IsNullOrEmpty(x.AddNewComment.CommentTitle));
 
-        public IList<NewsCommentModel> Comments { get; set; }
-        public AddNewsCommentModel AddNewComment { get; set; }
-
-        // codehint: sm-add
-        public int AvatarPictureSize { get; set; }
-		public bool AllowCustomersToUploadAvatars { get; set; }
+            RuleFor(x => x.AddNewComment.CommentText)
+                .NotEmpty()
+                .When(x => x.AddNewComment != null);
+        }
     }
 }

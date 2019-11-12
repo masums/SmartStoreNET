@@ -6,75 +6,55 @@ using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Localization;
 using SmartStore.Core.Events;
 using SmartStore.Services.Configuration;
-using SmartStore.Core.Domain.Stores;
 using SmartStore.Services.Stores;
+using SmartStore.Collections;
+using SmartStore.Core;
+using SmartStore.Data.Caching;
 
 namespace SmartStore.Services.Localization
 {
-    /// <summary>
-    /// Language service
-    /// </summary>
     public partial class LanguageService : ILanguageService
     {
-        #region Constants
-        private const string LANGUAGES_ALL_KEY = "SmartStore.language.all-{0}";
         private const string LANGUAGES_COUNT = "SmartStore.language.count-{0}";
-        private const string LANGUAGES_BY_CULTURE_KEY = "SmartStore.language.culture-{0}";
-        private const string LANGUAGES_BY_SEOCODE_KEY = "SmartStore.language.seocode-{0}";
-        private const string LANGUAGES_PATTERN_KEY = "SmartStore.language.";
-        private const string LANGUAGES_BY_ID_KEY = "SmartStore.language.id-{0}";
-        #endregion
-
-        #region Fields
+        private const string LANGUAGES_PATTERN_KEY = "SmartStore.language.*";
 
         private readonly IRepository<Language> _languageRepository;
 		private readonly IStoreMappingService _storeMappingService;
-        private readonly ICacheManager _cacheManager;
-        private readonly ISettingService _settingService;
+		private readonly IStoreService _storeService;
+		private readonly IStoreContext _storeContext;
+        private readonly IRequestCache _requestCache;
+		private readonly ICacheManager _cache;
+		private readonly ISettingService _settingService;
         private readonly LocalizationSettings _localizationSettings;
         private readonly IEventPublisher _eventPublisher;
 
-        #endregion
-
-        #region Ctor
-
-        /// <summary>
-        /// Ctor
-        /// </summary>
-        /// <param name="cacheManager">Cache manager</param>
-        /// <param name="languageRepository">Language repository</param>
-        /// <param name="settingService">Setting service</param>
-        /// <param name="localizationSettings">Localization settings</param>
-        /// <param name="eventPublisher">Event published</param>
-        public LanguageService(ICacheManager cacheManager,
-            IRepository<Language> languageRepository,
+        public LanguageService(
+			IRequestCache requestCache,
+			ICacheManager cache,
+			IRepository<Language> languageRepository,
             ISettingService settingService,
             LocalizationSettings localizationSettings,
             IEventPublisher eventPublisher,
-			IStoreMappingService storeMappingService)
+			IStoreMappingService storeMappingService,
+			IStoreService storeService,
+			IStoreContext storeContext)
         {
-            this._cacheManager = cacheManager;
-            this._languageRepository = languageRepository;
-            this._settingService = settingService;
-            this._localizationSettings = localizationSettings;
-            this._eventPublisher = eventPublisher;
-			this._storeMappingService = storeMappingService;
+            _requestCache = requestCache;
+			_cache = cache;
+            _languageRepository = languageRepository;
+            _settingService = settingService;
+            _localizationSettings = localizationSettings;
+            _eventPublisher = eventPublisher;
+			_storeMappingService = storeMappingService;
+			_storeService = storeService;
+			_storeContext = storeContext;
         }
 
-        #endregion
-        
-        #region Methods
-
-        /// <summary>
-        /// Deletes a language
-        /// </summary>
-        /// <param name="language">Language</param>
         public virtual void DeleteLanguage(Language language)
         {
-            if (language == null)
-                throw new ArgumentNullException("language");
-            
-            //update default admin area language (if required)
+			Guard.NotNull(language, nameof(language));
+
+            // Update default admin area language (if required)
             if (_localizationSettings.DefaultAdminLanguageId == language.Id)
             {
                 foreach (var activeLanguage in GetAllLanguages())
@@ -90,50 +70,38 @@ namespace SmartStore.Services.Localization
             
             _languageRepository.Delete(language);
 
-            //cache
-            _cacheManager.RemoveByPattern(LANGUAGES_PATTERN_KEY);
-
-            //event notification
-            _eventPublisher.EntityDeleted(language);
+            // cache
+            _requestCache.RemoveByPattern(LANGUAGES_PATTERN_KEY);	
         }
 
-        /// <summary>
-        /// Gets all languages
-        /// </summary>
-        /// <param name="showHidden">A value indicating whether to show hidden records</param>
-		/// <param name="storeId">Load records allows only in specified store; pass 0 to load all records</param>
-        /// <returns>Language collection</returns>
 		public virtual IList<Language> GetAllLanguages(bool showHidden = false, int storeId = 0)
         {
-			string key = string.Format(LANGUAGES_ALL_KEY, showHidden);
-			var languages = _cacheManager.Get(key, () =>
-			{
-				var query = _languageRepository.Table;
-				if (!showHidden)
-					query = query.Where(l => l.Published);
-				query = query.OrderBy(l => l.DisplayOrder);
-				return query.ToList();
-			});
+			var query = _languageRepository.Table;
 
-			//store mapping
+			if (!showHidden)
+			{
+				query = query.Where(x => x.Published);
+			}
+
+			query = query.OrderBy(x => x.DisplayOrder);
+
+			var languages = query.ToListCached("db.lang.all.{0}".FormatInvariant(showHidden));
+
+			// store mapping
 			if (storeId > 0)
 			{
 				languages = languages
 					.Where(l => _storeMappingService.Authorize(l, storeId))
 					.ToList();
 			}
+
 			return languages;
         }
 
-        /// <summary>
-        /// Gets languages count
-        /// </summary>
-        /// <param name="showHidden">A value indicating whether to consider hidden records</param>
-        /// <returns>The count of Languages</returns>
         public virtual int GetLanguagesCount(bool showHidden = false)
         {
             string key = string.Format(LANGUAGES_COUNT, showHidden);
-            return _cacheManager.Get(key, () =>
+            return _requestCache.Get(key, () =>
             {
                 var query = _languageRepository.Table;
                 if (!showHidden)
@@ -142,57 +110,34 @@ namespace SmartStore.Services.Localization
             });
         }
 
-        /// <summary>
-        /// Gets a language
-        /// </summary>
-        /// <param name="languageId">Language identifier</param>
-        /// <returns>Language</returns>
         public virtual Language GetLanguageById(int languageId)
         {
             if (languageId == 0)
                 return null;
 
-            string key = string.Format(LANGUAGES_BY_ID_KEY, languageId);
-            return _cacheManager.Get(key, () => 
-            { 
-                return _languageRepository.GetById(languageId); 
-            });
-        }
+			return _languageRepository.GetByIdCached(languageId, "db.lang.id-" + languageId);
+		}
 
-        /// <summary>
-        /// Gets a language by culture code (e.g.: en-US)
-        /// </summary>
-        /// <param name="culture">Culture code</param>
-        /// <returns>Language</returns>
-        /// <![CDATA[ codehint: sm-add ]]>
         public virtual Language GetLanguageByCulture(string culture)
         {
             if (!culture.HasValue())
                 return null;
 
-            string key = string.Format(LANGUAGES_BY_CULTURE_KEY, culture);
-            return _cacheManager.Get(key, () =>
-            {
-                return _languageRepository.Table.Where(x => culture.Equals(x.LanguageCulture, StringComparison.InvariantCultureIgnoreCase)).FirstOrDefault();
-            });
-        }
+			return _languageRepository.Table
+				.Where(x => culture.Equals(x.LanguageCulture, StringComparison.InvariantCultureIgnoreCase))
+				.FirstOrDefaultCached("db.lang.culture-" + culture);
+		}
 
         public virtual Language GetLanguageBySeoCode(string seoCode)
         {
             if (!seoCode.HasValue())
                 return null;
 
-            string key = string.Format(LANGUAGES_BY_SEOCODE_KEY, seoCode);
-            return _cacheManager.Get(key, () =>
-            {
-                return _languageRepository.Table.Where(x => seoCode.Equals(x.UniqueSeoCode, StringComparison.InvariantCultureIgnoreCase)).FirstOrDefault();
-            });
-        }
+			return _languageRepository.Table
+				.Where(x => seoCode.Equals(x.UniqueSeoCode, StringComparison.InvariantCultureIgnoreCase))
+				.FirstOrDefaultCached("db.lang.seo-" + seoCode);
+		}
 
-        /// <summary>
-        /// Inserts a language
-        /// </summary>
-        /// <param name="language">Language</param>
         public virtual void InsertLanguage(Language language)
         {
             if (language == null)
@@ -200,17 +145,10 @@ namespace SmartStore.Services.Localization
 
             _languageRepository.Insert(language);
 
-            //cache
-            _cacheManager.RemoveByPattern(LANGUAGES_PATTERN_KEY);
-
-            //event notification
-            _eventPublisher.EntityInserted(language);
+            // cache
+            _requestCache.RemoveByPattern(LANGUAGES_PATTERN_KEY);
         }
 
-        /// <summary>
-        /// Updates a language
-        /// </summary>
-        /// <param name="language">Language</param>
         public virtual void UpdateLanguage(Language language)
         {
             if (language == null)
@@ -220,12 +158,112 @@ namespace SmartStore.Services.Localization
             _languageRepository.Update(language);
 
             //cache
-            _cacheManager.RemoveByPattern(LANGUAGES_PATTERN_KEY);
-
-            //event notification
-            _eventPublisher.EntityUpdated(language);
+            _requestCache.RemoveByPattern(LANGUAGES_PATTERN_KEY);
         }
 
-        #endregion
+		public virtual bool IsPublishedLanguage(string seoCode, int storeId = 0)
+		{
+			if (storeId <= 0)
+				storeId = _storeContext.CurrentStore.Id;
+
+			var map = this.GetStoreLanguageMap();
+			if (map.ContainsKey(storeId))
+			{
+				return map[storeId].Any(x => x.UniqueSeoCode == seoCode);
+			}
+
+			return false;
+		}
+
+		public virtual bool IsPublishedLanguage(int languageId, int storeId = 0)
+		{
+			if (languageId <= 0)
+				return false;
+
+			if (storeId <= 0)
+				storeId = _storeContext.CurrentStore.Id;
+
+			var map = this.GetStoreLanguageMap();
+			if (map.ContainsKey(storeId))
+			{
+				return map[storeId].Any(x => x.Id == languageId);
+			}
+
+			return false;
+		}
+
+		public virtual string GetDefaultLanguageSeoCode(int storeId = 0)
+		{
+			if (storeId <= 0)
+				storeId = _storeContext.CurrentStore.Id;
+
+			var map = this.GetStoreLanguageMap();
+			if (map.ContainsKey(storeId))
+			{
+				return map[storeId].FirstOrDefault().UniqueSeoCode;
+			}
+
+			return null;
+		}
+
+		public virtual int GetDefaultLanguageId(int storeId = 0)
+		{
+			if (storeId <= 0)
+				storeId = _storeContext.CurrentStore.Id;
+
+			var map = this.GetStoreLanguageMap();
+			if (map.ContainsKey(storeId))
+			{
+				return map[storeId].FirstOrDefault().Id;
+			}
+
+			return 0;
+		}
+
+		/// <summary>
+		/// Gets a map of active/published store languages
+		/// </summary>
+		/// <returns>A map of store languages where key is the store id and values are tuples of language ids and seo codes</returns>
+		protected virtual Multimap<int, MinifiedLanguage> GetStoreLanguageMap()
+		{
+			var result = _cache.Get(ServiceCacheBuster.STORE_LANGUAGE_MAP_KEY, () =>
+			{
+				var map = new Multimap<int, MinifiedLanguage>();
+
+				var allStores = _storeService.GetAllStores();
+				foreach (var store in allStores)
+				{
+					var languages = GetAllLanguages(false, store.Id);
+					if (!languages.Any())
+					{
+						// language-less stores aren't allowed but could exist accidentally. Correct this.
+						var firstStoreLang = GetAllLanguages(true, store.Id).FirstOrDefault();
+						if (firstStoreLang == null)
+						{
+							// absolute fallback
+							firstStoreLang = GetAllLanguages(true).FirstOrDefault();
+						}
+						map.Add(store.Id, new MinifiedLanguage { Id = firstStoreLang.Id, UniqueSeoCode = firstStoreLang.UniqueSeoCode });
+					}
+					else
+					{
+						foreach (var lang in languages)
+						{
+							map.Add(store.Id, new MinifiedLanguage { Id = lang.Id, UniqueSeoCode = lang.UniqueSeoCode });
+						}
+					}
+				}
+
+				return map;
+			}, TimeSpan.FromDays(1));
+
+			return result;
+		}
+
+		public class MinifiedLanguage
+		{
+			public int Id { get; set; }
+			public string UniqueSeoCode { get; set; }
+		}
     }
 }

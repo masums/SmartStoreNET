@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Diagnostics;
+using System.Linq.Expressions;
 using System.Runtime.Serialization;
 using SmartStore.Core.Domain.Directory;
 using SmartStore.Core.Domain.Discounts;
@@ -16,9 +18,32 @@ namespace SmartStore.Core.Domain.Catalog
     /// Represents a product
     /// </summary>
     [DataContract]
-	public partial class Product : BaseEntity, ISoftDeletable, ILocalizedEntity, ISlugSupported, IAclSupported, IStoreMappingSupported, IMergedData
-    {
-        private ICollection<ProductCategory> _productCategories;
+	public partial class Product : BaseEntity, IAuditable, ISoftDeletable, ILocalizedEntity, ISlugSupported, IAclSupported, IStoreMappingSupported, IMergedData
+	{
+		#region static
+
+		private static readonly HashSet<string> _visibilityAffectingProductProps = new HashSet<string>
+		{
+			nameof(Product.AvailableEndDateTimeUtc),
+			nameof(Product.AvailableStartDateTimeUtc),
+			nameof(Product.Deleted),
+			nameof(Product.LowStockActivityId),
+			nameof(Product.LimitedToStores),
+			nameof(Product.ManageInventoryMethodId),
+			nameof(Product.MinStockQuantity),
+			nameof(Product.Published),
+			nameof(Product.SubjectToAcl),
+			nameof(Product.VisibleIndividually)
+		};
+
+		public static IReadOnlyCollection<string> GetVisibilityAffectingPropertyNames()
+		{
+			return _visibilityAffectingProductProps;
+		}
+
+		#endregion
+
+		private ICollection<ProductCategory> _productCategories;
         private ICollection<ProductManufacturer> _productManufacturers;
         private ICollection<ProductPicture> _productPictures;
         private ICollection<ProductReview> _productReviews;
@@ -29,14 +54,15 @@ namespace SmartStore.Core.Domain.Catalog
 		private ICollection<TierPrice> _tierPrices;
 		private ICollection<Discount> _appliedDiscounts;
 		private ICollection<ProductBundleItem> _productBundleItems;
-
-		private int _stockQuantity;
+        
+        private int _stockQuantity;
         private int _backorderModeId;
 		private string _sku;
 		private string _gtin;
 		private string _manufacturerPartNumber;
 		private decimal _price;
 		private int? _deliveryTimeId;
+        private int? _quantityUnitId;
 		private decimal _length;
 		private decimal _width;
 		private decimal _height;
@@ -101,6 +127,12 @@ namespace SmartStore.Core.Domain.Catalog
         /// </summary>
 		[DataMember]
 		public bool ShowOnHomePage { get; set; }
+
+		/// <summary>
+		/// Gets or sets the display order for homepage products
+		/// </summary>
+		[DataMember]
+		public int HomePageDisplayOrder { get; set; }
 
         /// <summary>
         /// Gets or sets the meta keywords
@@ -171,7 +203,7 @@ namespace SmartStore.Core.Domain.Catalog
 			[DebuggerStepThrough]
 			get
 			{
-				return this.GetMergedDataValue<string>("Sku", _sku);
+				return this.GetMergedDataValue<string>(nameof(Sku), _sku);
 			}
 			set
 			{
@@ -183,12 +215,13 @@ namespace SmartStore.Core.Domain.Catalog
 		/// Gets or sets the manufacturer part number
 		/// </summary>
 		[DataMember]
+		[Index]
 		public string ManufacturerPartNumber
 		{
 			[DebuggerStepThrough]
 			get
 			{
-				return this.GetMergedDataValue<string>("ManufacturerPartNumber", _manufacturerPartNumber);
+				return this.GetMergedDataValue<string>(nameof(ManufacturerPartNumber), _manufacturerPartNumber);
 			}
 			set
 			{
@@ -200,12 +233,13 @@ namespace SmartStore.Core.Domain.Catalog
 		/// Gets or sets the Global Trade Item Number (GTIN). These identifiers include UPC (in North America), EAN (in Europe), JAN (in Japan), and ISBN (for books).
 		/// </summary>
 		[DataMember]
+		[Index]
 		public string Gtin
 		{
 			[DebuggerStepThrough]
 			get
 			{
-				return this.GetMergedDataValue<string>("Gtin", _gtin);
+				return this.GetMergedDataValue<string>(nameof(Gtin), _gtin);
 			}
 			set
 			{
@@ -244,7 +278,7 @@ namespace SmartStore.Core.Domain.Catalog
 		public bool AutomaticallyAddRequiredProducts { get; set; }
 
 		/// <summary>
-		/// Gets or sets a value indicating whether the product is download
+		/// Gets or sets a value indicating whether the product is a download
 		/// </summary>
 		[DataMember]
 		public bool IsDownload { get; set; }
@@ -252,8 +286,8 @@ namespace SmartStore.Core.Domain.Catalog
 		/// <summary>
 		/// Gets or sets the download identifier
 		/// </summary>
-		[DataMember]
-		public int DownloadId { get; set; }
+		[Obsolete("Since version 3.2 more than one download can be assigned to a product. See property Download.EntityId and Download.EntityName.")]
+        public int DownloadId { get; set; }
 
 		/// <summary>
 		/// Gets or sets a value indicating whether this downloadable product can be downloaded unlimited number of times
@@ -385,7 +419,7 @@ namespace SmartStore.Core.Domain.Catalog
 			[DebuggerStepThrough]
 			get
 			{
-				return this.GetMergedDataValue<int>("StockQuantity", _stockQuantity);
+				return this.GetMergedDataValue(nameof(StockQuantity), _stockQuantity);
 			}
 			set
 			{
@@ -432,7 +466,7 @@ namespace SmartStore.Core.Domain.Catalog
 			[DebuggerStepThrough]
 			get
             {
-                return this.GetMergedDataValue<int>("BackorderModeId", _backorderModeId);
+                return this.GetMergedDataValue<int>(nameof(BackorderModeId), _backorderModeId);
             }
             set
             {
@@ -458,10 +492,28 @@ namespace SmartStore.Core.Domain.Catalog
 		[DataMember]
 		public int OrderMaximumQuantity { get; set; }
 
-		/// <summary>
-		/// Gets or sets the comma seperated list of allowed quantities. null or empty if any quantity is allowed
-		/// </summary>
-		[DataMember]
+        /// <summary>
+        /// Gets or sets the quantity step
+        /// </summary>
+        [DataMember]
+        public int QuantityStep { get; set; }
+
+        /// <summary>
+        /// Gets or sets the quantity control type
+        /// </summary>
+        [DataMember]
+        public QuantityControlType QuantiyControlType { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value to specify whether or not to hide the quantity input control
+        /// </summary>
+        [DataMember]
+        public bool HideQuantityControl { get; set; }
+
+        /// <summary>
+        /// Gets or sets the comma seperated list of allowed quantities. null or empty if any quantity is allowed
+        /// </summary>
+        [DataMember]
 		public string AllowedQuantities { get; set; }
 
 		/// <summary>
@@ -497,7 +549,7 @@ namespace SmartStore.Core.Domain.Catalog
 			[DebuggerStepThrough]
 			get
 			{
-				return this.GetMergedDataValue<decimal>("Price", _price);
+				return this.GetMergedDataValue<decimal>(nameof(Price), _price);
 			}
 			set
 			{
@@ -557,7 +609,7 @@ namespace SmartStore.Core.Domain.Catalog
 		/// Gets or sets a value indicating whether this product has tier prices configured
 		/// <remarks>The same as if we run this.TierPrices.Count > 0
 		/// We use this property for performance optimization:
-		/// if this property is set to false, then we do not need to load tier prices navifation property
+		/// if this property is set to false, then we do not need to load tier prices navigation property
 		/// </remarks>
 		/// </summary>
 		[DataMember]
@@ -594,7 +646,7 @@ namespace SmartStore.Core.Domain.Catalog
 			[DebuggerStepThrough]
 			get
 			{
-				return this.GetMergedDataValue<decimal>("Length", _length);
+				return this.GetMergedDataValue<decimal>(nameof(Length), _length);
 			}
 			set
 			{
@@ -611,7 +663,7 @@ namespace SmartStore.Core.Domain.Catalog
 			[DebuggerStepThrough]
 			get
 			{
-				return this.GetMergedDataValue<decimal>("Width", _width);
+				return this.GetMergedDataValue<decimal>(nameof(Width), _width);
 			}
 			set
 			{
@@ -628,7 +680,7 @@ namespace SmartStore.Core.Domain.Catalog
 			[DebuggerStepThrough]
 			get
 			{
-				return this.GetMergedDataValue<decimal>("Height", _height);
+				return this.GetMergedDataValue<decimal>(nameof(Height), _height);
 			}
 			set
 			{
@@ -658,16 +710,34 @@ namespace SmartStore.Core.Domain.Catalog
         /// Gets or sets a value indicating whether the entity is published
         /// </summary>
 		[DataMember]
+        [Index("IX_Product_Published_Deleted_IsSystemProduct", 1)]
 		public bool Published { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether the entity has been deleted
         /// </summary>
-        public bool Deleted { get; set; }
+		[Index]
+        [Index("IX_Product_Published_Deleted_IsSystemProduct", 2)]
+		public bool Deleted { get; set; }
 
-        /// <summary>
-        /// Gets or sets the date and time of product creation
-        /// </summary>
+		/// <summary>
+		/// Gets or sets a value indicating whether the entity is a system product.
+		/// </summary>
+		[DataMember]
+		[Index("IX_Product_SystemName_IsSystemProduct", 2)]
+        [Index("IX_Product_Published_Deleted_IsSystemProduct", 3)]
+		public bool IsSystemProduct { get; set; }
+
+		/// <summary>
+		/// Gets or sets the product system name.
+		/// </summary>
+		[DataMember]
+		[Index("IX_Product_SystemName_IsSystemProduct", 1)]
+		public string SystemName { get; set; }
+
+		/// <summary>
+		/// Gets or sets the date and time of product creation
+		/// </summary>
 		[DataMember]
 		public DateTime CreatedOnUtc { get; set; }
 
@@ -686,7 +756,7 @@ namespace SmartStore.Core.Domain.Catalog
 			[DebuggerStepThrough]
 			get
 			{
-				return this.GetMergedDataValue<int?>("DeliveryTimeId", _deliveryTimeId);
+				return this.GetMergedDataValue<int?>(nameof(DeliveryTimeId), _deliveryTimeId);
 			}
 			set
 			{
@@ -696,6 +766,44 @@ namespace SmartStore.Core.Domain.Catalog
 
 		[DataMember]
 		public virtual DeliveryTime DeliveryTime { get; set; }
+
+        /// <summary>
+        /// Gets or sets the quantity unit identifier
+        /// </summary>
+        [DataMember]
+        public int? QuantityUnitId
+        {
+            [DebuggerStepThrough]
+            get
+            {
+                return this.GetMergedDataValue<int?>(nameof(QuantityUnitId), _quantityUnitId);
+            }
+            set
+            {
+                _quantityUnitId = value;
+            }
+        }
+
+        [DataMember]
+        public virtual QuantityUnit QuantityUnit { get; set; }
+
+		/// <summary>
+		/// Gets or sets the customs tariff number
+		/// </summary>
+		[DataMember]
+		public string CustomsTariffNumber { get; set; }
+
+		/// <summary>
+		/// Gets or sets the country of origin identifier
+		/// </summary>
+		[DataMember]
+		public int? CountryOfOriginId { get; set; }
+
+		/// <summary>
+		/// Gets or sets the country of origin
+		/// </summary>
+		[DataMember]
+		public virtual Country CountryOfOrigin { get; set; }
 
 		/// <summary>
 		/// Gets or sets if base price quotation (PAnGV) is enabled
@@ -711,7 +819,7 @@ namespace SmartStore.Core.Domain.Catalog
 
 		/// <summary>
 		/// Amount of product per packing unit in the given measure unit 
-		/// (e.g. 250 ml shower gel: "0.25" if MeasureUnit = "liter" and BaseAmount = 1)
+        /// (e.g. 250 ml shower gel: "0.25" if MeasureUnit = "liter" and BaseAmount = 1)
 		/// </summary>
 		[DataMember]
 		public decimal? BasePriceAmount
@@ -719,7 +827,7 @@ namespace SmartStore.Core.Domain.Catalog
 			[DebuggerStepThrough]
 			get
 			{
-				return this.GetMergedDataValue<decimal?>("BasePriceAmount", _basePriceAmount);
+				return this.GetMergedDataValue<decimal?>(nameof(BasePriceAmount), _basePriceAmount);
 			}
 			set
 			{
@@ -737,7 +845,7 @@ namespace SmartStore.Core.Domain.Catalog
 			[DebuggerStepThrough]
 			get
 			{
-				return this.GetMergedDataValue<int?>("BasePriceBaseAmount", _basePriceBaseAmount);
+				return this.GetMergedDataValue<int?>(nameof(BasePriceBaseAmount), _basePriceBaseAmount);
 			}
 			set
 			{
@@ -779,9 +887,21 @@ namespace SmartStore.Core.Domain.Catalog
 		public bool BundlePerItemShoppingCart { get; set; }
 
 		/// <summary>
-		/// Gets or sets the product type
+		/// Gets or sets the main picture id
 		/// </summary>
 		[DataMember]
+		public int? MainPictureId { get; set; }
+
+        /// <summary>
+		/// Gets or sets a value that indictaes whether the product has a preview picture
+		/// </summary>
+		[DataMember]
+        public bool HasPreviewPicture { get; set; }
+
+        /// <summary>
+        /// Gets or sets the product type
+        /// </summary>
+        [DataMember]
 		public ProductType ProductType
 		{
 			get
@@ -801,7 +921,7 @@ namespace SmartStore.Core.Domain.Catalog
 				switch (ProductType)
 				{
 					case ProductType.SimpleProduct:
-						return "smnet-hide";
+						return "secondary d-none";
 					case ProductType.GroupedProduct:
 						return "success";
 					case ProductType.BundledProduct:
@@ -914,7 +1034,7 @@ namespace SmartStore.Core.Domain.Catalog
         [DataMember]
         public virtual ICollection<ProductCategory> ProductCategories
         {
-            get { return _productCategories ?? (_productCategories = new List<ProductCategory>()); }
+			get { return _productCategories ?? (_productCategories = new HashSet<ProductCategory>()); }
             protected set { _productCategories = value; }
         }
 
@@ -924,7 +1044,7 @@ namespace SmartStore.Core.Domain.Catalog
 		[DataMember]
 		public virtual ICollection<ProductManufacturer> ProductManufacturers
         {
-            get { return _productManufacturers ?? (_productManufacturers = new List<ProductManufacturer>()); }
+			get { return _productManufacturers ?? (_productManufacturers = new HashSet<ProductManufacturer>()); }
             protected set { _productManufacturers = value; }
         }
 
@@ -943,7 +1063,7 @@ namespace SmartStore.Core.Domain.Catalog
         /// </summary>
         public virtual ICollection<ProductReview> ProductReviews
         {
-            get { return _productReviews ?? (_productReviews = new List<ProductReview>()); }
+			get { return _productReviews ?? (_productReviews = new HashSet<ProductReview>()); }
             protected set { _productReviews = value; }
         }
 
@@ -953,7 +1073,7 @@ namespace SmartStore.Core.Domain.Catalog
 		[DataMember]
 		public virtual ICollection<ProductSpecificationAttribute> ProductSpecificationAttributes
         {
-            get { return _productSpecificationAttributes ?? (_productSpecificationAttributes = new List<ProductSpecificationAttribute>()); }
+			get { return _productSpecificationAttributes ?? (_productSpecificationAttributes = new HashSet<ProductSpecificationAttribute>()); }
             protected set { _productSpecificationAttributes = value; }
         }
 
@@ -963,7 +1083,7 @@ namespace SmartStore.Core.Domain.Catalog
 		[DataMember]
 		public virtual ICollection<ProductTag> ProductTags
         {
-            get { return _productTags ?? (_productTags = new List<ProductTag>()); }
+			get { return _productTags ?? (_productTags = new HashSet<ProductTag>()); }
             protected set { _productTags = value; }
         }
 
@@ -973,7 +1093,7 @@ namespace SmartStore.Core.Domain.Catalog
 		[DataMember]
 		public virtual ICollection<ProductVariantAttribute> ProductVariantAttributes
 		{
-			get { return _productVariantAttributes ?? (_productVariantAttributes = new List<ProductVariantAttribute>()); }
+			get { return _productVariantAttributes ?? (_productVariantAttributes = new HashSet<ProductVariantAttribute>()); }
 			protected set { _productVariantAttributes = value; }
 		}
 
@@ -993,7 +1113,7 @@ namespace SmartStore.Core.Domain.Catalog
 		[DataMember]
 		public virtual ICollection<TierPrice> TierPrices
 		{
-			get { return _tierPrices ?? (_tierPrices = new List<TierPrice>()); }
+			get { return _tierPrices ?? (_tierPrices = new HashSet<TierPrice>()); }
 			protected set { _tierPrices = value; }
 		}
 
@@ -1003,7 +1123,7 @@ namespace SmartStore.Core.Domain.Catalog
 		[DataMember]
 		public virtual ICollection<Discount> AppliedDiscounts
 		{
-			get { return _appliedDiscounts ?? (_appliedDiscounts = new List<Discount>()); }
+			get { return _appliedDiscounts ?? (_appliedDiscounts = new HashSet<Discount>()); }
 			protected set { _appliedDiscounts = value; }
 		}
 
@@ -1013,7 +1133,7 @@ namespace SmartStore.Core.Domain.Catalog
 		[DataMember]
 		public virtual ICollection<ProductBundleItem> ProductBundleItems
 		{
-			get { return _productBundleItems ?? (_productBundleItems = new List<ProductBundleItem>()); }
+			get { return _productBundleItems ?? (_productBundleItems = new HashSet<ProductBundleItem>()); }
 			protected set { _productBundleItems = value; }
 		}
     }

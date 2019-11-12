@@ -1,11 +1,9 @@
 ﻿using System;
-// codehint: sm-delete
 using SmartStore.Core;
 
 namespace SmartStore.Web.Models.Blogs
 {
-    // codehint: sm-edit (formerly inherited BasePageableModel)
-    public partial class BlogPagingFilteringModel : PagedListBase // BasePageableModel
+    public partial class BlogPagingFilteringModel : PagedListBase 
     {
         #region Methods
 
@@ -22,6 +20,7 @@ namespace SmartStore.Web.Models.Blogs
             }
             return result;
         }
+
         public virtual DateTime? GetFromMonth()
         {
             var filterByMonth = GetParsedMonth();
@@ -29,6 +28,7 @@ namespace SmartStore.Web.Models.Blogs
                 return filterByMonth.Value;
             return null;
         }
+
         public virtual DateTime? GetToMonth()
         {
             var filterByMonth = GetParsedMonth();

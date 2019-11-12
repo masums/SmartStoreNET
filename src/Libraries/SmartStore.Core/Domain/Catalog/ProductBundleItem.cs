@@ -6,7 +6,7 @@ using SmartStore.Core.Domain.Localization;
 namespace SmartStore.Core.Domain.Catalog
 {
 	[DataContract]
-	public partial class ProductBundleItem : BaseEntity, ILocalizedEntity, ICloneable<ProductBundleItem>
+	public partial class ProductBundleItem : BaseEntity, IAuditable, ILocalizedEntity, ICloneable<ProductBundleItem>
 	{
 		private ICollection<ProductBundleItemAttributeFilter> _attributeFilters;
 
@@ -111,13 +111,13 @@ namespace SmartStore.Core.Domain.Catalog
 		/// </summary>
 		public virtual ICollection<ProductBundleItemAttributeFilter> AttributeFilters
 		{
-			get { return _attributeFilters ?? (_attributeFilters = new List<ProductBundleItemAttributeFilter>()); }
+			get { return _attributeFilters ?? (_attributeFilters = new HashSet<ProductBundleItemAttributeFilter>()); }
 			protected set { _attributeFilters = value; }
 		}
 
 		public ProductBundleItem Clone()
 		{
-			var bundleItem = new ProductBundleItem()
+			var bundleItem = new ProductBundleItem
 			{
 				ProductId = this.ProductId,
 				BundleProductId = this.BundleProductId,

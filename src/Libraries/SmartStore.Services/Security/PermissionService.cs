@@ -15,7 +15,6 @@ namespace SmartStore.Services.Security
     /// </summary>
     public partial class PermissionService : IPermissionService
     {
-        #region Constants
         /// <summary>
         /// Cache key for storing a valie indicating whether a certain customer role has a permission
         /// </summary>
@@ -23,21 +22,13 @@ namespace SmartStore.Services.Security
         /// {0} : customer role id
         /// {1} : permission system name
         /// </remarks>
-        private const string PERMISSIONS_ALLOWED_KEY = "SmartStore.permission.allowed-{0}-{1}";
-        private const string PERMISSIONS_PATTERN_KEY = "SmartStore.permission.";
-        #endregion
-
-        #region Fields
+        private const string PERMISSIONS_ALLOWED_KEY = "permission:allowed-{0}-{1}";
+        private const string PERMISSIONS_PATTERN_KEY = "permission:*";
 
         private readonly IRepository<PermissionRecord> _permissionRecordRepository;
-		private readonly IRepository<CustomerRole> _customerRoleRepository;
         private readonly ICustomerService _customerService;
         private readonly IWorkContext _workContext;
         private readonly ICacheManager _cacheManager;
-
-        #endregion
-
-        #region Ctor
 
         /// <summary>
         /// Ctor
@@ -48,18 +39,15 @@ namespace SmartStore.Services.Security
         /// <param name="cacheManager">Cache manager</param>
         public PermissionService(
 			IRepository<PermissionRecord> permissionRecordRepository,
-			IRepository<CustomerRole> customerRoleRepository,
             ICustomerService customerService,
-            IWorkContext workContext, ICacheManager cacheManager)
+            IWorkContext workContext,
+            ICacheManager cacheManager)
         {
-            this._permissionRecordRepository = permissionRecordRepository;
-			this._customerRoleRepository = customerRoleRepository;
-            this._customerService = customerService;
-            this._workContext = workContext;
-            this._cacheManager = cacheManager;
+            _permissionRecordRepository = permissionRecordRepository;
+            _customerService = customerService;
+            _workContext = workContext;
+            _cacheManager = cacheManager;
         }
-
-        #endregion
 
         #region Utilities
 
@@ -71,15 +59,21 @@ namespace SmartStore.Services.Security
         /// <returns>true - authorized; otherwise, false</returns>
         protected virtual bool Authorize(string permissionRecordSystemName, CustomerRole customerRole)
         {
-            if (String.IsNullOrEmpty(permissionRecordSystemName))
+            if (string.IsNullOrEmpty(permissionRecordSystemName))
+            {
                 return false;
+            }
             
-            string key = string.Format(PERMISSIONS_ALLOWED_KEY, customerRole.Id, permissionRecordSystemName);
+            var key = string.Format(PERMISSIONS_ALLOWED_KEY, customerRole.Id, permissionRecordSystemName);
             return _cacheManager.Get(key, () =>
             {
                 foreach (var permission1 in customerRole.PermissionRecords)
+                {
                     if (permission1.SystemName.Equals(permissionRecordSystemName, StringComparison.InvariantCultureIgnoreCase))
+                    {
                         return true;
+                    }
+                }
 
                 return false;
             });
@@ -141,9 +135,11 @@ namespace SmartStore.Services.Security
         /// <returns>Permissions</returns>
         public virtual IList<PermissionRecord> GetAllPermissionRecords()
         {
-            var query = from pr in _permissionRecordRepository.Table
-                        orderby pr.Name
-                        select pr;
+            var query = 
+				from pr in _permissionRecordRepository.Table
+				orderby pr.Category, pr.Name
+				select pr;
+
             var permissions = query.ToList();
             return permissions;
         }
@@ -182,70 +178,59 @@ namespace SmartStore.Services.Security
         /// <param name="permissionProvider">Permission provider</param>
         public virtual void InstallPermissions(IPermissionProvider permissionProvider)
         {
-			using (var scope = new DbContextScope(_permissionRecordRepository.Context, autoDetectChanges: false))
+			using (var scope = new DbContextScope(_permissionRecordRepository.Context, autoDetectChanges: false, autoCommit: false))
 			{
-				try
+				//install new permissions
+				var permissions = permissionProvider.GetPermissions();
+				foreach (var permission in permissions)
 				{
-					_permissionRecordRepository.AutoCommitEnabled = false;
-					_customerRoleRepository.AutoCommitEnabled = false;
-
-					//install new permissions
-					var permissions = permissionProvider.GetPermissions();
-					foreach (var permission in permissions)
+					var permission1 = GetPermissionRecordBySystemName(permission.SystemName);
+					if (permission1 == null)
 					{
-						var permission1 = GetPermissionRecordBySystemName(permission.SystemName);
-						if (permission1 == null)
+						//new permission (install it)
+						permission1 = new PermissionRecord()
 						{
-							//new permission (install it)
-							permission1 = new PermissionRecord()
+							Name = permission.Name,
+							SystemName = permission.SystemName,
+							Category = permission.Category,
+						};
+
+						// default customer role mappings
+						var defaultPermissions = permissionProvider.GetDefaultPermissions();
+						foreach (var defaultPermission in defaultPermissions)
+						{
+							var customerRole = _customerService.GetCustomerRoleBySystemName(defaultPermission.CustomerRoleSystemName);
+							if (customerRole == null)
 							{
-								Name = permission.Name,
-								SystemName = permission.SystemName,
-								Category = permission.Category,
-							};
-
-							// default customer role mappings
-							var defaultPermissions = permissionProvider.GetDefaultPermissions();
-							foreach (var defaultPermission in defaultPermissions)
-							{
-								var customerRole = _customerService.GetCustomerRoleBySystemName(defaultPermission.CustomerRoleSystemName);
-								if (customerRole == null)
+								//new role (save it)
+								customerRole = new CustomerRole
 								{
-									//new role (save it)
-									customerRole = new CustomerRole()
-									{
-										Name = defaultPermission.CustomerRoleSystemName,
-										Active = true,
-										SystemName = defaultPermission.CustomerRoleSystemName
-									};
-									_customerService.InsertCustomerRole(customerRole);
-								}
-
-
-								var defaultMappingProvided = (from p in defaultPermission.PermissionRecords
-															  where p.SystemName == permission1.SystemName
-															  select p).Any();
-								var mappingExists = (from p in customerRole.PermissionRecords
-													 where p.SystemName == permission1.SystemName
-													 select p).Any();
-								if (defaultMappingProvided && !mappingExists)
-								{
-									permission1.CustomerRoles.Add(customerRole);
-								}
+									Name = defaultPermission.CustomerRoleSystemName,
+									Active = true,
+									SystemName = defaultPermission.CustomerRoleSystemName
+								};
+								_customerService.InsertCustomerRole(customerRole);
 							}
 
-							//save new permission
-							InsertPermissionRecord(permission1);
-						}
-					}
 
-					scope.Commit();
+							var defaultMappingProvided = (from p in defaultPermission.PermissionRecords
+															where p.SystemName == permission1.SystemName
+															select p).Any();
+							var mappingExists = (from p in customerRole.PermissionRecords
+													where p.SystemName == permission1.SystemName
+													select p).Any();
+							if (defaultMappingProvided && !mappingExists)
+							{
+								permission1.CustomerRoles.Add(customerRole);
+							}
+						}
+
+						//save new permission
+						InsertPermissionRecord(permission1);
+					}
 				}
-				finally
-				{
-					_permissionRecordRepository.AutoCommitEnabled = true;
-					_customerRoleRepository.AutoCommitEnabled = true;
-				}
+
+				scope.Commit();
 			}
         }
 
@@ -320,16 +305,20 @@ namespace SmartStore.Services.Security
         /// <returns>true - authorized; otherwise, false</returns>
         public virtual bool Authorize(string permissionRecordSystemName, Customer customer)
         {
-            if (String.IsNullOrEmpty(permissionRecordSystemName))
+            if (string.IsNullOrEmpty(permissionRecordSystemName))
+            {
                 return false;
+            }
 
             var customerRoles = customer.CustomerRoles.Where(cr => cr.Active);
             foreach (var role in customerRoles)
+            {
                 if (Authorize(permissionRecordSystemName, role))
-                    //yes, we have such permission
+                {
                     return true;
+                }
+            }
             
-            //no permission found
             return false;
         }
 

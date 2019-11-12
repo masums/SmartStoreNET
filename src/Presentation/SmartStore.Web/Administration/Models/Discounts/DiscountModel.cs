@@ -1,11 +1,11 @@
-﻿using System;
+﻿using FluentValidation;
+using FluentValidation.Attributes;
+using SmartStore.Web.Framework;
+using SmartStore.Web.Framework.Modelling;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Web.Mvc;
-using FluentValidation.Attributes;
-using SmartStore.Admin.Validators.Discounts;
-using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
 
 namespace SmartStore.Admin.Models.Discounts
 {
@@ -15,6 +15,7 @@ namespace SmartStore.Admin.Models.Discounts
         public DiscountModel()
         {
             AppliedToCategoryModels = new List<AppliedToCategoryModel>();
+			AppliedToManufacturerModels = new List<AppliedToManufacturerModel>();
             AppliedToProductModels = new List<AppliedToProductModel>();
             AvailableDiscountRequirementRules = new List<SelectListItem>();
             DiscountRequirementMetaInfos = new List<DiscountRequirementMetaInfo>();
@@ -33,11 +34,39 @@ namespace SmartStore.Admin.Models.Discounts
         [SmartResourceDisplayName("Admin.Promotions.Discounts.Fields.DiscountPercentage")]
         public decimal DiscountPercentage { get; set; }
 
-        [SmartResourceDisplayName("Admin.Promotions.Discounts.Fields.DiscountAmount")]
-        public decimal DiscountAmount { get; set; }
-        public string PrimaryStoreCurrencyCode { get; set; }
+		[SmartResourceDisplayName("Admin.Promotions.Discounts.Fields.DiscountPercentage")]
+		public string FormattedDiscountPercentage
+		{
+			get
+			{
+				if (UsePercentage)
+				{
+					return string.Format("{0:0.##}", DiscountPercentage);
+				}
 
-        [SmartResourceDisplayName("Admin.Promotions.Discounts.Fields.StartDate")]
+				return string.Empty;
+			}
+		}
+
+		[SmartResourceDisplayName("Admin.Promotions.Discounts.Fields.DiscountAmount")]
+        public decimal DiscountAmount { get; set; }
+		public string PrimaryStoreCurrencyCode { get; set; }
+
+		[SmartResourceDisplayName("Admin.Promotions.Discounts.Fields.DiscountAmount")]
+		public string FormattedDiscountAmount
+		{
+			get
+			{
+				if (!UsePercentage)
+				{
+					return string.Format("{0:0.00}", DiscountAmount);
+				}
+
+				return string.Empty;
+			}
+		}
+
+		[SmartResourceDisplayName("Admin.Promotions.Discounts.Fields.StartDate")]
         public DateTime? StartDateUtc { get; set; }
 
         [SmartResourceDisplayName("Admin.Promotions.Discounts.Fields.EndDate")]
@@ -60,7 +89,10 @@ namespace SmartStore.Admin.Models.Discounts
         [SmartResourceDisplayName("Admin.Promotions.Discounts.Fields.AppliedToCategories")]
         public IList<AppliedToCategoryModel> AppliedToCategoryModels { get; set; }
 
-        [SmartResourceDisplayName("Admin.Promotions.Discounts.Fields.AppliedToProducts")]
+		[SmartResourceDisplayName("Admin.Promotions.Discounts.Fields.AppliedToManufacturers")]
+		public IList<AppliedToManufacturerModel> AppliedToManufacturerModels { get; set; }
+
+		[SmartResourceDisplayName("Admin.Promotions.Discounts.Fields.AppliedToProducts")]
         public IList<AppliedToProductModel> AppliedToProductModels { get; set; }
 
 
@@ -88,7 +120,7 @@ namespace SmartStore.Admin.Models.Discounts
             [SmartResourceDisplayName("Admin.Promotions.Discounts.History.Order")]
             public int OrderId { get; set; }
 
-            [SmartResourceDisplayName("Admin.Promotions.Discounts.History.CreatedOn")]
+            [SmartResourceDisplayName("Common.CreatedOn")]
             public DateTime CreatedOn { get; set; }
         }
 
@@ -99,12 +131,28 @@ namespace SmartStore.Admin.Models.Discounts
             public string Name { get; set; }
         }
 
-        public class AppliedToProductModel : ModelBase
+        public class AppliedToManufacturerModel : ModelBase
         {
-            public int ProductId { get; set; }
+            public int ManufacturerId { get; set; }
 
-            public string ProductName { get; set; }
+            public string ManufacturerName { get; set; }
         }
-        #endregion
+
+		public class AppliedToProductModel : ModelBase
+		{
+			public int ProductId { get; set; }
+
+			public string ProductName { get; set; }
+		}
+
+		#endregion
+	}
+
+    public partial class DiscountValidator : AbstractValidator<DiscountModel>
+    {
+        public DiscountValidator()
+        {
+            RuleFor(x => x.Name).NotNull();
+        }
     }
 }

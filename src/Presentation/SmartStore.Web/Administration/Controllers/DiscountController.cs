@@ -2,65 +2,58 @@
 using System.Linq;
 using System.Web.Mvc;
 using SmartStore.Admin.Models.Discounts;
-using SmartStore.Core.Plugins;
-using SmartStore.Core;
-using SmartStore.Core.Domain.Directory;
 using SmartStore.Core.Domain.Discounts;
+using SmartStore.Core.Logging;
+using SmartStore.Services;
 using SmartStore.Services.Catalog;
-using SmartStore.Services.Directory;
 using SmartStore.Services.Discounts;
 using SmartStore.Services.Helpers;
 using SmartStore.Services.Localization;
-using SmartStore.Core.Logging;
 using SmartStore.Services.Security;
 using SmartStore.Web.Framework.Controllers;
-using Telerik.Web.Mvc;
-using SmartStore.Core.ComponentModel;
-using System.Collections.Generic;
+using SmartStore.Web.Framework.Filters;
 using SmartStore.Web.Framework.Plugins;
+using SmartStore.Web.Framework.Security;
+using Telerik.Web.Mvc;
 
 namespace SmartStore.Admin.Controllers
 {
-    [AdminAuthorize]
+	[AdminAuthorize]
     public class DiscountController : AdminControllerBase
     {
         #region Fields
 
         private readonly IDiscountService _discountService;
-        private readonly ILocalizationService _localizationService;
-        private readonly IWebHelper _webHelper;
         private readonly IDateTimeHelper _dateTimeHelper;
         private readonly ICustomerActivityService _customerActivityService;
-        private readonly ICurrencyService _currencyService;
         private readonly ICategoryService _categoryService;
-        private readonly IProductService _productService;
-        private readonly CurrencySettings _currencySettings;
-        private readonly IPermissionService _permissionService;
+		private readonly IManufacturerService _manufacturerService;
+		private readonly IProductService _productService;
 		private readonly PluginMediator _pluginMediator;
+		private readonly ICommonServices _services;
 
         #endregion
 
         #region Constructors
 
-        public DiscountController(IDiscountService discountService, 
-            ILocalizationService localizationService, ICurrencyService currencyService,
-            ICategoryService categoryService, IProductService productService,
-            IWebHelper webHelper, IDateTimeHelper dateTimeHelper,
-            ICustomerActivityService customerActivityService, CurrencySettings currencySettings,
-            IPermissionService permissionService,
-			PluginMediator pluginMediator)
+        public DiscountController(
+			IDiscountService discountService, 
+            ICategoryService categoryService,
+			IManufacturerService manufacturerService,
+			IProductService productService,
+			IDateTimeHelper dateTimeHelper,
+            ICustomerActivityService customerActivityService,
+			PluginMediator pluginMediator,
+			ICommonServices services)
         {
             this._discountService = discountService;
-            this._localizationService = localizationService;
-            this._currencyService = currencyService;
             this._categoryService = categoryService;
+			this._manufacturerService = manufacturerService;
             this._productService = productService;
-            this._webHelper = webHelper;
             this._dateTimeHelper = dateTimeHelper;
             this._customerActivityService = customerActivityService;
-            this._currencySettings = currencySettings;
-            this._permissionService = permissionService;
 			this._pluginMediator = pluginMediator;
+			this._services = services;
         }
 
         #endregion
@@ -69,14 +62,12 @@ namespace SmartStore.Admin.Controllers
 
         [NonAction]
         public string GetRequirementUrlInternal(IDiscountRequirementRule discountRequirementRule, Discount discount, int? discountRequirementId)
-        {   
-            if (discountRequirementRule == null)
-                throw new ArgumentNullException("discountRequirementRule");
+        {
+			Guard.NotNull(discountRequirementRule, nameof(discountRequirementRule));
+			Guard.NotNull(discount, nameof(discount));
 
-            if (discount == null)
-                throw new ArgumentNullException("discount");
+            string url = string.Format("{0}{1}", _services.WebHelper.GetStoreLocation(), discountRequirementRule.GetConfigurationUrl(discount.Id, discountRequirementId));
 
-            string url = string.Format("{0}{1}", _webHelper.GetStoreLocation(), discountRequirementRule.GetConfigurationUrl(discount.Id, discountRequirementId));
             return url;
         }
         
@@ -86,12 +77,17 @@ namespace SmartStore.Admin.Controllers
             if (model == null)
                 throw new ArgumentNullException("model");
 
-            model.PrimaryStoreCurrencyCode = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId).CurrencyCode;
-            model.AvailableDiscountRequirementRules.Add(new SelectListItem() { Text = _localizationService.GetResource("Admin.Promotions.Discounts.Requirements.DiscountRequirementType.Select"), Value = "" });
-            var discountRules = _discountService.LoadAllDiscountRequirementRules();
+			var language = _services.WorkContext.WorkingLanguage;
+
+			model.PrimaryStoreCurrencyCode = _services.StoreContext.CurrentStore.PrimaryStoreCurrency.CurrencyCode;
+            model.AvailableDiscountRequirementRules.Add(
+				new SelectListItem { Text = _services.Localization.GetResource("Admin.Promotions.Discounts.Requirements.DiscountRequirementType.Select"), Value = "" }
+			);
+
+			var discountRules = _discountService.LoadAllDiscountRequirementRules();
             foreach (var discountRule in discountRules)
             {
-				model.AvailableDiscountRequirementRules.Add(new SelectListItem()
+				model.AvailableDiscountRequirementRules.Add(new SelectListItem
                 {
 					Text = _pluginMediator.GetLocalizedFriendlyName(discountRule.Metadata),
                     Value = discountRule.Metadata.SystemName
@@ -100,40 +96,31 @@ namespace SmartStore.Admin.Controllers
             
             if (discount != null)
             {
-                //applied to categories
-                foreach (var category in discount.AppliedToCategories)
-                {
-                    if (category != null && !category.Deleted)
-                    {
-                        model.AppliedToCategoryModels.Add(new DiscountModel.AppliedToCategoryModel()
-                        {
-                            CategoryId = category.Id,
-                            Name = category.Name
-                        });
-                    }
-                }
+				// applied to categories
+				model.AppliedToCategoryModels = discount.AppliedToCategories
+					.Where(x => x != null && !x.Deleted)
+					.Select(x => new DiscountModel.AppliedToCategoryModel { CategoryId = x.Id, Name = x.GetLocalized(y => y.Name, language) })
+					.ToList();
 
-                //applied to products
-                foreach (var product in discount.AppliedToProducts)
-                {
-                    if (product != null && !product.Deleted)
-                    {
-                        var appliedToProductModel = new DiscountModel.AppliedToProductModel()
-                        {
-                            ProductId = product.Id,
-							ProductName = product.Name
-                        };
-                        model.AppliedToProductModels.Add(appliedToProductModel);
-                    }
-                }
+				// applied to manufacturers
+				model.AppliedToManufacturerModels = discount.AppliedToManufacturers
+					.Where(x => x != null && !x.Deleted)
+					.Select(x => new DiscountModel.AppliedToManufacturerModel { ManufacturerId = x.Id, ManufacturerName = x.GetLocalized(y => y.Name, language) })
+					.ToList();
 
-                //requirements
-                foreach (var dr in discount.DiscountRequirements.OrderBy(dr=>dr.Id))
+				// applied to products
+				model.AppliedToProductModels = discount.AppliedToProducts
+					.Where(x => x != null && !x.Deleted)
+					.Select(x => new DiscountModel.AppliedToProductModel { ProductId = x.Id, ProductName = x.GetLocalized(y => y.Name, language) })
+					.ToList();
+
+                // requirements
+                foreach (var dr in discount.DiscountRequirements.OrderBy(dr => dr.Id))
                 {
                     var drr = _discountService.LoadDiscountRequirementRuleBySystemName(dr.DiscountRequirementRuleSystemName);
                     if (drr != null)
                     {
-                        model.DiscountRequirementMetaInfos.Add(new DiscountModel.DiscountRequirementMetaInfo()
+                        model.DiscountRequirementMetaInfos.Add(new DiscountModel.DiscountRequirementMetaInfo
                         {
                             DiscountRequirementId = dr.Id,
 							RuleName = _pluginMediator.GetLocalizedFriendlyName(drr.Metadata),
@@ -148,7 +135,6 @@ namespace SmartStore.Admin.Controllers
 
         #region Discounts
 
-        //list
         public ActionResult Index()
         {
             return RedirectToAction("List");
@@ -156,7 +142,7 @@ namespace SmartStore.Admin.Controllers
 
         public ActionResult List()
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageDiscounts))
+            if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageDiscounts))
                 return AccessDeniedView();
 
             var discounts = _discountService.GetAllDiscounts(null, null, true);
@@ -171,25 +157,31 @@ namespace SmartStore.Admin.Controllers
         [HttpPost, GridAction(EnableCustomBinding = true)]
         public ActionResult List(GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageDiscounts))
-                return AccessDeniedView();
+			var model = new GridModel<DiscountModel>();
 
-            var discounts = _discountService.GetAllDiscounts(null, null, true);
-            var gridModel = new GridModel<DiscountModel>
-            {
-                Data = discounts.Select(x => x.ToModel()),
-                Total = discounts.Count()
-            };
+			if (_services.Permissions.Authorize(StandardPermissionProvider.ManageDiscounts))
+			{
+				var discounts = _discountService.GetAllDiscounts(null, null, true);
+
+				model.Data = discounts.Select(x => x.ToModel()).ToList();
+				model.Total = discounts.Count();
+			}
+			else
+			{
+				model.Data = Enumerable.Empty<DiscountModel>();
+
+				NotifyAccessDenied();
+			}
+
             return new JsonResult
             {
-                Data = gridModel
+                Data = model
             };
         }
         
-        //create
         public ActionResult Create()
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageDiscounts))
+            if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageDiscounts))
                 return AccessDeniedView();
 
             var model = new DiscountModel();
@@ -199,10 +191,10 @@ namespace SmartStore.Admin.Controllers
             return View(model);
         }
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
         public ActionResult Create(DiscountModel model, bool continueEditing)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageDiscounts))
+            if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageDiscounts))
                 return AccessDeniedView();
 
             if (ModelState.IsValid)
@@ -211,9 +203,9 @@ namespace SmartStore.Admin.Controllers
                 _discountService.InsertDiscount(discount);
 
                 //activity log
-                _customerActivityService.InsertActivity("AddNewDiscount", _localizationService.GetResource("ActivityLog.AddNewDiscount"), discount.Name);
+                _customerActivityService.InsertActivity("AddNewDiscount", _services.Localization.GetResource("ActivityLog.AddNewDiscount"), discount.Name);
 
-                NotifySuccess(_localizationService.GetResource("Admin.Promotions.Discounts.Added"));
+                NotifySuccess(_services.Localization.GetResource("Admin.Promotions.Discounts.Added"));
                 return continueEditing ? RedirectToAction("Edit", new { id = discount.Id }) : RedirectToAction("List");
             }
 
@@ -222,10 +214,9 @@ namespace SmartStore.Admin.Controllers
             return View(model);
         }
 
-        //edit
         public ActionResult Edit(int id)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageDiscounts))
+            if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageDiscounts))
                 return AccessDeniedView();
 
             var discount = _discountService.GetDiscountById(id);
@@ -238,15 +229,14 @@ namespace SmartStore.Admin.Controllers
             return View(model);
         }
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
         public ActionResult Edit(DiscountModel model, bool continueEditing)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageDiscounts))
+            if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageDiscounts))
                 return AccessDeniedView();
 
             var discount = _discountService.GetDiscountById(model.Id);
             if (discount == null)
-                //No discount found with the specified id
                 return RedirectToAction("List");
 
             if (ModelState.IsValid)
@@ -256,33 +246,39 @@ namespace SmartStore.Admin.Controllers
                 _discountService.UpdateDiscount(discount);
 
                 //clean up old references (if changed) and update "HasDiscountsApplied" properties
-                if (prevDiscountType == DiscountType.AssignedToCategories 
-                    && discount.DiscountType != DiscountType.AssignedToCategories)
+                if (prevDiscountType == DiscountType.AssignedToCategories && discount.DiscountType != DiscountType.AssignedToCategories)
                 {
                     //applied to categories
                     var categories = discount.AppliedToCategories.ToList();
                     discount.AppliedToCategories.Clear();
                     _discountService.UpdateDiscount(discount);
-                    //update "HasDiscountsApplied" property
-                    foreach (var category in categories)
-                        _categoryService.UpdateHasDiscountsApplied(category);
+
+					categories.Each(x => _categoryService.UpdateHasDiscountsApplied(x));
                 }
-                if (prevDiscountType == DiscountType.AssignedToSkus
-                    && discount.DiscountType != DiscountType.AssignedToSkus)
+
+				if (prevDiscountType == DiscountType.AssignedToManufacturers && discount.DiscountType != DiscountType.AssignedToManufacturers)
+				{
+					var manufacturers = discount.AppliedToManufacturers.ToList();
+					discount.AppliedToManufacturers.Clear();
+					_discountService.UpdateDiscount(discount);
+
+					manufacturers.Each(x => _manufacturerService.UpdateHasDiscountsApplied(x));
+				}
+
+				if (prevDiscountType == DiscountType.AssignedToSkus && discount.DiscountType != DiscountType.AssignedToSkus)
                 {
                     //applied to products
                     var products = discount.AppliedToProducts.ToList();
                     discount.AppliedToProducts.Clear();
                     _discountService.UpdateDiscount(discount);
-                    //update "HasDiscountsApplied" property
-                    foreach (var product in products)
-                        _productService.UpdateHasDiscountsApplied(product);
+
+					products.Each(x => _productService.UpdateHasDiscountsApplied(x));
                 }
 
                 //activity log
-                _customerActivityService.InsertActivity("EditDiscount", _localizationService.GetResource("ActivityLog.EditDiscount"), discount.Name);
+                _customerActivityService.InsertActivity("EditDiscount", _services.Localization.GetResource("ActivityLog.EditDiscount"), discount.Name);
 
-                NotifySuccess(_localizationService.GetResource("Admin.Promotions.Discounts.Updated"));
+                NotifySuccess(_services.Localization.GetResource("Admin.Promotions.Discounts.Updated"));
                 return continueEditing ? RedirectToAction("Edit", discount.Id) : RedirectToAction("List");
             }
 
@@ -291,35 +287,31 @@ namespace SmartStore.Admin.Controllers
             return View(model);
         }
 
-        //delete
         [HttpPost, ActionName("Delete")]
         public ActionResult DeleteConfirmed(int id)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageDiscounts))
+            if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageDiscounts))
                 return AccessDeniedView();
 
             var discount = _discountService.GetDiscountById(id);
             if (discount == null)
-                //No discount found with the specified id
                 return RedirectToAction("List");
 
-            //applied to categories
             var categories = discount.AppliedToCategories.ToList();
-            //applied to products
+			var manufacturers = discount.AppliedToManufacturers.ToList();
             var products = discount.AppliedToProducts.ToList();
 
             _discountService.DeleteDiscount(discount);
-            
-            //update "HasDiscountsApplied" properties
-            foreach (var category in categories)
-                _categoryService.UpdateHasDiscountsApplied(category);
-            foreach (var product in products)
-                _productService.UpdateHasDiscountsApplied(product);
+
+			//update "HasDiscountsApplied" properties
+			categories.Each(x => _categoryService.UpdateHasDiscountsApplied(x));
+			manufacturers.Each(x => _manufacturerService.UpdateHasDiscountsApplied(x));
+			products.Each(x => _productService.UpdateHasDiscountsApplied(x));
 
             //activity log
-            _customerActivityService.InsertActivity("DeleteDiscount", _localizationService.GetResource("ActivityLog.DeleteDiscount"), discount.Name);
+            _customerActivityService.InsertActivity("DeleteDiscount", _services.Localization.GetResource("ActivityLog.DeleteDiscount"), discount.Name);
 
-            NotifySuccess(_localizationService.GetResource("Admin.Promotions.Discounts.Deleted"));
+            NotifySuccess(_services.Localization.GetResource("Admin.Promotions.Discounts.Deleted"));
             return RedirectToAction("List");
         }
 
@@ -330,7 +322,7 @@ namespace SmartStore.Admin.Controllers
         [AcceptVerbs(HttpVerbs.Get)]
         public ActionResult GetDiscountRequirementConfigurationUrl(string systemName, int discountId, int? discountRequirementId)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageDiscounts))
+            if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageDiscounts))
                 return AccessDeniedView();
 
             if (String.IsNullOrEmpty(systemName))
@@ -350,7 +342,7 @@ namespace SmartStore.Admin.Controllers
 
         public ActionResult GetDiscountRequirementMetaInfo(int discountRequirementId, int discountId)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageDiscounts))
+            if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageDiscounts))
                 return AccessDeniedView();
 
             var discount = _discountService.GetDiscountById(discountId);
@@ -373,7 +365,7 @@ namespace SmartStore.Admin.Controllers
 
         public ActionResult DeleteDiscountRequirement(int discountRequirementId, int discountId)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageDiscounts))
+            if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageDiscounts))
                 return AccessDeniedView();
 
             var discount = _discountService.GetDiscountById(discountId);
@@ -396,28 +388,31 @@ namespace SmartStore.Admin.Controllers
         [HttpPost, GridAction(EnableCustomBinding = true)]
         public ActionResult UsageHistoryList(int discountId, GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageDiscounts))
-                return AccessDeniedView();
+			var model = new GridModel<DiscountModel.DiscountUsageHistoryModel>();
 
-            var discount = _discountService.GetDiscountById(discountId);
-            if (discount == null)
-                throw new ArgumentException("No discount found with the specified id");
+			if (_services.Permissions.Authorize(StandardPermissionProvider.ManageDiscounts))
+			{
+				var discount = _discountService.GetDiscountById(discountId);
 
-            var duh = _discountService.GetAllDiscountUsageHistory(discount.Id, null, command.Page - 1, command.PageSize);
-            var model = new GridModel<DiscountModel.DiscountUsageHistoryModel>
-            {
-                Data = duh.Select(x =>
-                {
-                    return new DiscountModel.DiscountUsageHistoryModel()
-                    {
-                        Id = x.Id,
-                        DiscountId = x.DiscountId,
-                        OrderId = x.OrderId,
-                        CreatedOn = _dateTimeHelper.ConvertToUserTime(x.CreatedOnUtc, DateTimeKind.Utc)
-                    };
-                }),
-                Total = duh.TotalCount
-            };
+				var discountHistories = _discountService.GetAllDiscountUsageHistory(discount.Id, null, command.Page - 1, command.PageSize);
+
+				model.Data = discountHistories.Select(x => new DiscountModel.DiscountUsageHistoryModel
+				{
+					Id = x.Id,
+					DiscountId = x.DiscountId,
+					OrderId = x.OrderId,
+					CreatedOn = _dateTimeHelper.ConvertToUserTime(x.CreatedOnUtc, DateTimeKind.Utc)
+				}).ToList();
+
+				model.Total = discountHistories.TotalCount;
+			}
+			else
+			{
+				model.Data = Enumerable.Empty<DiscountModel.DiscountUsageHistoryModel>();
+
+				NotifyAccessDenied();
+			}
+
             return new JsonResult
             {
                 Data = model
@@ -427,16 +422,13 @@ namespace SmartStore.Admin.Controllers
         [GridAction(EnableCustomBinding = true)]
         public ActionResult UsageHistoryDelete(int discountId, int id, GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageDiscounts))
-                return AccessDeniedView();
+			if (_services.Permissions.Authorize(StandardPermissionProvider.ManageDiscounts))
+			{
+				var discountHistory = _discountService.GetDiscountUsageHistoryById(id);
 
-            var discount = _discountService.GetDiscountById(discountId);
-            if (discount == null)
-                throw new ArgumentException("No discount found with the specified id");
-            
-            var duh = _discountService.GetDiscountUsageHistoryById(id);
-            if (duh != null)
-                _discountService.DeleteDiscountUsageHistory(duh);
+				_discountService.DeleteDiscountUsageHistory(discountHistory);
+			}
+
             return UsageHistoryList(discountId, command);
         }
 

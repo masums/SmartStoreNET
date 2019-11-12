@@ -31,16 +31,15 @@ namespace SmartStore.Web.Controllers
 
         #region Methods
 
-        public RedirectResult RemoveParameterAssociation(string returnUrl)
+        public ActionResult RemoveParameterAssociation(string returnUrl)
         {
             ExternalAuthorizerHelper.RemoveParameters();
-            return Redirect(returnUrl);
+            return RedirectToReferrer(returnUrl);
         }
 
         [ChildActionOnly]
         public ActionResult ExternalMethods()
         {
-            //model
             var model = new List<ExternalAuthenticationMethodModel>();
 
 			foreach (var eam in _openAuthenticationService.LoadActiveExternalAuthenticationMethods(_storeContext.CurrentStore.Id))

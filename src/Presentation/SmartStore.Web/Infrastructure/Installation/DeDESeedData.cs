@@ -1,59 +1,53 @@
 ﻿using System;
-using System.Linq;
-using System.Linq.Expressions;
 using System.Collections.Generic;
-using System.IO;
-using SmartStore.Core; 
+using System.Linq;
 using SmartStore.Core.Configuration;
-using SmartStore.Core.Domain;
 using SmartStore.Core.Domain.Blogs;
+using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Cms;
 using SmartStore.Core.Domain.Common;
+using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Directory;
 using SmartStore.Core.Domain.Discounts;
-using SmartStore.Core.Domain.Messages;
 using SmartStore.Core.Domain.Forums;
 using SmartStore.Core.Domain.Localization;
 using SmartStore.Core.Domain.Logging;
+using SmartStore.Core.Domain.Media;
+using SmartStore.Core.Domain.Messages;
 using SmartStore.Core.Domain.News;
+using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Polls;
+using SmartStore.Core.Domain.Seo;
+using SmartStore.Core.Domain.Shipping;
+using SmartStore.Core.Domain.Stores;
+using SmartStore.Core.Domain.Tasks;
 using SmartStore.Core.Domain.Tax;
 using SmartStore.Core.Domain.Topics;
-using SmartStore.Core.Domain.Seo;
-using SmartStore.Core.Domain.Orders;
-using SmartStore.Core.Domain.Shipping;
-using SmartStore.Core.Domain.Tasks;
-using SmartStore.Core.Domain.Payments;
-using SmartStore.Core.Infrastructure;
-using SmartStore.Core.Data;
-using SmartStore.Core.Domain.Customers;
-using SmartStore.Core.Domain.Catalog;
-using SmartStore.Core.Domain.Stores;
-using SmartStore.Core.Domain.Media;
 using SmartStore.Data.Setup;
 
 namespace SmartStore.Web.Infrastructure.Installation
 {
-
-    public class DeDESeedData : InvariantSeedData
+	public class DeDESeedData : InvariantSeedData
     {
+		private readonly IDictionary<string, TaxCategory> _taxCategories = new Dictionary<string, TaxCategory>();
+		private DeliveryTime _defaultDeliveryTime;
 
-		public DeDESeedData()
-        {
-        }
-
-        protected override void Alter(Customer entity)
+		protected override void Alter(Customer entity)
         {
             base.Alter(entity);
 
-            if (entity.SystemName == "builtin@search-engine-record.com")
+			if (entity.SystemName == SystemCustomerNames.SearchEngine)
             {
-                entity.AdminComment = "System Gastkonto für Suchmaschinenanfragen.";
+                entity.AdminComment = "System-Gastkonto für Suchmaschinenanfragen.";
             }
-            else if (entity.SystemName == "builtin@background-task-record.com")
+			else if (entity.SystemName == SystemCustomerNames.BackgroundTask)
             {
-                entity.AdminComment = "System Konto für geplante Aufgaben.";
+                entity.AdminComment = "Systemkonto für geplante Aufgaben.";
             }
+			else if (entity.SystemName == SystemCustomerNames.PdfConverter)
+			{
+				entity.AdminComment = "Systemkonto für den PDF-Konverter.";
+			}
         }
 
         protected override void Alter(IList<MeasureDimension> entities)
@@ -130,169 +124,6 @@ namespace SmartStore.Web.Infrastructure.Installation
                     x.DisplayOrder = 4;
                 });
         }
-
-        protected override void Alter(IList<MessageTemplate> entities)
-        {
-            base.Alter(entities);
-
-            string cssString = @"<style type=""text/css"">address, blockquote, center, del, dir, div, dl, fieldset, form, h1, h2, h3, h4, h5, h6, hr, ins, isindex, menu, noframes, noscript, ol, p, pre, table{ margin:0px; } body, td, p{ font-size: 13px;font-family: 'Segoe UI', Tahoma, Arial, Helvetica, sans-serif; line-height: 18px; color: #163764; } body{ background:#efefef; } p{ margin-top: 0px; margin-bottom: 10px; } img{ border:0px; } th{ font-weight:bold; color: #ffffff; padding: 5px 0 5px 0; } ul{ list-style-type: square; } li{ line-height: normal; margin-bottom: 5px; } .template-body { width:800px; padding: 10px; border: 1px solid #ccc; } .attr-caption { font-weight: bold; text-align:right; } .attr-value { text-align:right; min-width:158px; width:160px; } .legal-infos, .legal-infos p { font-size:11px; color: #aaa} .supplier-identification, .supplier-identification td { color: #646464; font-size: 11px } .supplier-identification { width:100%; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc }</style>";
-            string templateHeader = cssString + "<center><table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" align=\"center\" bgcolor=\"#ffffff\" class=\"template-body\"><tbody><tr><td>";
-            string templateFooter = "</td></tr></tbody></table></center>";
-
-
-            entities.WithKey(x => x.Name)
-
-            
-                .Alter("Blog.BlogComment", x =>
-                {
-                    x.Subject = "%Store.Name%. Neuer Blog-Kommentar";
-                    x.Body = templateHeader + "<p><a href=\" % Store.URL % \">%Store.Name%</a>&nbsp;</p> <p>Ein neuer Kommentar wurde zu dem Blog-Eintrag&nbsp;\" % BlogComment.BlogPostTitle % \" abgegeben.<br /><br /></p>" + templateFooter;
-                })
-                .Alter("Customer.BackInStock", x =>
-                {
-                    x.Subject = "%Store.Name%. Artikel wieder verfügbar";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;</p> <p></p> <p>Sehr geehrte(r) Frau/Herr&nbsp;%Customer.FullName%,&nbsp;</p> <p></p> <p>der Artikel&nbsp;\"%BackInStockSubscription.ProductName%\" ist wieder verf&uuml;gbar.</p> <p></p> <p>Mit freundlichen Gr&uuml;&szlig;en,</p> <p></p> <p>Ihr Shop-Team</p> <p><br /><br /></p>" + templateFooter;
-                })
-                .Alter("Customer.EmailValidationMessage", x =>
-                {
-                    x.Subject = "%Store.Name%. Registrierung bestätigen";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;<br /><br /></p> <p>Bitte best&auml;tigen Sie Ihre Registrierung mit einem Klick auf diesen <a href=\"%Customer.AccountActivationURL%\">Link</a>.</p> <p></p> <p><br />Ihr Shop-Team</p>" + templateFooter;
-                })
-                .Alter("Customer.NewPM", x =>
-                {
-                    x.Subject = "%Store.Name%. Neue persönliche Nachricht";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;<br /><br />Sie haben eine neue pers&ouml;nliche Nachricht erhalten.</p>" + templateFooter;
-                })
-                .Alter("Customer.PasswordRecovery", x =>
-                {
-                    x.Subject = "%Store.Name%. Kennwort zurücksetzen";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;</p> <p>Um Ihr Kennwort zur&uuml;ckzusetzen klicken Sie bitte <a href=\"%Customer.PasswordRecoveryURL%\">hier</a>.</p> <p></p> <p>Mit freundlichen Gr&uuml;&szlig;en,</p> <p></p> <p>Ihr Shop-Team</p> <p><br /><br /></p>" + templateFooter;
-                })
-                .Alter("Customer.WelcomeMessage", x =>
-                {
-                    x.Subject = "Willkommen im %Store.Name% Shop";
-                    x.Body = templateHeader + "<p>Herzlich Willkommen in unserem Online-Shop <a href=\"%Store.URL%\">%Store.Name%</a>!</p> <p>St&ouml;bern Sie in Warengruppen und Produkte, Lesen Sie im Blog und tauschen Sie Ihre Meinung im Forum aus.</p> <p>Nehmen Sie auch an unseren Umfragen teil!</p> <p></p> <p>Mit freundlichen Gr&uuml;&szlig;en,</p> <p></p> <p>Ihr Shop-Team</p>" + templateFooter;
-                })
-                .Alter("Forums.NewForumPost", x =>
-                {
-                    x.Subject = "%Store.Name%. - Benachrichtigung über einen neuen Beitrag";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;</p> <p></p> <p>Ein neuer Beitrag wurde in&nbsp;<a href=\"%Forums.TopicURL%\">\"%Forums.TopicName%\"</a>&nbsp;im Forum&nbsp;<a href=\"%Forums.ForumURL%\">\"%Forums.ForumName%\"</a>&nbsp;erstellt.</p> <p>Klicken Sie <a href=\"%Forums.TopicURL%\">hier</a> f&uuml;r weitere Informationen.</p> <p>Autor des Beitrags:&nbsp;%Forums.PostAuthor%<br />Inhalt des Beitrags: %Forums.PostBody%</p> <p></p> <p>Mit freundlichen Gr&uuml;&szlig;en,</p> <p></p> <p>Ihr Shop-Team</p>" + templateFooter;
-                })
-                .Alter("Forums.NewForumTopic", x =>
-                {
-                    x.Subject = "%Store.Name%. Benachrichtigung über ein neues Thema";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;</p> <p></p> <p>Ein neuer Beitrag <a href=\"%Forums.TopicURL%\">\"%Forums.TopicName%\"</a>&nbsp;wurde im Forum &nbsp;<a href=\"%Forums.ForumURL%\">\"%Forums.ForumName%\"</a>&nbsp;erstellt.</p> <p>Klicken Sie <a href=\"%Forums.TopicURL%\">hier</a> f&uuml;r weitere Informationen.</p> <p></p> <p>Mit freundlichen Gr&uuml;&szlig;en,</p> <p></p> <p>Ihr Shop-Team</p>" + templateFooter;
-                })
-                .Alter("GiftCard.Notification", x =>
-                {
-                    x.Subject = "%GiftCard.SenderName% hat Ihnen einen Geschenkgutschein für %Store.Name% geschickt";
-                    x.Body = templateHeader + "<p>Sehr geehrte(r)&nbsp;%GiftCard.RecipientName%,</p> <p></p> <p>Sie haben einen Geschenkgutschein in H&ouml;he von %GiftCard.Amount%&nbsp;f&uuml;r den Online-Shop&nbsp;%Store.Name% erhalten</p> <p>Ihr Gutscheincode lautet&nbsp;%GiftCard.CouponCode%</p> <p>Diese Nachricht wurde mit gesendet:</p> <p>%GiftCard.Message%</p> <p></p> <p>Mit freundlichen Gr&uuml;&szlig;en,</p> <p></p> <p>Ihr&nbsp;%Store.Name% - Team</p>" + templateFooter;
-                })
-                .Alter("NewCustomer.Notification", x =>
-                {
-                    x.Subject = "%Store.Name% - Neu-Kunden Registrierung";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;</p> <p>Ein neuer Kunde hat sich registriert:<br /><br />Name: %Customer.FullName%<br />E-Mail: %Customer.Email%</p>" + templateFooter;
-                })
-                .Alter("NewReturnRequest.StoreOwnerNotification", x =>
-                {
-                    x.Subject = "%Store.Name%. Rückgabe-Anforderung";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;</p> <p>%Customer.FullName% hat eine R&uuml;ckgabe-Anforderung geschickt.&nbsp;</p> <p>Anforderungs-ID: %ReturnRequest.ID%<br />Artikel: %ReturnRequest.Product.Quantity% x %ReturnRequest.Product.Name%<br />R&uuml;ckgabegrund: %ReturnRequest.Reason%<br />Gew&uuml;nschte Aktion: %ReturnRequest.RequestedAction%<br />Nachricht vom Kunden:<br />%ReturnRequest.CustomerComment%</p>" + templateFooter;
-                })
-                .Alter("News.NewsComment", x =>
-                {
-                    x.Subject = "%Store.Name%. Neuer Kommentar zu einer News-Meldung";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;</p> <p>Zu der News \"%NewsComment.NewsTitle%\" wurde ein neuer Kommentar eingestellt.</p>" + templateFooter;
-                })
-                .Alter("NewsLetterSubscription.ActivationMessage", x =>
-                {
-                    x.Subject = "%Store.Name%. Bestätigen Sie Ihr Newsletter-Abonnement";
-                    x.Body = templateHeader + "<p></p> <p><a href=\"%NewsLetterSubscription.ActivationUrl%\">Klicken Sie hier, um Ihre Newsletter-Registrierung zu &nbsp;best&auml;tigen</a></p> <p>Sollten Sie diese E-Mail f&auml;lschlich erhalten haben, l&ouml;schen Sie bitte diese E-Mail.</p> <p></p> <p>Ihr&nbsp;%Store.Name% - Team</p></p>" + templateFooter;
-                })
-                .Alter("NewsLetterSubscription.DeactivationMessage", x =>
-                {
-                    x.Subject = "%Store.Name%. Bestätigen Sie Ihre Newsletter-Abmeldung";
-                    x.Body = templateHeader + "<p><a href=\"%NewsLetterSubscription.DeactivationUrl%\">Klicken Sie hier, um Ihre Newsletter-Registrierung zu stornieren.</a></p> <p>Sollten Sie diese E-Mail f&auml;lschlich erhalten haben, l&ouml;schen Sie bitte diese E-Mail.</p> <p></p> <p>Ihr&nbsp;%Store.Name% - Team</p>" + templateFooter;
-                })
-                .Alter("NewVATSubmitted.StoreOwnerNotification", x =>
-                {
-                    x.Subject = "%Store.Name%. Neue Umsatzsteuer-ID wurde übermittelt";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;<br /><br />%Customer.FullName% (%Customer.Email%) hat eine neue Umsatzsteuer-ID &uuml;bermittelt:</p> <p><br />Umsatzsteuer-ID: %Customer.VatNumber%<br />Status: %Customer.VatNumberStatus%<br />&Uuml;bermittelt von: %VatValidationResult.Name% -&nbsp;%VatValidationResult.Address%</p>" + templateFooter;
-                })
-                .Alter("OrderCancelled.CustomerNotification", x =>
-                {
-                    x.Subject = "%Store.Name% - Ihr Auftrag wurde storniert";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a></p> <p>Hallo %Order.CustomerFullName%,&nbsp;</p> <p>Ihr Auftrag wurde storniert. Details finden Sie unten.<br /><br />Auftragsnummer: %Order.OrderNumber%<br />Auftrags-Details: <a target=\"_blank\" href=\"%Order.OrderURLForCustomer%\">%Order.OrderURLForCustomer%</a><br />Auftrags-Datum: %Order.CreatedOn%<br /><br /><br /><br />Rechnungsadresse<br />%Order.BillingFirstName% %Order.BillingLastName%<br />%Order.BillingAddress1%<br />%Order.BillingCity% %Order.BillingZipPostalCode%<br />%Order.BillingStateProvince% %Order.BillingCountry%<br /><br /><br /><br />Lieferadresse<br />%Order.ShippingFirstName% %Order.ShippingLastName%<br />%Order.ShippingAddress1%<br />%Order.ShippingCity% %Order.ShippingZipPostalCode%<br />%Order.ShippingStateProvince% %Order.ShippingCountry%<br /><br />Versandart: %Order.ShippingMethod%<br />Zahlart: %Order.PaymentMethod%<br /><br />%Order.Product(s)%</p> <p></p> <p>Mit freundlichen Gr&uuml;&szlig;en,</p> <p></p> <p>Ihr&nbsp;%Store.Name% - Team</p>" + templateFooter;
-                })
-                .Alter("OrderCompleted.CustomerNotification", x =>
-                {
-                    x.Subject = "%Store.Name% - Ihre Bestellung wurde bearbeitet";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;<br /><br />Hallo %Order.CustomerFullName%,&nbsp;</p> <p>Ihre Bestellung wurde bearbeitet.&nbsp;</p> <p></p> <p>Auftrags-Nummer: %Order.OrderNumber%<br />Details zum Auftrag:&nbsp;<a target=\"_blank\" href=\"%Order.OrderURLForCustomer%\">%Order.OrderURLForCustomer%</a><br />Datum: %Order.CreatedOn%<br /><br /><br /><br />Rechnungsadresse<br />%Order.BillingFirstName% %Order.BillingLastName%<br />%Order.BillingAddress1%<br />%Order.BillingCity% %Order.BillingZipPostalCode%<br />%Order.BillingStateProvince% %Order.BillingCountry%<br /><br /><br /><br />Lieferadresse<br />%Order.ShippingFirstName% %Order.ShippingLastName%<br />%Order.ShippingAddress1%<br />%Order.ShippingCity% %Order.ShippingZipPostalCode%<br />%Order.ShippingStateProvince% %Order.ShippingCountry%<br /><br />Versandart: %Order.ShippingMethod%<br />Zahlart: %Order.PaymentMethod%<br /><br />%Order.Product(s)%</p> <p></p> <p>Mit freundlichen Gr&uuml;&szlig;en,</p> <p></p> <p>Ihr&nbsp;%Store.Name% - Team</p>" + templateFooter;
-                })
-                .Alter("ShipmentDelivered.CustomerNotification", x =>
-                {
-                    x.Subject = "Ihre Bestellung bei %Store.Name% wurde ausgeliefert";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;<br /><br />Hallo %Order.CustomerFullName%,&nbsp;</p> <p>Ihre Bestellung wurde ausgeliefert.</p> <p>Auftrags-Nummer: %Order.OrderNumber%<br />Auftrags-Details:&nbsp;<a href=\"%Order.OrderURLForCustomer%\" target=\"_blank\">%Order.OrderURLForCustomer%</a><br />Datum: %Order.CreatedOn%<br /><br /><br /><br />Rechnungsadresse<br />%Order.BillingFirstName% %Order.BillingLastName%<br />%Order.BillingAddress1%<br />%Order.BillingCity% %Order.BillingZipPostalCode%<br />%Order.BillingStateProvince% %Order.BillingCountry%<br /><br /><br /><br />Lieferadresse<br />%Order.ShippingFirstName% %Order.ShippingLastName%<br />%Order.ShippingAddress1%<br />%Order.ShippingCity% %Order.ShippingZipPostalCode%<br />%Order.ShippingStateProvince% %Order.ShippingCountry%<br /><br />Versandart: %Order.ShippingMethod%&nbsp;<br />Zahlart: %Order.PaymentMethod%<br /><br />Gelieferte Artikel:&nbsp;<br /><br />%Shipment.Product(s)%</p>" + templateFooter;
-                })
-                .Alter("OrderPlaced.CustomerNotification", x =>
-                {
-                    x.Subject = "Auftragsbestätigung - %Store.Name%";
-                    x.Body = templateHeader + "<p> <a href=\"%Store.URL%\">%Store.Name%</a> <br /><br />Hallo %Order.CustomerFullName%, <br /> Vielen Dank für Ihre Bestellung bei <a href=\"%Store.URL%\">%Store.Name%</a>.  Eine Übersicht über Ihre Bestellung finden Sie unten. <br /><br />Order Number: %Order.OrderNumber%<br />  Bestellübersicht: <a target=\"_blank\" href=\"%Order.OrderURLForCustomer%\">%Order.OrderURLForCustomer%</a><br />  Datum: %Order.CreatedOn%<br /><br /><br /><br />  Rechnungsadresse<br />%Order.BillingFirstName% %Order.BillingLastName%<br />%Order.BillingAddress1%<br />%Order.BillingCity% %Order.BillingZipPostalCode%<br />  %Order.BillingStateProvince% %Order.BillingCountry%<br /><br /><br /><br />  Lieferadresse<br />%Order.ShippingFirstName% %Order.ShippingLastName%<br />%Order.ShippingAddress1%<br />  %Order.ShippingCity% %Order.ShippingZipPostalCode%<br />%Order.ShippingStateProvince% %Order.ShippingCountry%<br /><br />  Versandart: %Order.ShippingMethod%<br /> Zahlart: %Order.PaymentMethod%<br /><br />%Order.Product(s)%</p><p></p><p>%Store.SupplierIdentification%</p><p>%Order.ConditionsOfUse%</p><p>%Order.Disclaimer%</p>" + templateFooter;
-                })
-                .Alter("OrderPlaced.StoreOwnerNotification", x =>
-                {
-                    x.Subject = "%Store.Name% - Neue Bestellung #%Order.OrderNumber%";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;</p> <p></p> <p>Eine neue Bestellung wurde get&auml;tigt:</p> <p><br />Kunde: %Order.CustomerFullName% (%Order.CustomerEmail%) .&nbsp;<br /><br />Auftrags-Nummer: %Order.OrderNumber%<br />Datum: %Order.CreatedOn%<br /><br /><br /><br />Rechnungsadresse<br />%Order.BillingFirstName% %Order.BillingLastName%<br />%Order.BillingAddress1%<br />%Order.BillingCity% %Order.BillingZipPostalCode%<br />%Order.BillingStateProvince% %Order.BillingCountry%<br /><br /><br /><br />Lieferadresse<br />%Order.ShippingFirstName% %Order.ShippingLastName%<br />%Order.ShippingAddress1%<br />%Order.ShippingCity% %Order.ShippingZipPostalCode%<br />%Order.ShippingStateProvince% %Order.ShippingCountry%<br /><br />Versandart: %Order.ShippingMethod% <br /> Zahlart: %Order.PaymentMethod%<br /><br />%Order.Product(s)%</p>" + templateFooter;
-                })
-                .Alter("ShipmentSent.CustomerNotification", x =>
-                {
-                    x.Subject = "Ihre Bestellung bei %Store.Name% wurde verschickt";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;<br /><br />Sehr geehrter Herr/Frau %Order.CustomerFullName%,&nbsp;</p> <p><br />Ihre Bestellung wurde soeben versendet:</p> <p><br />Auftrags-Nummer: %Order.OrderNumber%<br />Auftrags-Details:&nbsp;<a href=\"%Order.OrderURLForCustomer%\" target=\"_blank\">%Order.OrderURLForCustomer%</a><br />Datum: %Order.CreatedOn%<br /><br /><br />Rechnungsadresse<br />%Order.BillingFirstName% %Order.BillingLastName%<br />%Order.BillingAddress1%<br />%Order.BillingCity% %Order.BillingZipPostalCode%<br />%Order.BillingStateProvince% %Order.BillingCountry%<br /><br /><br /><br />Lieferadresse<br />%Order.ShippingFirstName% %Order.ShippingLastName%<br />%Order.ShippingAddress1%<br />%Order.ShippingCity% %Order.ShippingZipPostalCode%<br />%Order.ShippingStateProvince% %Order.ShippingCountry%<br /><br />Versandart: %Order.ShippingMethod%&nbsp;<br />Zahlart: %Order.PaymentMethod%<br /><br />Versendete Artikel:&nbsp;<br /><br />%Shipment.Product(s)%</p>" + templateFooter;
-                })
-                .Alter("Product.ProductReview", x =>
-                {
-                    x.Subject = "%Store.Name%. Neue Produktrezension";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;</p> <p>Eine neue Produktrezension zu dem Produkt&nbsp;\"%ProductReview.ProductName%\" wurde verfasst.<br /><br /></p>" + templateFooter;
-                })
-                .Alter("QuantityBelow.StoreOwnerNotification", x =>
-                {
-                    x.Subject = "%Store.Name% - Mindestlagerbestand unterschritten: %Product.Name%";
-					x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;</p> <p>Der Mindestlagerbestand f&uuml;r folgendes Produkt wurde unterschritte;<br />%Product.Name% (ID: %Product.ID%, SKU: %Product.Sku%) &nbsp;<br /><br />Menge: %Product.StockQuantity%</p>" + templateFooter;
-                })
-                .Alter("ReturnRequestStatusChanged.CustomerNotification", x =>
-                {
-                    x.Subject = "%Store.Name%. Rücksendung - Status-Änderung";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;<br /><br />Hallo %Customer.FullName%,</p> <p>der Status Ihrer R&uuml;cksendung&nbsp;#%ReturnRequest.ID% wurde aktualisiert.</p> <p></p> <p>Mit freundlichen Gr&uuml;&szlig;en,</p> <p></p> <p>Ihr&nbsp;%Store.Name% - Team</p>" + templateFooter;
-                })
-                .Alter("Service.EmailAFriend", x =>
-                {
-                    x.Subject = "%Store.Name% - Produktempfehlung von %EmailAFriend.Email%";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;<br /><br />%EmailAFriend.Email% m&ouml;chte Ihnen bei %Store.Name% ein Produkt empfehlen:<br /><br /><b><a target=\"_blank\" href=\"%Product.ProductURLForCustomer%\">%Product.Name%</a></b>&nbsp;<br />%Product.ShortDescription%&nbsp;</p> <p></p> <p>Weitere Details finden Sie <a target=\"_blank\" href=\"%Product.ProductURLForCustomer%\">hier</a><br /><br /><br />%EmailAFriend.PersonalMessage%</p> <p></p> <p>Mit freundlichen Gr&uuml;&szlig;en,</p> <p><br />Ihr %Store.Name% - Team</p>" + templateFooter;
-                })
-                .Alter("Wishlist.EmailAFriend", x =>
-                {
-                    x.Subject = "%Store.Name% - Wunschliste von %Wishlist.Email%";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;<br /><br />%Wishlist.Email% m&ouml;chte mit Ihnen ihre/seine Wunschliste teilen.<br /><br /></p> <p>Um die Wunschliste einzusehen, klicken Sie bitte <a target=\"_blank\" href=\"%Wishlist.URLForCustomer%\">hier</a>.<br /><br /><br /></p> <p>%Wishlist.PersonalMessage%<br /><br />%Store.Name%</p>" + templateFooter;
-                })
-                .Alter("Customer.NewOrderNote", x =>
-                {
-                    x.Subject = "%Store.Name% - Wunschliste von %Wishlist.Email%";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;</p> <p></p> <p>Hallo&nbsp;%Customer.FullName%,&nbsp;</p> <p></p> <p>Ihrem Auftrag wurde eine Notiz hinterlegt:</p> <p>\"%Order.NewNoteText%\".<br /><a target=\"_blank\" href=\"%Order.OrderURLForCustomer%\">%Order.OrderURLForCustomer%</a></p> <p></p> <p>Mit freundlichen Gr&uuml;&szlig;en,</p> <p></p> <p>Ihr Shop-Team</p>" + templateFooter;
-                })
-                .Alter("RecurringPaymentCancelled.StoreOwnerNotification", x =>
-                {
-                    x.Subject = "%Store.Name%. Wiederkehrende Zahlung storniert";
-                    x.Body = templateHeader + "<p><a href=\"%Store.URL%\">%Store.Name%</a>&nbsp;</p> <p>Folgende wiederkehrende Zahlung wurde vom Kunden storniert:</p> <p>Zahlungs-ID=%RecurringPayment.ID%<br />Kunden-Name und E-Mail: %Customer.FullName% (%Customer.Email%)&nbsp;</p>" + templateFooter;
-                })
-                .Alter("Product.AskQuestion", x =>
-                {
-                    x.Subject = "%Store.Name% - Frage zu '%Product.Name%' von %ProductQuestion.SenderName%";
-					x.Body = templateHeader + "<p>%ProductQuestion.Message%</p><p>%ProductQuestion.Message%</p><p><strong>ID:</strong> %Product.ID%<br /><strong>SKU:</strong> %Product.Sku%<br /><strong>Email:</strong> %ProductQuestion.SenderEmail%<br /><strong>Name: </strong>%ProductQuestion.SenderName%<br /><strong>Telefon: </strong>%ProductQuestion.SenderPhone%</p>" + templateFooter;
-                })
-
-
-                ;
-        }
-
 
         protected override void Alter(IList<ShippingMethod> entities)
         {
@@ -383,35 +214,35 @@ namespace SmartStore.Web.Infrastructure.Installation
 
         protected override string TaxNameBooks
         {
-            get { return "Ermäßigt"; }
+            get => "Ermäßigt";
         }
         protected override string TaxNameDigitalGoods
         {
-            get { return "Normal"; }
+            get => "Normal";
         }
         protected override string TaxNameJewelry
         {
-            get { return "Normal"; }
+            get => "Normal";
         }
         protected override string TaxNameApparel
         {
-            get { return "Normal"; }
+            get => "Normal";
         }
         protected override string TaxNameFood
         {
-            get { return "Ermäßigt"; }
+            get => "Ermäßigt";
         }
         protected override string TaxNameElectronics
         {
-            get { return "Normal"; }
+            get => "Normal";
         }
         protected override string TaxNameTaxFree
         {
-            get { return "Befreit"; }
+            get => "Befreit";
         }
         public override decimal[] FixedTaxRates
         {
-            get { return new decimal[] { 19, 7, 0 }; }
+            get => new decimal[] { 19, 7, 0 };
         }
 
         protected override void Alter(IList<TaxCategory> entities)
@@ -421,22 +252,16 @@ namespace SmartStore.Web.Infrastructure.Installation
             // clear all tax categories
             entities.Clear();
 
-            // add de-DE specific ones
-            entities.Add(new TaxCategory
-            {
-                Name = "Normal",
-                DisplayOrder = 0,
-            });
-            entities.Add(new TaxCategory
-            {
-                Name = "Ermäßigt",
-                DisplayOrder = 1,
-            });
-            entities.Add(new TaxCategory
-            {
-                Name = TaxNameTaxFree,
-                DisplayOrder = 2,
-            });
+			// add de-DE specific ones
+
+			_taxCategories.Add("Normal", new TaxCategory { DisplayOrder = 0, Name = "Normal" });
+			_taxCategories.Add("Ermäßigt", new TaxCategory { DisplayOrder = 1, Name = "Ermäßigt" });
+			_taxCategories.Add(TaxNameTaxFree, new TaxCategory { DisplayOrder = 2, Name = TaxNameTaxFree });
+
+			foreach (var taxCategory in _taxCategories.Values)
+			{
+				entities.Add(taxCategory);
+			}
         }
 
         protected override void Alter(IList<Country> entities)
@@ -616,7 +441,7 @@ namespace SmartStore.Web.Infrastructure.Installation
                     });
                     x.StateProvinces.Add(new StateProvince()
                     {
-                        Name = "Tiral",
+                        Name = "Tirol",
                         Abbreviation = "T",
                         Published = true,
                         DisplayOrder = 1,
@@ -2031,22 +1856,19 @@ namespace SmartStore.Web.Infrastructure.Installation
                 .Alter("LoginRegistrationInfo", x =>
                 {
                     x.Title = "Anmeldung/Registrierung";
-                    x.Body = "<p>Fügen Sie Informationen zur Anmeldung hier ein.</p><p>Diesen Text können Sie auch im Administrations-Bereich editieren.</p>";
+                    x.Body = "<p><strong>Noch nicht registriert?</strong></p><p>Erstellen Sie jetzt Ihr Kunden-Konto und erleben Sie unsere Vielfalt. Mit einem Konto können Sie künftig schneller bestellen und haben stets eine optimale Übersicht über Ihre laufenden sowie bisherigen Bestellungen.</p>";
                 })
                 .Alter("PrivacyInfo", x =>
                 {
-                    x.Title = "Datenschutzerklärung";
-                    x.Body = "<p>Legen Sie Ihrer Datenschutzerkl&#228;rung hier fest. Sie können dies in der Admin-Seite zu bearbeiten.</p>";
+					x.ShortTitle = "Datenschutz";
+					x.Title = "Datenschutzerklärung";
+                    x.Body = "<p>Legen Sie Ihre Datenschutzerkl&#228;rung hier fest. Diesen Text können Sie auch im Administrations-Bereich editieren.</p>";
                 })
                 .Alter("ShippingInfo", x =>
                 {
-                    x.Title = "Versand und Rücksendungen";
-                    x.Body = "<p>Informationen zu Versand und Rücksendungen. Sie können diese in der Admin-Seite zu bearbeiten.</p>";
-                })
-                .Alter("PageNotFound", x =>
-                {
-                    x.Title = "";
-                    x.Body = "<p><strong>Die von Ihnen angeforderte Seite wurde nicht gefunden, und wir haben eine Vermutung, warum:</strong> <ul> <li>Wenn Sie die URL direkt eingetippt haben, stellen Sie sicher, dass die Schreibweise korrekt ist.</li> <li>Die Seite existiert nicht mehr.</li> </ul> </p>";
+					x.ShortTitle = "Versandinfos";
+					x.Title = "Versand und Rücksendungen";
+                    x.Body = "<p>Informationen zu Versand und Rücksendungen. Diesen Text können Sie auch im Administrations-Bereich editieren.</p>";
                 })
                 .Alter("Imprint", x =>
                 {
@@ -2092,45 +1914,75 @@ namespace SmartStore.Web.Infrastructure.Installation
                 .Alter("Disclaimer", x =>
                 {
                     x.Title = "Widerrufsrecht";
-                    x.Body = "<p>Fügen Sie Ihr Widerrufsrecht hier ein. Sie können diese in der Admin-Seite zu bearbeiten.</p>";
+                    x.Body = "<p>Fügen Sie Ihr Widerrufsrecht hier ein. Diesen Text können Sie auch im Administrations-Bereich editieren.</p>";
                 })
                 .Alter("PaymentInfo", x =>
                 {
                     x. Title = "Zahlungsarten";
-                    x.Body = "<p><p>Fügen Sie Informationen zu Zahlungsarten hier ein. Sie können diese in der Admin-Seite zu bearbeiten.</p>";
+                    x.Body = "<p>Fügen Sie Informationen zu Zahlungsarten hier ein. Diesen Text können Sie auch im Administrations-Bereich editieren.</p>";
                 });
-
         }
 
-        protected override void Alter(IList<ISettings> settings)
+		protected override void Alter(UrlRecord entity)
+		{
+			base.Alter(entity);
+
+			if (entity.EntityName == "Topic")
+			{
+				switch (entity.Slug)
+				{
+					case "aboutus":
+						entity.Slug = "ueber-uns";
+						break;
+					case "conditionsofuse":
+						entity.Slug = "agb";
+						break;
+					case "contactus":
+						entity.Slug = "kontakt";
+						break;
+					case "privacyinfo":
+						entity.Slug = "datenschutz";
+						break;
+					case "shippinginfo":
+						entity.Slug = "versand-und-rueckgabe";
+						break;
+					case "imprint":
+						entity.Slug = "impressum";
+						break;
+					case "disclaimer":
+						entity.Slug = "widerrufsrecht";
+						break;
+					case "paymentinfo":
+						entity.Slug = "zahlungsarten";
+						break;
+				}
+			}
+		}
+
+		protected override void Alter(IList<ISettings> settings)
         {
             base.Alter(settings);
+
+            var defaultDimensionId = DbContext.Set<MeasureDimension>().FirstOrDefault(x => x.SystemKeyword == "m")?.Id;
+            var defaultWeightId = DbContext.Set<MeasureWeight>().FirstOrDefault(x => x.SystemKeyword == "kg")?.Id;
+            var defaultCountryId = DbContext.Set<Country>().FirstOrDefault(x => x.TwoLetterIsoCode == "DE")?.Id;
 
             settings
                 .Alter<MeasureSettings>(x =>
                 {
-                    x.BaseDimensionId = base.DbContext.Set<MeasureDimension>().Where(m => m.SystemKeyword == "m").Single().Id;
-                    x.BaseWeightId = base.DbContext.Set<MeasureWeight>().Where(m => m.SystemKeyword == "kg").Single().Id;
+                    x.BaseDimensionId = defaultDimensionId ?? x.BaseDimensionId;
+                    x.BaseWeightId = defaultWeightId ?? x.BaseWeightId;
                 })
-
-                .Alter<CurrencySettings>(x =>
-                {
-                    x.PrimaryStoreCurrencyId = base.DbContext.Set<Currency>().Where(c => c.CurrencyCode == "EUR").Single().Id;
-                    x.PrimaryExchangeRateCurrencyId = base.DbContext.Set<Currency>().Where(c => c.CurrencyCode == "EUR").Single().Id;
-                })
-
                 .Alter<SeoSettings>(x =>
                 {
                     x.DefaultTitle = "Mein Shop";
                 })
-
                 .Alter<OrderSettings>(x =>
                 {
                     x.ReturnRequestActions = "Reparatur,Ersatz,Gutschein";
                     x.ReturnRequestReasons = "Falschen Artikel erhalten,Falsch bestellt,Ware fehlerhaft bzw. defekt";
                     x.NumberOfDaysReturnRequestAvailable = 14;
                 })
-
                 .Alter<ShippingSettings>(x =>
                 {
                     x.EstimateShippingEnabled = false;
@@ -2141,125 +1993,14 @@ namespace SmartStore.Web.Infrastructure.Installation
                     x.TaxDisplayType = TaxDisplayType.IncludingTax;
                     x.DisplayTaxSuffix = true;
                     x.ShippingIsTaxable = true;
-                    x.ShippingPriceIncludesTax = false;
-                    x.ShippingTaxClassId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == "Normal").Single().Id;
+                    x.ShippingPriceIncludesTax = true;
+                    x.ShippingTaxClassId = _taxCategories["Normal"].Id;
                     x.EuVatEnabled = true;
-                    x.EuVatShopCountryId = base.DbContext.Set<Country>().Where(c => c.TwoLetterIsoCode == "DE").Single().Id;
+                    x.EuVatShopCountryId = defaultCountryId ?? x.EuVatShopCountryId;
                     x.EuVatAllowVatExemption = true;
                     x.EuVatUseWebService = false;
                     x.EuVatEmailAdminWhenNewVatSubmitted = true;
-                })
-
-                #region ContentSliderSettings
-                .Alter<ContentSliderSettings>(x =>
-                {
-					var slidePics = base.DbContext.Set<Picture>().ToList();
-
-					var slide1PicId = slidePics.Where(p => p.SeoFilename == base.GetSeName("slide-1")).First().Id;
-					var slide2PicId = slidePics.Where(p => p.SeoFilename == base.GetSeName("slide-2")).First().Id;
-					var slide3PicId = slidePics.Where(p => p.SeoFilename == base.GetSeName("slide-3")).First().Id;
-
-                    //slide 1
-                    x.Slides.Add(new ContentSliderSlideSettings
-                    {
-                        DisplayOrder = 1,
-                        //LanguageName = "Deutsch",
-                        Title = "Das Größte, was dem iPhone passieren konnte.",
-                        Text = @"<ul>
-                                    <li>Dünneres, leichteres Design</li>
-                                    <li>4"" Retina Display.</li>
-                                    <li>Ultraschnelle mobile Daten.</li>                       
-                                </ul>",
-                        Published = true,
-                        LanguageCulture = "de-DE",
-                        PictureId = slide1PicId,
-                        //PictureUrl = _pictureService.GetPictureUrl(slide1PicId),
-                        Button1 = new ContentSliderButtonSettings
-                        {
-                            Published = true,
-                            Text = "mehr...",
-                            Type = "btn-primary",
-                            Url = "~/apple-iphone-6",
-                           
-                        },
-                        Button2 = new ContentSliderButtonSettings
-                        {
-                            Published = true,
-                            Text = "Jetzt Kaufen",
-                            Type = "btn-danger",
-                            Url = "~/apple-iphone-6"
-                        },
-                        Button3 = new ContentSliderButtonSettings
-                        {
-                            Published = false
-                        }
-                    });
-                    //slide 2
-                    x.Slides.Add(new ContentSliderSlideSettings
-                    {
-                        DisplayOrder = 2,
-                        //LanguageName = "Deutsch",
-                        Title = "Musik online kaufen!",
-                        Text = @"<p>Hier kaufen & sofort herunterladen.</p>
-                                 <p>Beste MP3-Qualität mit 320 kbit/s.</p>
-                                 <p>Hörprobe und Sofortdownload mit Lichtgeschwindigkeit.</p>",
-                        Published = true,
-                        LanguageCulture = "de-DE",
-                        PictureId = slide2PicId,
-                        //PictureUrl = _pictureService.GetPictureUrl(slide2PicId),
-                        Button1 = new ContentSliderButtonSettings
-                        {
-                            Published = true,
-                            Text = "mehr...",
-                            Type = "btn-warning",
-                            Url = "~/musik-kaufen-sofort-herunterladen"
-                        },
-                        Button2 = new ContentSliderButtonSettings
-                        {
-                            Published = false
-                        },
-                        Button3 = new ContentSliderButtonSettings
-                        {
-                            Published = false
-                        }
-                    });
-                    //slide 3
-                    x.Slides.Add(new ContentSliderSlideSettings
-                    {
-                        DisplayOrder = 3,
-                        //LanguageName = "Deutsch",
-                        Title = "Bereit für die Revolution?",
-                        Text = @"<p>SmartStore.NET ist die neue dynamische E-Commerce Lösung von SmartStore.</p>
-                                 <ul>
-                                     <li>Auftrags-, Kunden- und Lagerverwaltung.</li>
-                                     <li>SEO-optimiert | 100% Mobile-optimiert.</li>
-                                     <li>Reviews &amp; Ratings | SmartStore.biz Import.</li>
-                                 </ul>",
-                        Published = true,
-                        LanguageCulture = "de-DE",
-                        PictureId = slide3PicId,
-                        //PictureUrl = _pictureService.GetPictureUrl(slide3PicId),
-                        Button1 = new ContentSliderButtonSettings
-                        {
-                            Published = true,
-                            Text = "und vieles mehr...",
-                            Type = "btn-success",
-                            Url = "http://net.smartstore.com"
-                        },
-                        Button2 = new ContentSliderButtonSettings
-                        {
-                            Published = false
-                        },
-                        Button3 = new ContentSliderButtonSettings
-                        {
-                            Published = false
-                        }
-                    });
                 });
-            #endregion ContentSliderSettings
-
-
-
         }
 
         protected override void Alter(IList<ActivityLogType> entities)
@@ -2526,30 +2267,38 @@ namespace SmartStore.Web.Infrastructure.Installation
         {
             base.Alter(entities);
 
-            entities.WithKey(x => x.Name)
-                .Alter("Send emails", x =>
+            entities.WithKey(x => x.Type)
+				.Alter("SmartStore.Services.Messages.QueuedMessagesSendTask, SmartStore.Services", x =>
                     {
                         x.Name = "E-Mail senden";
                     })
-                .Alter("Keep alive", x =>
-                    {
-                        x.Name = "Keep alive";
-                    })
-                .Alter("Delete guests", x =>
+				.Alter("SmartStore.Services.Messages.QueuedMessagesClearTask, SmartStore.Services", x =>
+					{
+						x.Name = "E-Mail Queue bereinigen";
+					})
+				.Alter("SmartStore.Services.Media.TransientMediaClearTask, SmartStore.Services", x =>
+				{
+					x.Name = "Temporäre Uploads bereinigen";
+				})
+				.Alter("SmartStore.Services.Customers.DeleteGuestsTask, SmartStore.Services", x =>
                     {
                         x.Name = "Gastbenutzer löschen";
                     })
-                .Alter("Clear cache", x =>
+				.Alter("SmartStore.Services.Caching.ClearCacheTask, SmartStore.Services", x =>
                     {
                         x.Name = "Cache bereinigen";
                     })
-                .Alter("Send emails", x =>
+				.Alter("SmartStore.Services.Messages.QueuedMessagesSendTask, SmartStore.Services", x =>
                     {
                         x.Name = "E-Mail senden";
                     })
-                .Alter("Update currency exchange rates", x =>
+				.Alter("SmartStore.Services.Directory.UpdateExchangeRateTask, SmartStore.Services", x =>
                     {
                         x.Name = "Wechselkurse aktualisieren";
+                    })
+				.Alter("SmartStore.Services.Common.TempFileCleanupTask, SmartStore.Services", x =>
+                    {
+                        x.Name = "Temporäre Dateien bereinigen";
                     });
         }
 
@@ -2558,421 +2307,415 @@ namespace SmartStore.Web.Infrastructure.Installation
             base.Alter(entities);
 
             entities.WithKey(x => x.DisplayOrder)
-            #region Cpu-Hersteller
-.Alter(1, x =>
-                    {
-                        x.Name = "CPU-Hersteller";
-                        //var attributeOptionNames = x.SpecificationAttributeOptions.OrderBy(y => y.DisplayOrder).Select(y => y.Name).ToList();
-                        //foreach (var name in attributeOptionNames)
-                        //{
-                        //    name = 
-                        //}
-                    })
-            #endregion
-
-            #region Farbe
-.Alter(2, x =>
-                    {
-                        x.Name = "Farbe";
-                        var attribOption1 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1);
-                        attribOption1.First().Name = "weiss";
-
-                        var attribOption2 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2);
-                        attribOption2.First().Name = "schwarz";
-
-                        var attribOption3 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3);
-                        attribOption3.First().Name = "beige";
-
-                        var attribOption4 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 4);
-                        attribOption4.First().Name = "rot";
-
-                        var attribOption5 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 5);
-                        attribOption5.First().Name = "blau";
-
-                        var attribOption6 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 6);
-                        attribOption6.First().Name = "grün";
-
-                        var attribOption7 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 7);
-                        attribOption7.First().Name = "gelb";
-
-                    })
-            #endregion
-
-            #region Festplatten-Kapazität
-.Alter(3, x =>
-                    {
-                        x.Name = "Festplatten-Kapazität";
-                    })
-
-            #endregion
-
-            #region Arbeitsspeicher
-.Alter(4, x =>
-                    {
-                        x.Name = "Arbeitsspeicher";
-                    })
-            #endregion
-
-            #region OS
-.Alter(5, x =>
-                    {
-                        x.Name = "Betriebssystem";
-                    })
-            #endregion
-
-            #region Anschluss
-.Alter(6, x =>
-                    {
-                        x.Name = "Anschluss";
-                    })
-            #endregion
-
-            #region Geschlecht
-.Alter(7, x =>
-                    {
-                        x.Name = "Geschlecht";
-                        var attribOption1 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1);
-                        attribOption1.First().Name = "Herren";
-
-                        var attribOption2 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2);
-                        attribOption2.First().Name = "Damen";
-                    })
-            #endregion
-
-            #region Material
-.Alter(8, x =>
-                    {
-                        x.Name = "Material";
-                        var attribOption1 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1);
-                        attribOption1.First().Name = "Edelstahl";
-
-                        var attribOption2 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2);
-                        attribOption2.First().Name = "Titan";
-
-                        var attribOption3 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3);
-                        attribOption2.First().Name = "Kunststoff";
-
-                        var attribOption4 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3);
-                        attribOption2.First().Name = "Aluminium";
-                    })
-            #endregion
-
-            #region Technische Ausführung
-            .Alter(9, x =>
-                    {
-                        x.Name = "Technische Ausführung";
-                        var attribOption1 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1);
-                        attribOption1.First().Name = "Automatik, selbstaufziehend";
-
-                        var attribOption2 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2);
-                        attribOption2.First().Name = "Automatik";
-
-                        var attribOption3 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3);
-                        attribOption3.First().Name = "Quarz, batteriebetrieben";
-                    })
-            #endregion
-
-            #region Verschluss
-.Alter(10, x =>
-                    {
-                        x.Name = "Verschluss";
-                        var attribOption1 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1);
-                        attribOption1.First().Name = "Faltschließe";
-
-                        var attribOption2 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2);
-                        attribOption2.First().Name = "Sicherheitsfaltschließe";
-
-                        var attribOption3 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3);
-                        attribOption2.First().Name = "Dornschließe";
-                    })
-            #endregion
-
-            #region Glas
-.Alter(11, x =>
-                    {
-                        x.Name = "Glas";
-                        var attribOption1 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1);
-                        attribOption1.First().Name = "Mineral";
-
-                        var attribOption2 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2);
-                        attribOption2.First().Name = "Saphir";
-                    })
-            #endregion
-
-            #region Sprache
-.Alter(12, x =>
-                    {
-                        x.Name = "Sprache";
-                        var attribOption1 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1);
-                        attribOption1.First().Name = "deutsch";
-
-                        var attribOption2 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2);
-                        attribOption2.First().Name = "englisch";
-
-                        var attribOption3 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3);
-                        attribOption2.First().Name = "französisch";
-
-                        var attribOption4 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 4);
-                        attribOption2.First().Name = "italienisch";
-                    })
-            #endregion
-
-            #region Ausgabe
-            .Alter(13, x =>
-                    {
-                        x.Name = "Ausgabe";
-                        var attribOption1 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1);
-                        attribOption1.First().Name = "gebunden";
-
-                        var attribOption2 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2);
-                        attribOption2.First().Name = "Taschenbuch";
-                    })
-            #endregion
-
-            #region Kategorie
-            .Alter(14, x =>
-                    {
-                        x.Name = "Genre";
-                        var attribOption1 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1);
-                        attribOption1.First().Name = "Abenteuer";
-
-                        var attribOption2 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2);
-                        attribOption2.First().Name = "Science-Fiction";
-
-                        var attribOption3 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3);
-                        attribOption2.First().Name = "Geschichte";
-
-                        var attribOption4 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 4);
-                        attribOption2.First().Name = "Internet & Computer";
-
-                        var attribOption5 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 5);
-                        attribOption2.First().Name = "Krimi";
-
-                        var attribOption6 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 6);
-                        attribOption2.First().Name = "Autos";
-
-                        var attribOption7 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 7);
-                        attribOption2.First().Name = "Roman";
-
-                        var attribOption8 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 8);
-                        attribOption2.First().Name = "Kochen & Backen";
-
-                        var attribOption9 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 9);
-                        attribOption2.First().Name = "Sachbuch";
-                    })
-
-            #endregion
-
-            #region Computer-Typ
-            .Alter(15, x =>
-            {
-                x.Name = "Computer-Typ";
-                var attribOption1 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1);
-                attribOption1.First().Name = "Desktop";
-
-                var attribOption2 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2);
-                attribOption2.First().Name = "All-in-One";
-
-                var attribOption3 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3);
-                attribOption2.First().Name = "Laptop";
-
-                var attribOption4 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 4);
-                attribOption2.First().Name = "Tablet";
-            })
-
-            #endregion
-
-            #region Massenspeicher-Typ
-.Alter(16, x =>
-            {
-                x.Name = "Massenspeicher-Typ";
-            })
-
-            #endregion
-
-            #region Computer-Typ
-.Alter(17, x =>
-            {
-                x.Name = "Größe (externe HDD)";
-            })
-
-            #endregion
-
-            #region MP3-Qualität
-.Alter(18, x =>
-            {
-                x.Name = "MP3-Qualität";
-            })
-
-            #endregion
-
-            #region Musik-Genre
-.Alter(19, x =>
-            {
-                x.Name = "Genre";
-                var attribOption1 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1);
-                attribOption1.First().Name = "Blues";
-
-                var attribOption2 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2);
-                attribOption2.First().Name = "Jazz";
-
-                var attribOption3 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3);
-                attribOption2.First().Name = "Disko";
-
-                var attribOption4 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 4);
-                attribOption2.First().Name = "pop";
-
-                var attribOption5 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 5);
-                attribOption2.First().Name = "Funk";
-
-                var attribOption6 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 6);
-                attribOption2.First().Name = "Klassik";
-
-                var attribOption7 = x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 7);
-                attribOption2.First().Name = "R&B";
-            })
-            #endregion
-
-            #region Hersteller
-.Alter(19, x =>
-            {
-                x.Name = "Hersteller";
-            })
-            #endregion
-
-            ;
-
-
-            #region old code
-            //entities.Clear();
-
-            //var sa1 = new SpecificationAttribute
-            //{
-            //    Name = "CPU-Hersteller",
-            //    DisplayOrder = 1,
-            //};
-            //sa1.SpecificationAttributeOptions.Add(new SpecificationAttributeOption()
-            //{
-            //    Name = "AMD''",
-            //    DisplayOrder = 1,
-            //});
-            //sa1.SpecificationAttributeOptions.Add(new SpecificationAttributeOption()
-            //{
-            //    Name = "Intel''",
-            //    DisplayOrder = 2,
-            //});
-            //sa1.SpecificationAttributeOptions.Add(new SpecificationAttributeOption()
-            //{
-            //    Name = "ARM''",
-            //    DisplayOrder = 3,
-            //});
-            //sa1.SpecificationAttributeOptions.Add(new SpecificationAttributeOption()
-            //{
-            //    Name = "Samsung''",
-            //    DisplayOrder = 4,
-            //});
-            //sa1.SpecificationAttributeOptions.Add(new SpecificationAttributeOption()
-            //{
-            //    Name = "Apple''",
-            //    DisplayOrder = 5,
-            //});
-
-
-            // add de-DE specific Tasks
-            //entities = new List<SpecificationAttribute>
-            //{
-            //    sa1,
-            //};
-            #endregion
+				.Alter(1, x =>
+                {
+                    x.Name = "CPU-Hersteller";
+                })
+				.Alter(2, x =>
+                {
+					x.Name = "Farbe";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Weiß";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Schwarz";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3).First().Name = "Beige";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 4).First().Name = "Rot";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 5).First().Name = "Blau";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 6).First().Name = "Grün";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 7).First().Name = "Gelb";
+                })
+				.Alter(3, x =>
+				{
+					x.Name = "Festplatten-Kapazität";
+				})
+				.Alter(4, x =>
+				{
+					x.Name = "Arbeitsspeicher";
+				})
+				.Alter(5, x =>
+				{
+					x.Name = "Betriebssystem";
+				})
+				.Alter(6, x =>
+				{
+					x.Name = "Anschluss";
+				})
+				.Alter(7, x =>
+				{
+					x.Name = "Geschlecht";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Herren";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Damen";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3).First().Name = "Unisex";
+				})
+				.Alter(8, x =>
+				{
+					x.Name = "Material";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 1).Name = "Edelstahl";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 2).Name = "Titan";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 3).Name = "Kunststoff";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 4).Name = "Aluminium";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 5).Name = "Leder";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 6).Name = "Nylon";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 7).Name = "Silikon";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 8).Name = "Keramik";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 9).Name = "Baumwolle";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 10).Name = "100% Bio-Baumwolle";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 11).Name = "Polyamid";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 12).Name = "Gummi";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 13).Name = "Holz";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 14).Name = "Glas";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 15).Name = "Elasthan";
+					x.SpecificationAttributeOptions.First(y => y.DisplayOrder == 16).Name = "Polyester";
+				})
+				.Alter(9, x =>
+				{
+					x.Name = "Technische Ausführung";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Automatik, selbstaufziehend";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Automatik";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3).First().Name = "Quarz, batteriebetrieben";
+				})
+				.Alter(10, x =>
+				{
+					x.Name = "Verschluss";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Faltschließe";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Sicherheitsfaltschließe";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3).First().Name = "Dornschließe";
+				})
+				.Alter(11, x =>
+				{
+					x.Name = "Glas";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Mineral";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Saphir";
+				})
+				.Alter(12, x =>
+				{
+					x.Name = "Sprache";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Deutsch";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Englisch";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3).First().Name = "Französisch";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 4).First().Name = "Italienisch";
+				})
+				.Alter(13, x =>
+				{
+					x.Name = "Ausgabe";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Gebunden";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Taschenbuch";
+				})
+				.Alter(14, x =>
+				{
+					x.Name = "Genre";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Abenteuer";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Science-Fiction";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3).First().Name = "Geschichte";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 4).First().Name = "Internet & Computer";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 5).First().Name = "Krimi";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 6).First().Name = "Autos";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 7).First().Name = "Roman";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 8).First().Name = "Kochen & Backen";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 9).First().Name = "Sachbuch";
+				})
+				.Alter(15, x =>
+				{
+					x.Name = "Computer-Typ";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Desktop";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "All-in-One";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3).First().Name = "Laptop";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 4).First().Name = "Tablet";
+				})
+				.Alter(16, x =>
+				{
+					x.Name = "Massenspeicher-Typ";
+				})
+				.Alter(17, x =>
+				{
+					x.Name = "Größe (externe HDD)";
+				})
+				.Alter(18, x =>
+				{
+					x.Name = "MP3-Qualität";
+				})
+				.Alter(19, x =>
+				{
+					x.Name = "Genre";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Blues";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Jazz";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3).First().Name = "Disko";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 4).First().Name = "Pop";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 5).First().Name = "Funk";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 6).First().Name = "Klassik";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 7).First().Name = "R&B";
+				})
+				.Alter(20, x =>
+				{
+					x.Name = "Hersteller";
+				})
+				.Alter(21, x =>
+				{
+					x.Name = "Für wen";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Für ihn";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Für sie";
+				})
+				.Alter(22, x =>
+				{
+					x.Name = "Angebot";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Räumung";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Permanent günstigster Preis";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3).First().Name = "Aktion";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 4).First().Name = "Preisreduzierung";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 5).First().Name = "Angebotspreis";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 6).First().Name = "Tagesangebot";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 7).First().Name = "Wochenangebot";
+				})
+				.Alter(23, x =>
+				{
+					x.Name = "Größe";
+				})
+				.Alter(24, x =>
+				{
+					x.Name = "Durchmesser";
+				})
+				.Alter(25, x =>
+				{
+					x.Name = "Verschluss";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Schnappverschluss";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Faltverschluss";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3).First().Name = "Stechverschluss";
+				})
+				.Alter(26, x =>
+				{
+					x.Name = "Form";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Oval";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Rund";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 3).First().Name = "Herzförmig";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 4).First().Name = "Winkelförmig";
+				})
+				.Alter(27, x =>
+				{
+					x.Name = "Speicherkapazität";
+				})
+				.Alter(28, x =>
+				{
+					x.Name = "Scheibenmaterial";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 1).First().Name = "Mineral";
+					x.SpecificationAttributeOptions.Where(y => y.DisplayOrder == 2).First().Name = "Saphir";
+				});
         }
 
         protected override void Alter(IList<ProductAttribute> entities)
         {
             base.Alter(entities);
 
-            //entities.Clear();
-
-            entities.WithKey(x => x.Alias)
-                .Alter("Color", x =>
-                {
-                    x.Name = "Farbe";
-                })
-                .Alter("Custom Text", x =>
-                {
-                    x.Name = "eigener Text";
-                })
-                .Alter("HDD", x =>
-                {
-                    x.Name = "HDD";
-                })
-                .Alter("OS", x =>
-                {
-                    x.Name = "Betriebssystem";
-                })
-                .Alter("Processor", x =>
-                {
-                    x.Name = "Prozessor";
-                })
-                .Alter("RAM", x =>
-                {
-                    x.Name = "Arbeitsspeicher";
-                })
-                .Alter("Size", x =>
-                {
-                    x.Name = "Größe";
-                })
-                .Alter("Software", x =>
-                {
-                    x.Name = "Software";
-                })
-				.Alter("Game", x =>
-				{
-					x.Name = "Spiel";
-				})
-				.Alter("iPhone color", x =>
+			entities.WithKey(x => x.Alias)
+				.Alter("color", x =>
 				{
 					x.Name = "Farbe";
 				})
-				.Alter("Memory capacity", x =>
+				.Alter("custom-text", x =>
+				{
+					x.Name = "Eigener Text";
+				})
+				.Alter("hdd", x =>
+				{
+					x.Name = "HDD";
+				})
+				.Alter("os", x =>
+				{
+					x.Name = "Betriebssystem";
+				})
+				.Alter("processor", x =>
+				{
+					x.Name = "Prozessor";
+				})
+				.Alter("ram", x =>
+				{
+					x.Name = "Arbeitsspeicher";
+				})
+				.Alter("size", x =>
+				{
+					x.Name = "Größe";
+				})
+				.Alter("software", x =>
+				{
+					x.Name = "Software";
+				})
+				.Alter("game", x =>
+				{
+					x.Name = "Spiel";
+				})
+				.Alter("iphone-color", x =>
+				{
+					x.Name = "Farbe";
+				})
+				.Alter("ipad-color", x =>
+				{
+					x.Name = "Farbe";
+				})
+				.Alter("memory-capacity", x =>
 				{
 					x.Name = "Speicherkapazität";
-				});
+				})
+				.Alter("width", x =>
+				{
+					x.Name = "Weite";
+				})
+				.Alter("length", x =>
+				{
+					x.Name = "Länge";
+				})
+				.Alter("plate", x =>
+				{
+					x.Name = "Tischplatte";
+				})
+				.Alter("plate-thickness", x =>
+				{
+					x.Name = "Stärke der Tischplatte";
+				})
+				.Alter("ballsize", x =>
+				{
+					x.Name = "Ballgröße";
+				})
+				.Alter("leather-color", x =>
+				{
+					x.Name = "Lederfarbe";
+				})
+				.Alter("seat-shell", x =>
+				{
+					x.Name = "Sitzschale";
+				})
+				.Alter("base", x =>
+				{
+					x.Name = "Fußgestell";
+				})
+				.Alter("style", x =>
+				{
+					x.Name = "Ausführung";
+				})
+                .Alter("framecolor", x =>
+                {
+                    x.Name = "Rahmenfarbe";
+                })
+                .Alter("lenscolor", x =>
+                {
+                    x.Name = "Glasfarbe";
+                })
+                .Alter("lenstype", x =>
+                 {
+                     x.Name = "Glas";
+                 });
         }
+
+		protected override void Alter(IList<ProductAttributeOptionsSet> entities)
+		{
+			base.Alter(entities);
+
+			entities.WithKey(x => x.Name)
+				.Alter("General colors", x => x.Name = "Allgemeine Farben");
+		}
+
+		protected override void Alter(IList<ProductAttributeOption> entities)
+		{
+			base.Alter(entities);
+
+			entities.Where(x => x.Alias == "red").Each(x => x.Name = "Rot");
+			entities.Where(x => x.Alias == "green").Each(x => x.Name = "Grün");
+			entities.Where(x => x.Alias == "blue").Each(x => x.Name = "Blau");
+			entities.Where(x => x.Alias == "yellow").Each(x => x.Name = "Gelb");
+			entities.Where(x => x.Alias == "black").Each(x => x.Name = "Schwarz");
+			entities.Where(x => x.Alias == "white").Each(x => x.Name = "Weiß");
+			entities.Where(x => x.Alias == "gray").Each(x => x.Name = "Grau");
+			entities.Where(x => x.Alias == "silver").Each(x => x.Name = "Silber");
+			entities.Where(x => x.Alias == "brown").Each(x => x.Name = "Braun");
+		}
 
 		protected override void Alter(IList<ProductVariantAttribute> entities)
 		{
 			base.Alter(entities);
-			
 
-			entities.WithKey(x => x.ProductAttribute.Alias)
-				.Alter("Color", x =>
-					{
-						x.ProductVariantAttributeValues.First(v => v.Alias == "black").Name = "Schwarz";
-						x.ProductVariantAttributeValues.First(v => v.Alias == "white").Name = "Weiß";
-					})
-				.Alter("iPhone color", x =>
-				{
-					x.ProductVariantAttributeValues.First(v => v.Alias == "silver").Name = "Silber";
-					x.ProductVariantAttributeValues.First(v => v.Alias == "spacegray").Name = "Space-Grau";
-				})
-				.Alter("Game", x =>
-					{
-						x.ProductVariantAttributeValues.First(v => v.Alias == "Prince of Persia \"The Forgotten Sands\"").Name = "Prince of Persia \"Die vergessene Zeit\"";
-					});
-		}
+			entities.Where(x => x.ProductAttribute.Alias == "color" || x.ProductAttribute.Alias == "leather-color").Each(x =>
+			{
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "black").Each(y => y.Name = "Schwarz");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "white").Each(y => y.Name = "Weiß");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "silver").Each(y => y.Name = "Silber");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "red").Each(y => y.Name = "Rot");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "gray" || y.Alias == "charcoal").Each(y => y.Name = "Grau");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "maroon").Each(y => y.Name = "Rotbraun");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "blue").Each(y => y.Name = "Blau");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "purple").Each(y => y.Name = "Violett");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "green").Each(y => y.Name = "Grün");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "anthracite").Each(y => y.Name = "Anthrazit");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "brown").Each(y => y.Name = "Braun");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "dark-brown").Each(y => y.Name = "Dunkelbraun");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "natural").Each(y => y.Name = "Naturfarben");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "biscuit").Each(y => y.Name = "Biskuit");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "dark-green").Each(y => y.Name = "Dunkelgrün");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "light-grey").Each(y => y.Name = "Hellgrau");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "dark-red").Each(y => y.Name = "Dunkelrot");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "hazelnut").Each(y => y.Name = "Haselnuss");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "fuliginous").Each(y => y.Name = "Rauchfarbig");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "tomato-red").Each(y => y.Name = "Tomatenrot");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "yellow").Each(y => y.Name = "Gelb");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "mint").Each(y => y.Name = "Mintgrün");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "lightblue").Each(y => y.Name = "Hellblau");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "turquoise").Each(y => y.Name = "Türkis");
+			});
+
+			entities.Where(x => x.ProductAttribute.Alias == "iphone-color" || x.ProductAttribute.Alias == "ipad-color").Each(x =>
+			{
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "black").Each(y => y.Name = "Schwarz");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "silver").Each(y => y.Name = "Silber");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "spacegray").Each(y => y.Name = "Space-Grau");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "purple").Each(y => y.Name = "Violett");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "lightblue").Each(y => y.Name = "Hellblau");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "turquoise").Each(y => y.Name = "Türkis");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "yellow").Each(y => y.Name = "Gelb");
+			});
+
+			entities.Where(x => x.ProductAttribute.Alias == "controller").Each(x =>
+			{
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "without_controller").Each(y => y.Name = "Ohne Controller");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "with_controller").Each(y => y.Name = "Mit Controller");
+			});
+
+			entities.Where(x => x.ProductAttribute.Alias == "game").Each(x =>
+			{
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "prince-of-persia-the-forgotten-sands").Each(y => y.Name = "Prince of Persia \"Die vergessene Zeit\"");
+			});
+
+			entities.Where(x => x.ProductAttribute.Alias == "seat-shell").Each(x =>
+			{
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "cherry").Each(y => y.Name = "Kirsche");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "walnut").Each(y => y.Name = "Walnuss");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "wooden-black-lacquered").Each(y => y.Name = "Holz schwarz lackiert");
+			});
+
+			entities.Where(x => x.ProductAttribute.Alias == "base").Each(x =>
+			{
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "top-edge-polished").Each(y => y.Name = "Oberkante poliert");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "completely-polished").Each(y => y.Name = "Vollständig poliert");
+			});
+
+			entities.Where(x => x.ProductAttribute.Alias == "plate").Each(x =>
+			{
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "clear-glass").Each(y => y.Name = "Klarglas");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "sandblasted-glass").Each(y => y.Name = "Sandgestrahltes Glas");
+			});
+
+			entities.Where(x => x.ProductAttribute.Alias == "material").Each(x =>
+			{
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "leather-special").Each(y => y.Name = "Leder Spezial");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "leather-aniline").Each(y => y.Name = "Leder Anilin");
+				x.ProductVariantAttributeValues.Where(y => y.Alias == "mixed-linen").Each(y => y.Name = "Leinen gemischt");
+			});
+
+            
+        }
 
         protected override void Alter(IList<ProductTemplate> entities)
         {
             base.Alter(entities);
 
 			entities.WithKey(x => x.ViewPath)
-				.Alter("ProductTemplate.Simple", x =>
+				.Alter("Product", x =>
 				{
-					x.Name = "Simple product";
-				})
-				.Alter("ProductTemplate.Grouped", x =>
-				{
-					x.Name = "Grouped product";
+					x.Name = "Standard Produkt Vorlage";
 				});
         }
 
@@ -3003,6 +2746,38 @@ namespace SmartStore.Web.Infrastructure.Installation
             base.Alter(entities);
 
             entities.WithKey(x => x.MetaTitle)
+            .Alter("Furniture", x =>
+            {
+                x.Name = "Möbel";
+            })
+            .Alter("Lounger", x =>
+            {
+                x.Name = "Liegen";
+            })
+            .Alter("Chairs", x =>
+            {
+                x.Name = "Stühle";
+            })
+            .Alter("Lamps", x =>
+            {
+                x.Name = "Lampen";
+            })
+            .Alter("Fashion", x =>
+            {
+                x.Name = "Mode";
+            })
+            .Alter("Sports", x =>
+             {
+                 x.Name = "Sport";
+             })
+            .Alter("Sunglasses", x =>
+            {
+                x.Name = "Sonnenbrillen";
+            })
+            .Alter("Soccer", x =>
+            {
+                x.Name = "Fußball";
+            })
             .Alter("Books", x =>
             {
                 x.Name = "Bücher";
@@ -3031,9 +2806,9 @@ namespace SmartStore.Web.Infrastructure.Installation
             {
                 x.Name = "Smartphones";
             })
-            .Alter("Instant music", x =>
+            .Alter("Digital Products", x =>
             {
-                x.Name = "Musik kaufen & sofort herunterladen";
+                x.Name = "Digitale Produkte";
             })
             .Alter("Gift cards", x =>
             {
@@ -3053,7 +2828,61 @@ namespace SmartStore.Web.Infrastructure.Installation
 			});
         }
 
-        protected override void Alter(IList<Product> entities)
+		private void AlterFashionProducts(IList<Product> entities)
+		{
+			entities.WithKey(x => x.Sku)
+				.Alter("Fashion-112355", x =>
+				{
+					x.ShortDescription = "Der Sneaker-Klassiker!";
+					x.FullDescription = "<p>Seit 1912 und bis heute unerreicht: Der Converse All Star Sneaker. Ein Schuh für jede Gelegenheit.</p>";
+				})
+				.Alter("Fashion-987693502", x =>
+				{
+					x.Name = "Ärmelloses Shirt Meccanica";
+					x.ShortDescription = "Frauen Shirt mit trendigem Aufdruck";
+					x.FullDescription = "<p>Auch im Sommer geht der Ducati Stil mit der Mode! Mit dem ärmellosen Shirt Meccanica kann jede Frau ihrer Leidenschaft für Ducati mit einem bequemen und vielseitigen Kleidungsstück Ausdruck verleihen. Das Shirt gibt es in schwarz und vintagerot. Es trägt auf der Vorderseite den traditionellen Schriftzug in Plastisoldruck, wodurch er noch deutlicher und strahlender wird, während sich auf der Rückseite im Nackenbereich das berühmte Logo mit den typischen \"Flügeln\" der fünfziger Jahre befindet.</p>";
+				})
+				.Alter("Fashion-JN1107", x =>
+				{
+					x.Name = "Damen Sport-Jacke";
+					x.FullDescription = "<p>Leichtes wind- und wasserabweisendes Gewebe, Futter aus weichem Single-Jersey Strickbündchen an Arm und Bund, 2 seitliche Taschen mit Reißverschluss, Kapuze in leicht tailliertem Schnitt.</p><ul><li>Oberstoff: 100%</li><li>Polyamid Futterstoff: 65% Polyester, 35% Baumwolle</li><li>Futterstoff 2: 100% Polyester</li></ul>";
+				})
+				.Alter("Fashion-65986524", x =>
+				 {
+					 x.ShortDescription = "Moderne Jeans in Easy Comfort Fit";
+					 x.FullDescription = "<p>Echte Five-Pocket-Jeans von Joker mit zusätzlicher, aufgesetzter Uhrentasche. Dank Easy Comfort Fit mit normaler Leibhöhe und bequemer Beinweite passend für jeden Figurtyp. Gerader Beinverlauf.</p><ul><li>Material: weicher, leichterer Premium-Denim aus 100% Baumwolle</li><li>Bundweite (Zoll): 29-46</li><li>Beinlänge (Zoll): 30 bis 38</li></ul>";
+				 });
+		}
+
+		private void AlterFurnitureProducts(IList<Product> entities)
+		{
+			entities.WithKey(x => x.Sku)
+				.Alter("Furniture-lc6", x =>
+				{
+					x.Name = "Le Corbusier LC 6 Esstisch (1929)";
+					x.ShortDescription = "Esstisch LC6, Designer: Le Corbusier, B x H x T: 225 x 69/74 (verstellbar) x 85 cm, Unterkonstruktion: Stahlrohr, Glasplatte: klar oder sandgestrahlt, 15 oder 19 mm, höhenverstellbar.";
+					x.FullDescription = "<p>Vier kleine Teller tragen eine Platte aus Glas. Darunter erstreckt sich in klarer Struktur die Konstruktion aus Stahlrohr. Der LC6 ist echter Klassiker der Bauhaus-Kunst und dient in Kombination mit den Drehstühlen LC7 als formschöne Le Corbusier-Essecke. Darüber hinaus findet man den Tisch auch vermehrt in Büros oder in Hallen. Er ist höhenverstellbar und kann so dem jeweiligen Zweck perfekt angepasst werden.</p><p>Der formschöne Tisch von Le Corbusier ist mit klarer oder mit sandgestrahlter Glasplatte erhältlich. Die Unterkonstruktion besteht aus ovalen Stahlrohren.</p>";
+				})
+				.Alter("Furniture-ball-chair", x =>
+				{
+					x.Name = "Eero Aarnio Kugelsessel (1966)";
+					x.FullDescription = "<p>Der Ball Chair oder auch Globe Chair genannt, ist ein echtes Meisterwerk des legendären Designers Eero Aarnio. Der Kugelsessel aus den sechziger Jahren hat Designergeschichte geschrieben. Der eiförmig gestaltet Sessel ruht auf einem Trompetenfuss und wird nicht zu letzt aufgrund seiner Form und der ruhigen Atmophäre im Innern dieses Möbels besonders geschätzt. Das Design des Möbelkörpers lässt  Geräusche und störende Außenweltelemente in den Hintergurnd tretten. Ein Platz, wie geschaffen zum ausruhen und entspannen. Mit der großen Auswahl an Farben passt passt sich der Eyeball Chair jeder Wohn- und Arbeitsumgebung gekonnt an. Ein Sessel, der sich durch zeitloses Design auszeichnet und die Moderne immer im Blick haben wird. Der Ball Chair ist 360° zu drehen, um den Blick auf die Umgebung zu veränderen. Die Aussenschale in Fiberglas weiss oder schwarz. Der Bezug ist in Leder oder Linen Mixed.<p><p>Abmessung: Breite 102 cm, Tiefe 87 cm, Höhe 124 cm, Sitzhöhe: 44 cm.</p>";
+				})
+				.Alter("Furniture-lounge-chair", x =>
+				{
+					x.Name = "Charles Eames Lounge Sessel (1956)";
+					x.ShortDescription = "Club Sessel, Lounge Chair, Designer: Charles Eames, Breite 80 cm, Tiefe 80 cm, Höhe 60 cm, Sitzschale: Sperrholz, Fuß (drehbar): Aluminiumguss, Kissen (gepolstert) mit Lederbezug.";
+					x.FullDescription = "<p>So sitzt man in einem Baseball-Handschuh. Das war jedenfalls eine der Vorstellungen, die Charles Eames beim Entwurf dieses Clubsessels im Kopf hatte. Der Lounge Chair sollte ein Komfort-Sessel sein, in den man luxuriös einsinken kann. Durch die Konstruktion aus drei miteinander verbundenen, beweglichen Sitzschalen und einer bequemen Polsterung gelang Charles Eames die Umsetzung. Eigentlich ist der Clubsessel mit drehbarem Fuß ein Gegensatz zu den Bauhaus-Charakteristiken, die Minimalismus und Funktionalität in den Vordergrund stellten. Dennoch wurde er zu einem Klassiker der Bauhaus-Geschichte und sorgt noch heute in vielen Wohnräumen und Clubs für absoluten Komfort mit Stil.</p><p>Abmessung: Breite 80 cm, Tiefe 60 cm,  Höhe Gesamt 80 cm (Höhe Rückenlehne: 60 cm). CBM: 0,70.</p><p>Verarbeitung: Lounge Chair mit Sitzschale aus schichtverleimten gebogenen Sperrholz mit Palisander furniert, Nussbaum natur oder in schwarz. Drehbarer Fuß aus Aluminiumguss schwarz mit polierten Kanten oder auch wahlweise vollständig verchromt. Aufwendige Polsterung der Kissen in Leder.</p><p>Alle POLSTEREINHEITEN sind bei dem EAMES LOUNGE CHAIR (Sitz, Armlehne, Rückenlehne, Kopflehne) abnehmbar.</p><p></p>";
+				})
+				.Alter("Furniture-cube-chair", x =>
+				{
+					x.Name = "Josef Hoffmann Sessel Kubus (1910)";
+					x.ShortDescription = "Sessel Kubus, Designer: Josef Hoffmann, Breite 93 cm, Tiefe 72 cm, Höhe 77 cm, Grundgestell: massives Buchenholz, Polsterung: fester Polyurethan Schaum (formbeständig), Bezug: Leder";
+					x.FullDescription = "<p>Der Sessel Kubus von Josef Hoffmann hält, was der Name verspricht und das gleich in zweierlei Hinsicht. Er besteht aus vielen Quadraten, sowohl was die Konstruktion angeht als auch im Bezug auf das Design der Oberfläche. Zudem war der Kubus mit seiner rein geometrischen Form eine Art Vorbote des Kubismus. Der Sessel von Josef Hoffmann wurde 1910 entworfen und steht noch heute als Nachbau in zahlreichen Geschäfts- und Wohnräumen.</p><p>Ursprünglich war der Kubus ein Clubsessel. Zusammen mit dem zwei- und dem dreisitzigen Sofa der Serie entsteht eine gemütliche Sitzecke mit einer kultivierten und gehobenen Ausstrahlung. Das Grundgestell des Sessels besteht aus Holz. Die formbeständige Polsterung ist mit Leder überzogen und wurde mit einer speziellen Nähtechnik optisch zu Quadraten geformt.</p><p>Abmessung: Breite 93 cm, Tiefe 72 cm, Höhe 77 cm. CBM: 0,70.</p>";
+				});
+		}
+
+		protected override void Alter(IList<Product> entities)
         {
             base.Alter(entities);
 
@@ -3068,10 +2897,333 @@ namespace SmartStore.Web.Infrastructure.Installation
 
 				entities.WithKey(x => x.MetaTitle)
 
-				# region category Gift Cards
-                .Alter("$5 Virtual Gift Card", x =>
+
+                #region category golf
+
+                #region product Titleist SM6 Tour Chrome
+
+                .Alter("Titleist SM6 Tour Chrome", x =>
+                {
+                    x.ShortDescription = "Für Golfspieler, die ein Maximum an Schlagkontrolle und Feedback wünschen.";
+                    x.FullDescription = "<p><strong>Inspiriert von den besten Eisenspielern der Welt</strong></p><p>Die neuen 'Spin Milled 6'-Wedges etablieren eine neue Leistungsklasse in drei Schlüsselbereichen des Wedge-Spiels: Präzise Längenschritte, Schlagvielfalt und maximaler Spin.&nbsp;</p><p>  <br />  Für jeden Loft wird der Schwerpunkt des Wedges einzeln bestimmt. Daher bieten die SM6 eine besonders präzise Längen- und Flugkurvenkontrolle in Verbindung mit großartigem Schlaggefühl.&nbsp;  <br />  Bob Vokeys tourerpobte Sohlenschliffe erlauben allen Golfern mehr Schlagvielfalt, angepasst auf deren persönliches Schwungprofil und die jeweiligen Bodenverhältnissen.</p><p>  <br />  Zu den absolut exakt und mit 100%iger Qualitätskontrolle gefrästen Rillen wurde eine neue, parallele Schlagflächen-Textur entwickelt. Das Ergebnis ist eine beständig höhere Kantenschärfe für mehr Spin.</p><p></p><ul>  <li>Präzise Längen und Flugkurvenkontrolle dank progressiv platziertem Schwerpunkt.</li>  <li>Verbesserte Schlagvielfalt aufgrund der erprobten Sohlenschliffe von Bob Vokey.</li>  <li>TX4-Rillen erzeugen mehr Spin durch eine neue Oberfläche und Kantenschärfe.</li>  <li>Vielfältige Personalisierungsmöglichkeiten.</li></ul><p></p><p></p><p></p>";
+                    x.Price = 164.95M;
+                    x.OldPrice = 199.95M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+
+                #endregion product Titleist SM6 Tour Chrome
+
+                #region product Titleist Pro V1x
+
+                .Alter("Titleist Pro V1x", x =>
+                {
+                    x.ShortDescription = "Golfball mit hohem Ballflug";
+                    x.FullDescription = "<p>Auf den neuen Titleist Pro V1x vertrauen die Spitzenspieler. Hoher Ballflug, weiches Schlaggefühl und mehr Spin im kurzen Spiel sind die Vorteile der V1x-Ausführung.Perfekte Gesamtleistung vom führenden Hersteller. Der neue Titleist Pro V1-Golfball ist exakt definiert und verspricht durchdringenden Ballflug bei sehr weichem Schlaggefühl.</p>";
+                    x.Price = 1.89M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+
+                #endregion product Titleist Pro V1x
+
+                #region product Supreme Golfball
+
+                .Alter("Supreme Golfball", x =>
+                {
+                    x.ShortDescription = "Trainingsbälle mit perfekten Flugeigenschaften";
+                    x.FullDescription = "<p>Perfekter Golf-Übungsball mit den Eigenschaften wie das 'Original', aber in glasbruchsicherer Ausführng. Massiver Kern, ein idealer Trainingsball für Hof und Garten. Farben: weiß, gelb, orange.</p>";
+                    x.Price = 1.99M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+
+                #endregion product Supreme Golfball
+
+                #region product GBB Epic Sub Zero Driver
+
+                .Alter("GBB Epic Sub Zero Driver", x =>
+                {
+                    x.ShortDescription = "Geringer Spin für gutes Golfen!";
+                    x.FullDescription = "<p>Ihr Spiel gewinnt mit dem GBB Epic Sub Zero Driver. Ein Golfschläger mit extrem wenig Spin und das bei phänomenaler Hochgeschwindigkeits-Charakteristik.&nbsp;</p>";
+                    x.Price = 489.00M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+
+                #endregion product GBB Epic Sub Zero Driver
+
+                #endregion category golf
+
+                #region category Soccer
+
+                #region product Nike Strike Football
+
+                .Alter("Nike Strike Football", x =>
+                {
+                    x.Name = "Nike Strike Fußball";
+                    x.ShortDescription = "HERVORRAGENDES BALLGEFÜHL. GUTE SICHTBARKEIT.";
+                    x.FullDescription = "<p>Verbessert das Spiel jeden Tag mit dem Nike Strike Football. Verstärkter Gummi behält seine Form für zuversichtliche und konsequente Kontrolle. Eine herausragende Visual Power Grafik in schwarz, grün und orange ist am besten für Ball Tracking, trotz dunkler oder schlechter Bedingungen.</p><p></p><ul>  <li>Visual Power Grafik hilft, eine echte Lesung auf Flugtrajektorie zu geben.</li>  <li>Strukturiertes Gehäuse bietet überlegene Note.</li>  <li>Verstärkte Gummiblase unterstützt Luft- und Formbeibehaltung.</li>  <li>66% Gummi / 15% Polyurethan / 13% Polyester / 7% EVA.</li></ul>";
+                    x.Price = 29.90M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion product Nike Strike Football
+
+                #region product Evopower 5.3 Trainer HS Ball
+
+                .Alter("Evopower 5.3 Trainer HS Ball", x =>
+                {
+                    x.ShortDescription = "Einsteiger Trainingsball.";
+                    x.FullDescription = "<p>Einsteiger Trainingsball.  <br />  Konstruiert aus 32 Platten mit gleichen Flächen für reduzierte Naht und eine vollkommen runde Form.  <br />  Handgestickte Platten mit mehrschichtigem gewebtem Rücken für mehr Stabilität und Aerodynamik.</p>";
+                    x.Price = 35.90M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion product Evopower 5.3 Trainer HS Ball
+
+                #region product Torfabrik official game ball
+
+                .Alter("Torfabrik official game ball", x =>
+                {
+                    x.ShortDescription = "Einsteiger Trainingsball.";
+                    x.FullDescription = "<p>Einsteiger Trainingsball.  <br />  Konstruiert aus 32 Platten mit gleichen Flächen für reduzierte Naht und eine vollkommen runde Form.  <br />  Handgestickte Platten mit mehrschichtigem gewebtem Rücken für mehr Stabilität und Aerodynamik.</p>";
+                    x.Price = 35.90M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion product Torfabrik official game ball
+
+                #region product Adidas TANGO SALA BALL
+
+                .Alter("Adidas TANGO SALA BALL", x =>
+                {
+                    x.ShortDescription = "Farbe White/Black/Solar Red";
+                    x.FullDescription = "<h2 style='box-sizing: border-box; outline: 0px; margin-right: 0px; margin-bottom: 32px; margin-left: 0px; padding: 0px; border: 0px; font-variant-numeric: inherit; font-weight: inherit; font-stretch: inherit; font-size: 32px; line-height: 30.4px; font-family: adilight, Arial, Helvetica, Verdana, sans-serif; vertical-align: baseline; background-image: initial; background-position: initial; background-size: initial; background-repeat: initial; background-attachment: initial; background-origin: initial; background-clip: initial; max-height: 999999px; text-transform: uppercase; letter-spacing: 6px; text-align: center; color: rgb(0, 0, 0);'>TANGO PASADENA BALL</h2><div class='product-details-description clearfix' style='box-sizing: border-box; outline: 0px; margin: 0px; padding: 0px; border: 0px; font-variant-numeric: inherit; font-stretch: inherit; font-size: 14px; line-height: inherit; font-family: adihausregular, Arial, Helvetica, Verdana, sans-serif; vertical-align: baseline; background-image: initial; background-position: initial; background-size: initial; background-repeat: initial; background-attachment: initial; background-origin: initial; background-clip: initial; max-height: 999999px; zoom: 1; color: rgb(0, 0, 0);'>  <div class='prod-details para-small' itemprop='description' style='box-sizing: border-box; outline: 0px; margin: 0px; padding: 0px; border: 0px; font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; line-height: 24px; vertical-align: baseline; background: transparent; max-height: 999999px; color: rgb(54, 55, 56); width: 441.594px; float: left;'>Der adidas Tango Pasadena Ball wurde speziell für harte Trainingseinheiten und hitzige Kämpfe auf dem Fußballplatz gemacht. Er hat die bestmögliche FIFA-Bewertung bekommen und verfügt über einen handgenähten Körper, dem kein Training und kein Spiel etwas anhaben können.  </div>  <div class='prod-details para-small' itemprop='description' style='box-sizing: border-box; outline: 0px; margin: 0px; padding: 0px; border: 0px; font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; line-height: 24px; vertical-align: baseline; background: transparent; max-height: 999999px; color: rgb(54, 55, 56); width: 441.594px; float: left;'>  </div>  <ul class='bullets_list para-small' style='box-sizing: border-box; outline: 0px; margin-right: 0px; margin-bottom: 0px; margin-left: 16px; padding: 0px; border: 0px; font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; line-height: 20px; vertical-align: baseline; background: transparent; max-height: 999999px; list-style-position: initial; list-style-image: initial; color: rgb(54, 55, 56); width: 441.594px; float: right;'>    <li style='box-sizing: border-box; outline: 0px; margin: 0px; padding: 0px; border: 0px; font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; font-size: inherit; line-height: 24px; font-family: inherit; vertical-align: baseline; background: transparent; max-height: 999999px;'>Handgenäht für hohe Strapazierfähigkeit und gutes Ballgefühl</li>    <li style='box-sizing: border-box; outline: 0px; margin: 0px; padding: 0px; border: 0px; font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; font-size: inherit; line-height: 24px; font-family: inherit; vertical-align: baseline; background: transparent; max-height: 999999px;'>FIFA-Höchstwertung: Der Ball hat Tests in den Kategorien Gewicht, Wasseraufnahme, Form- und Größenbeständigkeit erfolgreich bestanden</li>    <li style='box-sizing: border-box; outline: 0px; margin: 0px; padding: 0px; border: 0px; font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; font-size: inherit; line-height: 24px; font-family: inherit; vertical-align: baseline; background: transparent; max-height: 999999px;'>Latex-Blase für optimales Rücksprungverhalten</li>    <li style='box-sizing: border-box; outline: 0px; margin: 0px; padding: 0px; border: 0px; font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; font-size: inherit; line-height: 24px; font-family: inherit; vertical-align: baseline; background: transparent; max-height: 999999px;'>100 % Polyurethan</li>  </ul></div>";
+                    x.Price = 59.90M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion product Adidas TANGO SALA BALL
+
+                #endregion category Soccer
+
+                #region category Sunglasses
+
+                #region product Radar EV Prizm Sports Sunglasses
+
+                .Alter("Radar EV Prizm Sports Sunglasses", x =>
+                {
+                    x.Name = "Radar EV Prizm Sports Sonnenbrille";
+                    x.ShortDescription = "";
+                    x.FullDescription = "<p><strong>RADAR&nbsp;EV PATH&nbsp;PRIZM&nbsp;ROAD</strong></p><p>Ein neuer Meilenstein in der Geschichte des Performance-Designs: Die Radar® EV setzt den Innovationen eines ohnehin schon revolutionären Designs mit einem größeren Glas für ein erweitertes Blickfeld nach oben noch eins drauf. Vom Komfort und Schutz des Rahmens aus O Matter® bis zum griffigen Halt der Unobtainium®-Komponenten ist dieses Premium-Design im innovativen und stilvollen Erbe der Radar verwurzelt.</p><p><strong>EIGENSCHAFTEN</strong></p><ul>  <li>PRIZM™ ist eine neue Glastechnologie von Oakley, die die Sicht für spezielle Sportarten und Umgebungsbedingungen optimiert.</li>  <li>Path-Gläser für eine bessere Performance gegenüber traditionellen Gläsern, die Ihre Wangen berühren, und ein erweitertes Blickfeld</li>  <li>Speziell konstruiert für maximalen Luftstrom zur kühlenden Belüftung</li>  <li>Ohrbügel und Nasenpads aus Unobtainium® für einen sicheren Sitz der Gläser, der sich bei Schweiß sogar verstärkt</li>  <li>Wechselglassystem für sekundenschnelles Auswechseln der Gläser zur optimalen Sichtanpassung an jedes Sportumfeld</li></ul>";
+                    //x.Price = 29.90M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion product Radar EV Prizm Sports Sunglasses
+
+                #region product Custom Flak Sunglasses
+
+                .Alter("Custom Flak Sunglasses", x =>
+                {
+                    x.Name = "Custom Flak® Sportsonnenbrille";
+                    x.ShortDescription = "";
+                    x.FullDescription = "Jede Brille wird  in Handarbeit für Sie zusammengesetzt.";
+                    //x.Price = 29.90M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion product Custom Flak Sunglasses
+
+                #region product Rayban Top bar
+
+                .Alter("Ray-Ban Top Bar RB 3183", x =>
+                {
+                    x.Name = "Ray-Ban Top Bar RB 3183";
+                    x.ShortDescription = "";
+                    x.FullDescription = "<p>Die Sonnenbrille Ray-Ban ® RB3183 mir ihrer aerodynamischen Form eine reminiszenzist an Geschwindigkeit. Eine rechteckige Form und das auf den</p><p>Bügeln aufgedruckte klassische Ray-Ban Logo zeichnet dieses leichte Halbrand-Modell aus.</p>";
+                    //x.Price = 29.90M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion product Rayban Top bar
+
+                #region product ORIGINAL WAYFARER AT COLLECTION
+
+                .Alter("ORIGINAL WAYFARER AT COLLECTION", x =>
+                {
+                    //x.Name = "ORIGINAL WAYFARER AT COLLECTION";
+                    x.ShortDescription = "Die Ray-Ban Original Wayfarer ist der bekannteste Style in der Geschichte der Sonnenbrillen. Mit dem original Design von 1952 ist die Wayfarer bei Prominenten, Musikern, Künstlern und Mode Experten beliebt. ";
+                    x.FullDescription = "";
+                    //x.Price = 29.90M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion product ORIGINAL WAYFARER AT COLLECTION
+
+                #endregion category Sunglasses
+
+                #region category Basketball
+
+                #region product Wilson Evolution High School Game Basketball
+
+                .Alter("Evolution High School Game Basketball", x =>
+                {
+                    //x.Name = "Radar EV Prizm Sports Sonnenbrille";
+                    x.ShortDescription = "Für alle Positionen auf allen Spielstufen, Spieltag und jeden Tag";
+                    x.FullDescription = "<p>Die Wilson Evolution High School Spiel Basketball hat exklusive Mikrofaser-Composite-Leder-Konstruktion mit tiefen geprägten Kieselsteinen, um Ihnen die ultimative in Gefühl und Kontrolle.</p><p>Die patentierte Cushion Core Technologie erhöht die Haltbarkeit für längeres Spiel.</p><p>Diese Mikrofaser-Composite Evolution High School Basketball ist mit Composite-Kanäle für besseren Griff kieselig, hilft Spieler heben ihr Spiel auf die nächste Ebene.</p><p>Für alle Positionen auf allen Spielstufen, Spieltag und jeden Tag, liefert Wilson die Skill-Building-Performance, die Spieler verlangen. Diese Registern-Größe 29,5 'Wilson Basketball ist ein idealer Basketball für High-School - Spieler, und ist entweder für Freizeit - Nutzung oder für Liga - Spiele konzipiert.</ p >< p > Es ist NCAA und NFHS genehmigt, so dass Sie wissen, es ist ein qualitativ hochwertiger Basketball, der Ihnen helfen wird hone Ihr Shooting, Passing und Ball - Handling - Fähigkeiten.</ p >< p > Nehmen Sie Ihr Team den ganzen Weg zur Meisterschaft mit dem Wilson Evolution High School Game Basketball.</ p > ";
+                    //x.Price = 29.90M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion product Wilson Evolution High School Game Basketball
+
+                #region product All Court Basketball
+
+                .Alter("All-Court Basketball", x =>
+                {
+                    //x.Name = "Custom Flak® Sportsonnenbrille";
+                    x.ShortDescription = "Ein langlebiger Basketball für alle Oberflächen";
+                    x.FullDescription = "<p></p><div>  <h2>All-Court Prep Ball  </h2>  <h4>Ein langlebiger Basketball für alle Oberflächen  </h4>  <div class='product-details-description clearfix'>    <div class='prod-details para-small' itemprop='description'>    </div>    <div class='prod-details para-small' itemprop='description'>Ob auf Parkett oder auf Asphalt – der adidas All-Court Prep Ball hat nur ein Ziel: den Korb. Dieser Basketball besteht aus langlebigem Kunstleder, was ihn sowohl für Hallenplätze als auch für Spiele im Freien prädestiniert.    </div>    <div class='prod-details para-small' itemprop='description'>    </div>    <ul class='bullets_list para-small'>      <li>Verbundüberzug aus Kunstleder</li>      <li>Für drinnen und draußen geeignet</li>      <li>Wird unaufgepumpt geliefert</li>    </ul>  </div></div>";
+                    //x.Price = 29.90M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion product All Court Basketball
+
+                #endregion category Basketball
+
+                #region category Gift Cards
+                .Alter("$10 Virtual Gift Card", x =>
 				{
-					x.Name = "5 € Geschenkgutschein";
+					x.Name = "10 € Geschenkgutschein";
 					x.ShortDescription = "5 € Geschenkgutschein. Eine ideale Geschenkidee.";
 					x.FullDescription = "<p>Wenn in letzter Minute mal wieder ein Geschenk fehlt oder man nicht weiß, was man schenken soll, dann bietet sich der Kauf eines Geschenkgutscheins an.</p>";
 				})
@@ -3090,19 +3242,26 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.FullDescription = "<p>Wenn in letzter Minute mal wieder ein Geschenk fehlt oder man nicht weiß, was man schenken soll, dann bietet sich der Kauf eines Geschenkgutscheins an.</p>";
 				})
 
-				#endregion
+                .Alter("$100 Virtual Gift Card", x =>
+                {
+                    x.Name = "100 € Geschenkgutschein";
+                    x.ShortDescription = "100 € Geschenkgutschein. Eine ideale Geschenkidee.";
+                    x.FullDescription = "<p>Wenn in letzter Minute mal wieder ein Geschenk fehlt oder man nicht weiß, was man schenken soll, dann bietet sich der Kauf eines Geschenkgutscheins an.</p>";
+                })
 
-				#region Bücher
+                #endregion
 
-				#region SPIEGEL-Bestseller
+                #region Bücher
+
+                #region SPIEGEL-Bestseller
                 .Alter("Überman: The novel", x =>
 				{
 					x.Name = "Überman: Der Roman";
 					x.ShortDescription = "Gebundene Ausgabe";
 					x.FullDescription = "<p> Nach Der Schatten des Windes und Das Spiel des Engels der neue große Barcelona-Roman von Carlos Ruiz Zafón. - Barcelona, Weihnachten 1957. Der Buchhändler Daniel Sempere und sein Freund Fermín werden erneut in ein großes Abenteuer hineingezogen. In der Fortführung seiner Welterfolge nimmt Carlos Ruiz Zafón den Leser mit auf eine fesselnde Reise in sein Barcelona. Unheimlich und spannend, mit unglaublicher Sogkraft und viel Humor schildert der Roman die Geschichte von Fermín, der 'von den Toten auferstanden ist und den Schlüssel zur Zukunft hat'. Fermíns Lebensgeschichte verknüpft die Fäden von Der Schatten des Windes mit denen aus Das Spiel des Engels. Ein meisterliches Vexierspiel, das die Leser rund um die Welt in Bann hält. </p> <p> Produktinformation<br> Gebundene Ausgabe: 416 Seiten<br> Verlag: S. Fischer Verlag; Auflage: 1 (25. Oktober 2012)<br> Sprache: Deutsch<br> ISBN-10: 3100954025<br> ISBN-13: 978-3100954022<br> Originaltitel: El prisionero del cielo<br> Größe und/oder Gewicht: 21,4 x 13,6 x 4,4 cm<br> </p>";
 					x.Price = 16.99M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == TaxNameBooks).Single().Id;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories[TaxNameBooks].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3110,8 +3269,6 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 				})
 
@@ -3123,8 +3280,8 @@ namespace SmartStore.Web.Infrastructure.Installation
 				{
 					x.ShortDescription = "Mehr als 100 regionale Favoriten Grill-Rezepte getestet und und für den Freiluft-Koch perfektioniert";
 					x.Price = 16.99M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == TaxNameBooks).Single().Id;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories[TaxNameBooks].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3132,8 +3289,6 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 				})
 
@@ -3144,8 +3299,8 @@ namespace SmartStore.Web.Infrastructure.Installation
 					//x.FullDescription = "<p> Nach Der Schatten des Windes und Das Spiel des Engels der neue große Barcelona-Roman von Carlos Ruiz Zafón. - Barcelona, Weihnachten 1957. Der Buchhändler Daniel Sempere und sein Freund Fermín werden erneut in ein großes Abenteuer hineingezogen. In der Fortführung seiner Welterfolge nimmt Carlos Ruiz Zafón den Leser mit auf eine fesselnde Reise in sein Barcelona. Unheimlich und spannend, mit unglaublicher Sogkraft und viel Humor schildert der Roman die Geschichte von Fermín, der 'von den Toten auferstanden ist und den Schlüssel zur Zukunft hat'. Fermíns Lebensgeschichte verknüpft die Fäden von Der Schatten des Windes mit denen aus Das Spiel des Engels. Ein meisterliches Vexierspiel, das die Leser rund um die Welt in Bann hält. </p> <p> Produktinformation<br> Gebundene Ausgabe: 416 Seiten<br> Verlag: S. Fischer Verlag; Auflage: 1 (25. Oktober 2012)<br> Sprache: Deutsch<br> ISBN-10: 3100954025<br> ISBN-13: 978-3100954022<br> Originaltitel: El prisionero del cielo<br> Größe und/oder Gewicht: 21,4 x 13,6 x 4,4 cm<br> </p>";
 
 					x.Price = 27.00M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == TaxNameBooks).Single().Id;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories[TaxNameBooks].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3153,8 +3308,6 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 				})
 
@@ -3167,8 +3320,8 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.ShortDescription = "Gebundene Ausgabe";
 					x.FullDescription = "<p> Für manche ist das Auto nur ein nützliches Fortbewegungsmittel.<br> Für alle anderen gibt es 'Autos - Das ultimative Handbuch' des Technik-Kenners Michael Dörflinger. Mit authentischen Bildern, allen wichtigen Daten und jeder Menge Infos präsentiert es die schnellsten, die innovativsten, die stärksten, die ungewöhnlichsten und die erfolgreichsten Exemplare der Automobilgeschichte. Ein umfassendes Handbuch zum gezielten Nachschlagen und ausgiebigen Schmökern. </p>";
 					x.Price = 14.95M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == TaxNameBooks).Single().Id;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories[TaxNameBooks].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3176,8 +3329,6 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 				})
 
@@ -3187,8 +3338,8 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.ShortDescription = "Gebundene Ausgabe";
 					x.FullDescription = "<p> Motorräder stehen wie kein anderes Fortbewegungsmittel für den großen Traum von Freiheit und Abenteuer. Dieser reich illustrierte Bildatlas porträtiert in brillanten Farbfotografien und informativen Texten die berühmtesten Zweiräder der Motorradgeschichte weltweit. Von der urtümlichen Dampfmaschine unter dem Fahrradsattel des ausgehenden 19. Jahrhunderts bis hin zu den kraftstrotzenden, mit modernster Elektronik und Computertechnik ausgestatteten Superbikes unserer Tage zeichnet er ein eindrucksvolles Bild der Entwicklung und Fabrikation edler und rasanter Motorräder. Dem Mythos des motorisierten Zweirads wird dabei ebenso nachgegangen wie dem Motorrad als modernem Lifestyle-Produkt unserer Zeit. Länderspezifische Besonderheiten, firmenhistorische Hintergrundinformationen sowie spannende Geschichten und Geschichtliches über die Menschen, die eine der wegweisendsten Erfindungen der letzten Jahrhunderte vorantrieben und weiterentwickelten, machen diesen umfangreichen Bildband zu einem unvergleichlichen Nachschlagewerk für jeden Motorradliebhaber und Technikbegeisterten. </p> <p> • Umfassende Geschichte der legendärsten Modelle aller bedeutenden Motorradhersteller weltweit<br> • Mit mehr als 350 brillanten Farbaufnahmen und fesselnden Hintergrundtexten<br> • Mit informativen Zeichnungen, beeindruckenden Detailaufnahmen und erläuternden Info-Kästen<br> </p> <p> Inhalt • 1817 1913: Die Anfänge einer Erfolgsgeschichte<br> • 1914 1945: Massenmobilität<br> • 1946 1990: Kampf um den Weltmarkt<br> • Ab 1991: Das moderne Motorrad<br> • Kultobjekt Motorrad: Von der Fortbewegung zum Lifestyle<br> </p>";
 					x.Price = 14.99M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == TaxNameBooks).Single().Id;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories[TaxNameBooks].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3196,8 +3347,6 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 				})
 
@@ -3207,8 +3356,8 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.ShortDescription = "Gebundene Ausgabe";
 					x.FullDescription = "<p> Marken, Modelle, Meilensteine<br> Das Auto - für manche ein Gebrauchsgegenstand, für andere Ausdruck des Lebensstils, Kultobjekt und große Leidenschaft. Nur wenige Erfindungen haben das Leben so verändert wie die des Automobils vor gut 125 Jahren - ein Grund mehr für diese umfangreiche Chronik. Das Auto-Buch lässt die Geschichte des Automobils lebendig werden. Es stellt über 1200 wichtige Modelle vor - von Karl Benz' Motorwagen über legendäre Kultautos bis zu modernsten Hybridfahrzeugen. Es erklärt die Meilensteine der Motortechnik und porträtiert die großen Marken und ihre Konstrukteure. Steckbriefe vom Kleinwagen bis zur Limousine und schicken Rennwagen jeder Epoche laden zum Stöbern und Entdecken ein. Der umfassendste und bestbebildert Bildband auf dem Markt - darüber freut sich jeder Autoliebhaber! </p> <p> Gebundene Ausgabe: 360 Seiten<br> Verlag: Dorling Kindersley Verlag (27. September 2012)<br> Sprache: Deutsch<br> ISBN-10: 3831022062<br> ISBN-13: 978-3831022069<br> Größe und/oder Gewicht: 30,6 x 25,8 x 2,8 cm<br> </p>";
 					x.Price = 29.95M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == "Ermäßigt").Single().Id;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories["Ermäßigt"].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3216,8 +3365,6 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 				})
 
@@ -3227,8 +3374,8 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.ShortDescription = "Spiralbindung";
 					x.FullDescription = "<p> Großformat: 48,5 x 34 cm.<br> Dieser imposante Bildkalender mit silberner Ringbindung begeistert mit eindrucksvollen Aufnahmen von exklusiven Sportwagen. Wer Autos nicht nur als reine Nutzfahrzeuge begreift, findet hier die begehrtesten Statussymbole überhaupt: Die schnellen Fahrzeuge sind wirkungsvoll auf den gestochen scharfen, farbintensiven Fotos in Szene gesetzt und vermitteln Freiheit, Geschwindigkeit, Stärke und höchste technische Vollkommenheit. </p> <p> Angefangen vom 450 PS-starken Maserati GranTurismo MC Stradale über den stilvoll-luxuriösen Aston Martin Virage Volante bis zu dem nur in geringen Stückzahlen produzierten Mosler MT900S Photon begleiten die schnellen Flitzer mit Stil und Eleganz durch die Monate. Neben dem Kalendarium lenkt ein weiteres Foto den Blick auf sehenswerte Details. Dazu gibt es die wesentlichen Informationen zu jedem Sportwagen in englischer Sprache. Nach Ablauf des Jahres sind die hochwertigen Fotos eingerahmt ein absoluter Blickfang an der Wand eines jeden Liebhabers schneller Autos. Auch als Geschenk ist dieser schöne Jahresbegleiter wunderbar geeignet. 12 Kalenderblätter, neutrales und dezent gehaltenes Kalendarium. Gedruckt auf Papier aus nachhaltiger Forstwirtschaft. </p> <p> Für Freunde von luxuriösen Oldtimern ebenfalls bei ALPHA EDITION erhältlich: der großformatige Classic Cars Bildkalender 2013: ISBN 9783840733376. </p> <p> Produktinformation<br> Spiralbindung: 14 Seiten<br> Verlag: Alpha Edition (1. Juni 2012)<br> Sprache: Deutsch<br> ISBN-10: 3840733383<br> ISBN-13: 978-3840733383<br> Größe und/oder Gewicht: 48,8 x 34,2 x 0,6 cm<br> </p>";
 					x.Price = 16.95M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == "Ermäßigt").Single().Id;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories["Ermäßigt"].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3236,8 +3383,6 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 				})
 
@@ -3246,9 +3391,9 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.Name = "Motorrad-Abenteuer: Fahrtechnik für Reise-Enduros";
 					x.ShortDescription = "Gebundene Ausgabe";
 					x.FullDescription = "<p> Moderne Reise-Enduros sind ideale Motorräder für eine Abenteuerreise. Ihre Technik ist jedoch komplex, ihr Gewicht beträchtlich. Das Fahrverhalten verändert sich je nach Zuladung und Strecke. Bevor die Reise losgeht, sollte man unbedingt ein Fahrtraining absolvieren. <br> Dieses hervorragend illustrierte Praxisbuch zeigt anhand vieler aussagekräftiger Serienfotos das richtige Fahren im Gelände in Sand und Schlamm, auf Schotter und Fels mit Gepäck und ohne. Neben dem Fahrtraining werden zahlreiche Informationen und Tipps zur Auswahl des richtigen Motorrades, zur Reiseplanung und zu praktischen Fragen unterwegs gegeben. </p>";
-					x.Price = 44.90M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == "Ermäßigt").Single().Id;
+					//x.Price = 44.90M;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories["Ermäßigt"].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3256,27 +3401,43 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 				})
 
-				#endregion Books : cars and motorcycles
+                #endregion Books : cars and motorcycles
 
-				#endregion Bücher
+                .Alter("The Prisoner of Heaven: A Novel", x =>
+                {
+                    x.Name = "Der Gefangene des Himmels";
+                    x.ShortDescription = "Gebundene Ausgabe";
+                    x.FullDescription = "<p>Der Gefangene des Himmels ist ein Roman des spanischen Autors Carlos Ruiz Zafón. </p><p>Er erschien 2011 bei Planeta S.A. in Barcelona unter dem Titel El prisionero del cielo.</p><p> Die deutsche Übersetzung stammt von Peter Schwaar und erschien 2012 im S. Fischer Verlag Frankfurt/Main. Der Roman ist der dritte Teil der Romantetralogie Friedhof der vergessenen Bücher, die noch die Bände Der Schatten des Windes, Das Spiel des Engels und Das Labyrinth der Lichter umfasst. Die wichtigsten Personen sind aus den beiden vorangegangenen Bänden bereits vertraut. Der dritte Roman beschreibt ihr Leben in den Jahren 1957–60 sowie in Rückblenden in den Jahren 1939–41./<p>";
+                    //x.Price = 22.99M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Ermäßigt"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                })
 
-				#region computer
+                #endregion Bücher
 
-				#region computer-desktops
+                #region computer
 
-				#region Dell Inspiron One 23
+                #region computer-desktops
+
+                #region Dell Inspiron One 23
                 .Alter("Dell Inspiron One 23", x =>
 				{
 					x.ShortDescription = "Dieser 58 cm (23'')-All-in-One-PC mit Full HD, Windows 8 und leistungsstarken Intel® Core™ Prozessoren der dritten Generation ermöglicht eine praktische Interaktion mit einem Touchscreen.";
 					x.FullDescription = "<p>Extrem leistungsstarker All-in-One PC mit Windows 8, Intel® Core™ i7 Prozessor, riesiger 2TB Festplatte und Blu-Ray Laufwerk.  </p>  <p>  Intel® Core™ i7-3770S Prozessor ( 3,1 GHz, 6 MB Cache) Windows 8 64bit , Deutsch<br> 8 GB1 DDR3 SDRAM bei 1600 MHz<br> 2 TB-Serial ATA-Festplatte (7.200 U/min)<br> 1GB AMD Radeon HD 7650<br> </p>";
 					x.Price = 589.00M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == "Normal").Single().Id;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories["Normal"].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3284,8 +3445,6 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 				})
 				#endregion Dell Inspiron One 23
@@ -3296,8 +3455,8 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.ShortDescription = "SONDERANGEBOT: Zusätzliche 50 € Rabatt auf alle Dell OptiPlex Desktops ab einem Wert von 549 €. Online-Coupon: W8DWQ0ZRKTM1, gültig bis 4.12.2013";
 					x.FullDescription = "<p>Ebenfalls im Lieferumfang dieses Systems enthalten</p> <p> 1 Jahr Basis-Service - Vor-Ort-Service am nächsten Arbeitstag - kein Upgrade ausgewählt Keine Asset-Tag erforderlich</p> <p> Die folgenden Optionen sind in Ihren Auftrag aufgenommene Standardauswahlen.<br> German (QWERTZ) Dell KB212-B QuietKey USB Keyboard Black<br> X11301001<br> WINDOWS LIVE<br> OptiPlex™ Bestellung - Deutschland<br> OptiPlex™ Intel® Core™ i3 Aufkleber<br> Optische Software nicht erforderlich, Betriebssystemsoftware ausreichend<br> </p>";
 					x.Price = 419.00M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == "Normal").Single().Id;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories["Normal"].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3305,8 +3464,6 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 				})
 				#endregion Dell Optiplex 3010 DT Base
@@ -3321,8 +3478,8 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.ShortDescription = "Acer definiert mit dem Aspire One mobile Konnektivität neu, dem revolutionären Spaß und Power Netbook in der zierlichen 8.9\" Größe. ";
 					x.FullDescription = "<p> Von der Betätigung des Powerknopfes an, ist das Aspire One in nur wenigen Sekunden betriebsbereit. Sobald an, ist die Arbeit sehr einfach: ein Heimarbeitsplatz der die heute benötigten vier Bereiche abdeckt, verbunden bleiben, arbeiten, spielen und Ihr Leben unterwegs organisieren. Und der Aspire One ist etwas Besonderes, Sie können alles so individualisieren das es für Sie das Richtige ist. Schnell, einfach und unbeschreiblich schick. Ihr Style ist Ihre Unterschrift. Es ist Ihre Identität, Ihre Persönlichkeit und Ihre Visitenkarte. Ihr Style zeigt Ihrer Umwelt wie Sie sind und wie Sie Ihr Leben leben, online und offline. Das alles benötigen Sie, um Sie selbst zu sein. Ihr Style kommt in verschiedenen Farben, jede mit einem individuellen Charakter. Kleiner als ein durchschnittliches Tagebuch, das Aspire One bringt Freiheit in Ihre Hände. </p> <p> Allgemein<br> Betriebssystem: Microsoft Windows XP Home Edition, Linux Linpus Lite <br> Herstellergarantie: 1 Jahr Garantie<br> Systemtyp: Netbook<br> MPN: LU.S080B.069, LU.S050B.081, LU.S040B.079, LU.S090B.079, LU.S040B.198, LU.S040A.048, LU.S050A.050, LU.S050B.080, LU.S040B.078, 099915639, LU.S050A.074, LU.S360A.203, LU.S450B.030, LU.S050B.159<br> Speicher<br> RAM: 1 GB ( 1 x 512 MB + 512 MB (integriert) ), 1 GB<br> Max. unterstützter RAM-Speicher: 1.5 GB<br> Technologie: DDR2 SDRAM<br> Geschwindigkeit: 533 MHz   <br> Formfaktor: SO DIMM 200-polig  <br> Anz. Steckplätze: 1<br> Leere Steckplätze: 0, 1<br> Display<br> Typ: 22.6 cm ( 8.9\" )<br> Auflösung: 1024 x 600 ( WSVGA )<br> Breitwand: Ja<br> LCD-Hintergrundbeleuchtung: LED-Hintergrundbeleuchtung     <br> Farbunterstützung: 262.144 Farben, 24 Bit (16,7 Millionen Farben)<br> Besonderheiten: CrystalBrite<br> Batterie<br> Betriebszeit: Bis zu 7 Stunden, Bis zu 3 Stunden<br> Kapazität: 2600 mAh, 2200 mAh<br> Technologie: 6 Zellen Lithium-Ionen, 3 Zellen Lithium-Ionen, Lithium-Ionen<br> Herstellergarantie<br> Service & Support:<br> Reisegarantie - 1 Jahr, Begrenzte Garantie - 1 Jahr, Internationale Garantie - 1 Jahr<br> Begrenzte Garantie - 1 Jahr, Reisegarantie - 1 Jahr<br> Begrenzte Garantie - 1 Jahr, Begrenzte Garantie - 1 Jahr<br> Reisegarantie - 1 Jahr<br> Navigation<br>Empfänger: GPS<br></p>";
 					x.Price = 210.60M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == "Normal").Single().Id;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories["Normal"].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3330,8 +3487,6 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 				})
 				#endregion Acer Aspire One 8.9
@@ -3340,17 +3495,17 @@ namespace SmartStore.Web.Infrastructure.Installation
 
 				#endregion computer
 
-				#region SmartPhones
+				#region Apple
 				
 				#region Apple iPhone
 				
-				.Alter("Apple iPhone 6", x =>
+				.Alter("iPhone Plus", x =>
 				{
-					x.ShortDescription = "Apple iPhone 6 Simlock frei Neu";
-					x.FullDescription = "<p>Das iPhone 6 ist nicht einfach nur größer. Es ist wirklich in allem besser. Es ist länger und breiter, aber deutlich dünner. Leistungsstärker, aber unglaublich energieeffizient. Seine glatte Oberfläche aus Metall schließt nahtlos an das neue Retina HD Display an. So entsteht eine durchgehende Form, in der Hardware und Software in perfekter Einheit zusammenarbeiten – für eine neue iPhone Generation, die nach allen Maßstäben besser ist.</p><p>Das iPhone 6 kommt mit einem A8 Chip auf Basis einer 64 Bit Desktoparchitektur der zweiten Generation. Seine unglaubliche Leistung wird durch einen M8 Motion Coprozessor erweitert, der Aktivität mit fortschrittlichen Sensoren ermittelt, darunter auch ein neues Barometer.</p><p>Mit keiner anderen Kamera werden von so vielen Menschen so viele Fotos gemacht wie mit dem iPhone. Jetzt hat die iSight Kamera einen neuen Sensor mit Focus Pixels und neue Videofunktionen wie 1080p HD Videos mit 60 Bildern pro Sekunde, Zeitlupenvideos mit 240 Bildern pro Sekunde und Zeitraffervideo.</p><p><ul><li>Abmessungen (HxBxT)	138.1 x 67 x 6.9 Millimeter</li><li>Gewicht	129 Gramm</li><li>Strahlungswert (SAR-Wert)	unbekannt</li><li>Erscheinungstermin	09/2014</li><li>Betriebssystem	Apple iOS</li><li>Systemversion	8.0</li><li>Netzstandards	GSM1800 GSM1900 GSM850 GSM900W-CDMA (UMTS)</li><li>Flugzeugmodus	ja</li><li>Akku-Typ	Li-Ionen</li><li>Akkuleistung	1810 mAh</li><li>max. Bereitschaftszeit	250 Stunden</li><li>max. Sprechzeit	840 Minuten</li></ul></p>";
-					x.Price = 579.00M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == "Normal").Single().Id;
+					x.ShortDescription = "Das ist iPhone. Das iPhone macht vieles von dem, was das iPhone zum iPhone macht, noch einmal viel besser. Es hat fortschrittliche neue Kamerasysteme. Die beste Leistung und Batterielaufzeit, die ein iPhone je hatte. Beeindruckende Stereo-Lautsprecher. Das hellste iPhone Display. Mit noch mehr Farben. Schutz vor Spritzwasser. Und es sieht so großartig aus, wie es ist. Das ist das iPhone.";
+					x.FullDescription = "";
+					x.Price = 799.00M;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories["Normal"].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3358,19 +3513,80 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 					x.ProductReviews.Clear();
 				})
-				#endregion Apple iPhone
+                #endregion Apple iPhone
 
-				#endregion SmartPhones
+                #region Airpods
 
-				#region Instant Downloads
-				
+                .Alter("AirPods", x =>
+                {
+                    x.ShortDescription = "Einfach. Kabellos. Magisch.Du nimmst sie aus dem Case und sie sind bereit für all deine Geräte. Du steckst sie in die Ohren und sie verbinden sich sofort. Du sprichst hinein und deine Stimme ist klar zu verstehen. Die neuen AirPods. Einfachheit und Technologie, verbunden wie nie zuvor. Für ein Ergebnis, das einfach magisch ist.";
+                    x.FullDescription = "<p>  <br />  Die AirPods verändern für immer, wie du Kopfhörer verwendest. Wenn du deine AirPods aus dem Ladecase nimmst, schalten sie sich ein und verbinden sich mit deinem iPhone, iPad, Mac oder deiner Apple Watch.(1) Audio wird automatisch wiedergegeben, sobald du sie im Ohr hast, und pausiert, wenn du sie herausnimmst. Um die Lautstärke anzupassen, den Song zu wechseln, jemanden anzurufen oder dir den Weg sagen zu lassen, aktiviere einfach Siri mit einem Doppeltipp.  <br />  Die AirPods werden vom speziell entwickelten Apple W1 Chip gesteuert und erkennen durch optische Sensoren und einen Beschleunigungssensor, ob sie in deinem Ohr sind. Der W1 Chip leitet die Audiosignale automatisch weiter und aktiviert das Mikrofon – egal, ob du beide oder nur einen verwendest. Und wenn du gerade telefonierst oder mit Siri sprichst, filtert ein weiterer Beschleunigungsmesser mit wellenbündelnden Mikrofonen Hintergrundgeräusche heraus und hebt deine Stimme hervor. Da der extrem energieeffiziente W1 Chip die Batterieleistung so gut steuert, bieten die AirPods eine einzigartige Wiedergabedauer von bis zu 5 Std. pro Aufladung.(2) Und dank des Ladecase, das mehrere zusätzliche Aufladungen für insgesamt über 24 Std. Wiedergabe bietet, halten sie locker bei allem mit, was du so machst.(3) Schnell mal aufladen? Nach nur 15 Minuten im Ladecase kannst du 3 Stunden Musik hören.(4)</p><p><strong>Technische Daten</strong>  <br />  Bluetooth  <br />  Drahtlose Technologien  <br />  <strong>Gewicht</strong>  <br />  AirPods (jeweils): 4 g  <br />  Ladecase: 38 g  <br />  <strong>Abmessungen</strong>  <br />  AirPods (jeweils): 16,5 x 18,0 x 40,5 mm  <br />  Ladecase: 44,3 x 21,3 x 53,5 mm  <br />  <strong>Anschlüsse</strong>  <br />  AirPods: Bluetooth  <br />  Ladecase: Lightning Connector  <br />  <strong>AirPods Sensoren (jeweils):</strong>  <br />  Zwei Beamforming Mikrofone  <br />  Zwei optische Sensoren  <br />  Bewegungsbeschleunigungsmesser  <br />  Stimmbeschleunigungsmesser  <br />  <strong>Stromversorgung und Batterie</strong>  <br />  AirPods mit Ladecase: Mehr als 24 Stunden Wiedergabe, (3) bis zu 11 Stunden Sprechdauer(6)  <br />  AirPods (einzelne Ladung): Bis zu 5 Stunden Wiedergabe,(2) bis zu 2 Stunden Sprechdauer(5)  <br />  15 Minuten im Case entspricht 3 Stunden Wiedergabe(4) oder mehr als 1 Stunde Sprechdauer(7)</p><p></p>";
+                    //x.Price = 799.00M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion Airpods
+
+                #region Ultimate Apple Pro Hipster Bundle
+
+                .Alter("Ultimate Apple Pro Hipster Bundle", x =>
+                {
+                    x.ShortDescription = "Sparen Sie mit diesem Set 5%!";
+                    x.FullDescription = "<p>Als Apple-Fan und Hipster ist es Ihr Grundbedürfnis immer die neusten Apple-Produkte zu haben.&nbsp;  <br />  Damit Sie nicht vier Mal im Jahr vor dem Apple-Store nächtigen müssen, abonnieren Sie einfach das <strong>Ultimate Apple Pro Hipster Set im Jahres Abo</strong>!</p><p></p>";
+                    //x.Price = 799.00M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion Ultimate Apple Pro Hipster Bundle
+
+                #region 9,7 iPad
+
+                .Alter("9,7' iPad", x =>
+                {
+                    x.ShortDescription = "Macht einfach Spaß. Lernen, spielen, surfen, kreativ werden. Mit dem iPad hast du ein unglaubliches Display, großartige Leistung und Apps für alles, was du gerne machst. Überall. Einfach. Magisch.";
+                    x.FullDescription = "<ul>  <li>9,7'' Retina Display mit True Tone und Antireflex-Beschichtung (24,63 cm Diagonale)</li>  <li>A9X Chip der dritten Generation mit 64-Bit Desktoparchitektur</li>  <li>Touch ID Fingerabdrucksensor</li></ul>";
+                    //x.Price = 799.00M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+                #endregion 9,7 iPad
+
+                #endregion Apple
+
+                #region Instant Downloads
+
                 #region Antonio Vivildi: then spring
-                
+
                 .Alter("Antonio Vivaldi: spring", x =>
 				{
 					x.Name = "Antonio Vivaldi: Der Frühling";
@@ -3400,11 +3616,11 @@ namespace SmartStore.Web.Infrastructure.Installation
                 .Alter("Certina DS Podium Big Size", x =>
 				{
 					x.Name = "Certina DS Podium Big Size Herrenchronograph";
-					x.ShortDescription = "C001.617.26.037.00";
+					x.ShortDescription = "Die Transocean Chronograph interpretiert die sachliche Ästhetik klassischer Chronografen der 1950er- und 1960er-Jahre in einem entschieden zeitgenössischen Stil neu. ";
 					x.FullDescription = "<p><strong>Produktbeschreibung</strong></p> <ul> <li>Artikelnr.: 3528 C001.617.26.037.00</li> <li>Certina DS Podium Big Size Herrenchronograph</li> <li>Schweizer ETA Werk</li> <li>Silberfarbenes Edelstahlgeh&auml;use mit schwarzer L&uuml;nette</li> <li>Wei&szlig;es Zifferblatt mit silberfarbenen Ziffern und Indizes</li> <li>Schwarzes Lederarmband mit Faltschliesse</li> <li>Kratzfestes Saphirglas</li> <li>Datumsanzeige</li> <li>Tachymeterskala</li> <li>Chronograph mit Stoppfunktion</li> <li>Durchmesser: 42 mm</li> <li>Wasserdichtigkeits -Klassifizierung 10 Bar (nach ISO 2281): Perfekt zum Schwimmen und Schnorcheln</li> <li>100 Tage Niedrigpreisgarantie, bei uhrzeit.org kaufen Sie ohne Preisrisiko!</li> </ul>";
 					x.Price = 479.00M;
-					x.DeliveryTime = base.DbContext.Set<DeliveryTime>().Where(dt => dt.DisplayOrder == 0).Single();
-					x.TaxCategoryId = base.DbContext.Set<TaxCategory>().Where(tc => tc.Name == "Normal").Single().Id;
+					x.DeliveryTime = _defaultDeliveryTime;
+					x.TaxCategoryId = _taxCategories["Normal"].Id;
 					x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
 					x.OrderMinimumQuantity = 1;
 					x.OrderMaximumQuantity = 10000;
@@ -3412,19 +3628,83 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.NotifyAdminForQuantityBelow = 1;
 					x.AllowBackInStockSubscriptions = false;
 					x.Published = true;
-					x.CreatedOnUtc = DateTime.UtcNow;
-					x.UpdatedOnUtc = DateTime.UtcNow;
 					x.IsShipEnabled = true;
 					x.ProductReviews.Clear();
 				})
 
-				#endregion Certina DS Podium Big Size
-				
+                #endregion Certina DS Podium Big Size
+
+                #region productTRANSOCEANCHRONOGRAPH 
+                .Alter("TRANSOCEAN CHRONOGRAPH", x =>
+                {
+                    //x.Name = "TRANSOCEAN CHRONOGRAPH";
+                    x.ShortDescription = "Die Transocean Chronograph interpretiert die sachliche Ästhetik klassischer Chronografen der 1950er- und 1960er-Jahre in einem entschieden zeitgenössischen Stil neu. ";
+                    x.FullDescription = "<p>Die Transocean Chronograph interpretiert die sachliche Ästhetik klassischer Chronografen der 1950er- und 1960er-Jahre in einem entschieden zeitgenössischen Stil neu. In ihrem auf das Wesentliche reduzierten, formschönen Gehäuse arbeitet das vollständig in den Breitling-Ateliers konzipierte und hergestellte Hochleistungskaliber 01.</p><p></p><table>  <tbody>    <tr>      <td style='width: 162px;'>Kaliber      </td>      <td style='width: 205px;'>Breitling 01 (Manufakturkaliber)      </td>    </tr>    <tr>      <td style='width: 162px;'>Werk      </td>      <td style='width: 205px;'>Mechanisch, Automatikaufzug      </td>    </tr>    <tr>      <td style='width: 162px;'>Gangreserve      </td>      <td style='width: 205px;'>Min. 70 Stunden      </td>    </tr>    <tr>      <td style='width: 162px;'>Chronograf      </td>      <td style='width: 205px;'>1/4-Sekunde, 30 Minuten, 12 Stunden      </td>    </tr>    <tr>      <td style='width: 162px;'>Halbschwingungen      </td>      <td style='width: 205px;'>28 800 a/h      </td>    </tr>    <tr>      <td style='width: 162px;'>Rubine      </td>      <td style='width: 205px;'>47 Rubine      </td>    </tr>    <tr>      <td style='width: 162px;'>Kalender      </td>      <td style='width: 205px;'>Fenster      </td>    </tr>  </tbody></table>";
+                    //x.Price = 479.00M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+
+                #endregion productTRANSOCEANCHRONOGRAPH
+
+                #region productTissotTTouchExpertSolar 
+                .Alter("Tissot T-Touch Expert Solar", x =>
+                {
+                    //x.Name = "TRANSOCEAN CHRONOGRAPH";
+                    x.ShortDescription = "Der Strahlenkranz der Tissot T-Touch Expert Solar auf dem Zifferblatt sorgt einerseits dafür, dass die mit Super-LumiNova® beschichteten Indexe und Zeiger im Dunkeln leuchten und lädt andererseits den Akku der Uhr. Dieses Modell ist in jeder Beziehung ein Kraftpaket.";
+                    x.FullDescription = "<p>Der T-Touch Expert Solar ist ein wichtiges neues Modell im Tissot Sortiment.</p><p>Tissots Pioniergeist ist das, was 1999 zur Schaffung von taktilen Uhren geführt hat.</p><p>Heute ist es der erste, der eine Touchscreen-Uhr mit Sonnenenergie präsentiert und seine Position als Marktführer in der taktilen Technologie in der Uhrmacherei bestätigt.</p><p>Extrem gut entworfen, zeigt es saubere Linien in Sport und zeitlose Stücke.</p><p>Angetrieben von Solarenergie mit 25 Features wie Wettervorhersage, Höhenmesser, zweite Zeitzone und Kompass ist es der perfekte Reisebegleiter.</p>";
+                    //x.Price = 479.00M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+
+                #endregion productTRANSOCEANCHRONOGRAPH
+
+                #region productSeikoSRPA49K1 
+                .Alter("Seiko Mechanical Automatic SRPA49K1", x =>
+                {
+                    x.Name = "Seiko Automatikuhr SRPA49K1";
+                    x.ShortDescription = "Der perfekte Begleiter für den Alltag! Die formschöne Automatikuhr besticht durch ansprechendes Design und ergänzt stilvoll nahezu jedes Outfit.";
+                    x.FullDescription = "<p><strong>Seiko 5 Sport Automatikuhr SRPA49K1 SRPA49</strong></p><p></p><ul>  <li>Unidirektionale drehbare Lünette</li>  <li>Tages- und Datumsanzeige</li>  <li>Siehe durch Fall zurück</li>  <li>100M Wasserresistenz</li>  <li>Edelstahlgehäuse</li>  <li>Automatische Bewegung</li>  <li>24 Juwelen</li>  <li>Kaliber: 4R36</li></ul>";
+                    //x.Price = 479.00M;
+                    x.DeliveryTime = _defaultDeliveryTime;
+                    x.TaxCategoryId = _taxCategories["Normal"].Id;
+                    x.ManageInventoryMethod = ManageInventoryMethod.DontManageStock;
+                    x.OrderMinimumQuantity = 1;
+                    x.OrderMaximumQuantity = 10000;
+                    x.StockQuantity = 10000;
+                    x.NotifyAdminForQuantityBelow = 1;
+                    x.AllowBackInStockSubscriptions = false;
+                    x.Published = true;
+                    x.IsShipEnabled = true;
+                    x.ProductReviews.Clear();
+                })
+
+                #endregion productSeikoSRPA49K1
+
                 #endregion watches
 
-				#region gaming
+                #region gaming
 
-				.Alter("Playstation 3 Super Slim", x =>
+                .Alter("Playstation 3 Super Slim", x =>
 				{
 					x.ShortDescription = "Die Sony PlayStation 3 ist die Multi-Media-Console für die nächste Generation digitalem Home-Entertainment. Mit der Blu-Ray-Technologie genießen Sie Filme in HD.";
 					x.FullDescription = ps3FullDescription;
@@ -3450,7 +3730,39 @@ namespace SmartStore.Web.Infrastructure.Installation
 					x.ShortDescription = "In Zusammenarbeit mit einigen der kreativsten Köpfe der Industrie entstanden, bietet die PlayStation® 4 atemberaubende und einzigartige Gaming-Erlebnis.";
 					x.FullDescription = ps4FullDescription;
 				})
-				.Alter("DUALSHOCK 4 Wireless Controller", x =>
+
+                .Alter("Playstation 4 Pro", x =>
+                {
+                    x.ShortDescription = "Die Sony PlayStation 4 Pro ist die Multi-Media-Konsole für die nächste Generation der digitalen Home Entertainment. Es bietet die Blu-ray-Technologie, mit der Sie Filme in High Definition genießen können.";
+                    x.FullDescription = ps4FullDescription;
+                })
+                .Alter("FIFA 17 - PlayStation 4", x =>
+                {
+                    x.ShortDescription = "Powered by Frostbite";
+                    x.FullDescription = "<ul>  <li>Powered by Frostbite: Einer der führenden Game-Engines der Branche, Frostbite liefert authentische, wahrheitsgetreue Action, nimmt Spieler auf neue Fußball-Welten und stellt Fans zu Charakteren voller Tiefe und Emotionen in der FIFA 17 vor.</li>  <li>Die Reise: Zum ersten Mal in der FIFA, lebe deine Geschichte auf und abseits des Platzes als der nächste aufsteigende Star der Premier League, Alex Hunter. Spielen Sie auf jedem Club in der Premier League, für authentische Manager und neben einigen der besten Spieler auf dem Planeten.</li>  <li>Erleben Sie brandneue Welten in der FIFA 17, während Sie sich durch die emotionalen Höhen und Tiefen der Reise bewegen.</li>  <li>Komplette Innovation in der Art und Weise, wie Spieler denken und bewegen, körperlich mit Gegnern interagieren und im Angriff ausführen, bringt euch die volle Kontrolle über jeden Moment auf dem Spielfeld.</li></ul>";
+                })
+                .Alter("Horizon Zero Dawn - PlayStation 4", x =>
+                {
+                    x.ShortDescription = "Erleben Sie eine lebendige, üppige Welt, die von geheimnisvollen mechanisierten Kreaturen bewohnt wird";
+                    x.FullDescription = "<Ul> <li> Eine üppige Post-Apokalyptische Welt - Wie haben Maschinen diese Welt dominiert und was ist ihr Zweck? Was ist mit der Zivilisation passiert? Scour jede Ecke eines Reiches mit alten Reliquien und geheimnisvollen Gebäuden gefüllt, um Ihre Vergangenheit aufzudecken und die vielen Geheimnisse eines vergessenen Landes zu entdecken. </ Li>  <li> Natur und Maschinen Collide - Horizon Zero Dawn stellt zwei kontrastierende Elemente vor, die eine lebendige Welt mit der wunderschönen Natur reichen und sie mit einer beeindruckenden hochentwickelten Technologie füllen. Diese Ehe schafft eine dynamische Kombination für Erkundung und Gameplay. </ Li> <li> Defy Overwhelming Odds - Die Gründung des Kampfes in Horizon Zero Dawn ist auf die Geschwindigkeit und Schlauheit von Aloy im Vergleich zu der Rohstärke und Größe der Maschinen gebaut. Um einen viel größeren und technologisch überlegenen Feind zu überwinden, muss Aloy jede Unze ihres Wissens, ihrer Intelligenz und ihrer Beweglichkeit nutzen, um jede Begegnung zu überleben. </ Li> <li> Cutting Edge Open World Tech - Atemberaubend detaillierte Wälder, Und atmosphärische Ruinen einer vergangenen Zivilisation verschmelzen in einer Landschaft, die mit wechselnden Wettersystemen und einem vollen Tag / Nacht-Zyklus lebendig ist. </ Li> </ ul>";
+                })
+                .Alter("LEGO Worlds - PlayStation 4", x =>
+                {
+                    x.ShortDescription = "Erleben Sie eine Galaxie von Welten, die ganz aus LEGO-Steinen hergestellt wurden.";
+                    x.FullDescription = "<Ul>   <Li> Erleben Sie eine Galaxie von Welten, die vollständig aus LEGO-Ziegeln hergestellt wurden. </ Li>   <Li> LEGO Worlds ist eine offene Umgebung von prozessual generierten Welten, die ganz aus LEGO-Steinen bestehen, die man mit LEGO-Modellen frei manipulieren und dynamisch bevölkern kann. </ Li>   <Li> Schaffen Sie alles, was Sie sich vorstellen können, einen Ziegelstein zu einer Zeit, oder verwenden Sie groß angelegte Landschafts-Werkzeuge, um riesige Gebirgszüge zu schaffen und Ihre Welt mit tropischen Inseln zu platzieren. </ Li>   <Li> Entdecken Sie mit Hubschraubern, Drachen, Motorrädern oder sogar Gorillas und entsperren Sie Schätze, die Ihr Gameplay verbessern. </ Li>   <Li> Beobachten Sie Ihre Kreationen durch Charaktere und Kreaturen, die mit Ihnen und einander in unerwarteter Weise interagieren, zum Leben. </ Li></ Ul><P></ P>";
+                })
+                .Alter("Minecraft - Playstation 4 Edition", x =>
+                {
+                    x.ShortDescription = "Third-Person Action-Abenteuer Titel Set.";
+                    x.FullDescription = "<P>Aufbau! Kunst! Erforschen! </p> <p> Die kritisch gefeierte Minecraft kommt zu PlayStation 4 und bietet größere Welten und größere Distanz als die PS3- und PS-Vita-Editionen. </ P> <p> Erstellen Sie Ihre eigene Welt, dann bauen Sie Erforschen und erobern Wenn die Nacht fällt die Monster erscheinen, so sicher sein, einen Schutz zu errichten, bevor sie ankommen. </ P> <p> Die Welt ist nur durch Ihre Phantasie begrenzt! Größere Welten und größere Distanz als PS3 und PS Vita Editions Beinhaltet alle Features aus der PS3-Version Importieren Sie Ihre PS3 und PS Vita Welten auf die PS4-Bearbeitung. </ P>";
+                })
+                .Alter("PlayStation 4 Minecraft Bundle", x =>
+                {
+                    x.ShortDescription = "100GB PlayStation®4 system, 2 × DUALSHOCK®4 wireless controller unf Minecraft für PS4 Edition.";
+                    x.FullDescription = "'<ul>  <li>PlayStation 4, die neueste Generation des Entertainment Systems, definiert reichhaltiges und beeindruckendes Gameplay, völlig neu.</li>  <li>Den Kern der PS4 bilden ein leistungsstarker, eigens entwickelter Chip mit acht x86-Kernen (64 bit) sowie ein hochmoderner optimierter Grafikprozessor.</li>  <li>Ein neuer, hochsensibler SIXAXIS-Sensor ermöglicht mit dem DualShock 4 Wireless Controller eine erstklassige Bewegungssteuerung.</li>  <li>Der DualShock 4 bietet als Neuerungen ein Touchpad, eine Share-Taste, einen eingebauten Lautsprecher und einen Headset-Anschluss.</li>  <li>PS4 integriert Zweitbildschirme, darunter PS Vita, Smartphones und Tablets, damit Spieler ihre Lieblingsinhalte überall hin mitnehmen können.</li></ul>";
+                })
+
+                .Alter("DUALSHOCK 4 Wireless Controller", x =>
 				{
 					x.ShortDescription = "Durch Kombination klassischer Steuerelemente mit innovativen neuen Möglichkeiten des Spielens, ist der Wireless Controller DUALSHOCK® 4 der evolutionäre Controller für eine neue Ära des Gaming.";
 					x.FullDescription = "<div><div><p>Der DualShock 4 Controller bietet einige neue Features, die völlig neue Wege des Spielens ermöglichen und wohlüberlegt mit Unterstützung aus der Entwickler-Community zusammengestellt wurden. Die “Share”-Taste erlaubt es Ihnen ganz einfach, Gameplay in Echtzeit über Streaming-Seiten wie Ustream zu veröffentlichen. Dort können andere Gamer Spiele kommentieren oder sogar direkt beitreten und aushelfen. Daneben können Sie über die “Share”-Taste Bilder oder Videos zu Facebook hochladen. Auf der Vorderseite des DualShock 4 befindet sich eine LED-Leuchte, die in unterschiedlichen Farben erstrahlen kann, um die Farbe des Charakters im Spiel abzubilden und einen Spieler so leicht zu identifizieren. Die Farben können dem Spieler auch nützliche Informationen liefern, zum Beispiel wenn der Charakter im Spiel Schaden nimmt.</p> <p>Der DualShock 4 wurde zusammen mit einem zweiten Peripherie-Gerät entwickelt, einer Kamera (nicht im Lieferumfang enthalten), die die Tiefe der Umgebung vor ihr wahrnehmen kann und die mithilfe der LED-Leuchte die Position des Controllers im dreidimensionalen Raum bestimmen kann.</p> <p>Der DualShock 4 bietet auf seiner Vorderseite ein Touchpad und somit eine neue Input-Methode. Zusätzlich gibt es einen eingebauten Lautsprecher und einen Headset-Anschluss, um hochklassige Soundeffekte aus den Spielen zu übertragen. Mithilfe eines Headsets (nicht im Lieferumfang enthalten) können Sie während des Online-Gamings mit Ihren Freunden chatten und Soundeffekte aus dem Controller hören können. Der DualShock 4 adaptiert die bekannte Form des kabellosen DualShock 3 Controllers und bietet einige entscheidende Verbesserungen:</p> <ul> <li>Ein neuer, hochsensibler SIXAXIS-Sensor ermöglicht eine erstklassige Bewegungssteuerung.</li> <li>Die Dual-Analogsticks wurden verbessert und bieten eine größere Präzision, ein besseres Material auf den Oberflächen sowie eine verbesserte Form, um eine noch genauere Steuerung zu ermöglichen.</li> <li>Die L2/R2-Tasten oben auf dem Controller wurden abgerundet und sind jetzt einfacher und flüssiger zu bedienen.</li> <li>Eine neue “Options”-Taste kombiniert die Funktionen der “Select”- und “Start”-Tasten auf dem DualShock 3 zur Steuerung der Ingame-Menüs.</li> </ul> <h4>Technische Spezifikationen</h4> <ul> <li>Außenabmessungen Ca. 162 × 52 × 98 mm (B × H × T) (vorläufig) </li><li>Gewicht Ca. 210 g (vorläufig) </li><li><b>Tasten / Schalter:</b> PS-Taste, SHARE-Taste, OPTIONS-Taste, Richtungstasten (oben/unten/links/rechts), Aktionstasten (Dreieck, Kreis, Kreuz, Quadrat), R1/L1/R2/L2-Taste, linker Stick / L3-Taste, rechter Stick / R3-Taste, Pad-Taste </li><li><b>Touchpad:</b> 2-Punkt-Touchpad, Klick-Mechanismus, kapazitiv</li> <li><b>Bewegungssensor:</b> Sechsachsiges Motion-Sensing-System (dreiachsiges Gyroskop, dreiachsiger Beschleunigungssensor) </li><li><b>Sonstige Funktionen:</b> Lichtbalken, Vibration, integrierter MonoLautsprecher</li> <li><b>Anschluss:</b> USB (Micro B), Erweiterungs-Port, Stereo-Kopfhörerbuchse </li><li><b>Wireless-Kommunikation:</b> Bluetooth 2.1+EDR</li> <li><b>Batterie:</b> Typ Eingebauter Lithium-Ionen-Akku</li> <li><b>Spannung:</b> 3,7 V Gleichspannung (vorläufig)</li> <li><b>Kapazität:</b> 1000 mAh (vorläufig)</li> <p></p> <p> <i>Kurzfristige Änderungen des Herstellers vorbehalten.</i> </p> </ul></div><div></div></div>";
@@ -3498,6 +3810,8 @@ namespace SmartStore.Web.Infrastructure.Installation
 
 				#endregion gaming
 
+				AlterFashionProducts(entities);
+				AlterFurnitureProducts(entities);
 			}
             catch (Exception ex)
             {
@@ -3565,6 +3879,129 @@ namespace SmartStore.Web.Infrastructure.Installation
                 {
                     x.Name = "7 Werktage";
                 });
+
+			_defaultDeliveryTime = entities.First();
+		}
+
+        protected override void Alter(IList<QuantityUnit> entities)
+        {
+            base.Alter(entities);
+
+            entities.WithKey(x => x.DisplayOrder)
+                .Alter(0, x =>
+                {
+                    x.Name = "Stück";
+                    x.NamePlural = "Stück";
+                    x.Description = "Stück";
+                })
+                .Alter(1, x =>
+                {
+                    x.Name = "Schachtel";
+                    x.NamePlural = "Schachteln";
+                    x.Description = "Schachtel";
+                })
+                .Alter(2, x =>
+                {
+                    x.Name = "Paket";
+                    x.NamePlural = "Pakete";
+                    x.Description = "Paket";
+                })
+                .Alter(3, x =>
+                {
+                    x.Name = "Palette";
+                    x.NamePlural = "Paletten";
+                    x.Description = "Palette";
+                })
+                .Alter(4, x =>
+                {
+                    x.Name = "Einheit";
+                    x.NamePlural = "Einheiten";
+                    x.Description = "Einheit";
+                })
+                .Alter(5, x =>
+                {
+                    x.Name = "Sack";
+                    x.NamePlural = "Säcke";
+                    x.Description = "Sack";
+                })
+                .Alter(6, x =>
+                {
+                    x.Name = "Tüte";
+                    x.NamePlural = "Tüten";
+                    x.Description = "Tüte";
+                })
+                .Alter(7, x =>
+                {
+                    x.Name = "Dose";
+                    x.NamePlural = "Dosen";
+                    x.Description = "Dose";
+                })
+                .Alter(8, x =>
+                {
+                    x.Name = "Packung";
+                    x.NamePlural = "Packungen";
+                    x.Description = "Packung";
+                })
+                .Alter(9, x =>
+                {
+                    x.Name = "Stange";
+                    x.NamePlural = "Stangen";
+                    x.Description = "Stange";
+                })
+                .Alter(10, x =>
+                {
+                    x.Name = "Flasche";
+                    x.NamePlural = "Flaschen";
+                    x.Description = "Flasche";
+                })
+                .Alter(11, x =>
+                {
+                    x.Name = "Glas";
+                    x.NamePlural = "Gläser";
+                    x.Description = "Glas";
+                })
+                .Alter(12, x =>
+                {
+                    x.Name = "Bund";
+                    x.NamePlural = "Bünde";
+                    x.Description = "Bund";
+                })
+                .Alter(13, x =>
+                {
+                    x.Name = "Rolle";
+                    x.NamePlural = "Rollen";
+                    x.Description = "Rolle";
+                })
+                .Alter(14, x =>
+                {
+                    x.Name = "Becher";
+                    x.NamePlural = "Becher";
+                    x.Description = "Becher";
+                })
+                .Alter(15, x =>
+                {
+                    x.Name = "Bündel";
+                    x.NamePlural = "Bündel";
+                    x.Description = "Bündel";
+                })
+                .Alter(16, x =>
+                {
+                    x.Name = "Fass";
+                    x.NamePlural = "Fässer";
+                    x.Description = "Fass";
+                })
+                .Alter(17, x =>
+                {
+                    x.Name = "Set";
+                    x.NamePlural = "Sets";
+                    x.Description = "Set";
+                })
+                .Alter(18, x =>
+                {
+                    x.Name = "Eimer";
+                    x.NamePlural = "Eimer";
+                    x.Description = "Eimer";
+                });
         }
 
 		protected override void Alter(IList<Store> entities)
@@ -3589,11 +4026,11 @@ namespace SmartStore.Web.Infrastructure.Installation
                 {
                     x.Name = "Geschenk";
                 })
-                .Alter("compact", x =>
-                {
-                    x.Name = "kompakt";
-                })
-                .Alter("cooking", x =>
+				.Alter("book", x =>
+				{
+					x.Name = "Buch";
+				})
+				.Alter("cooking", x =>
                 {
                     x.Name = "Kochen";
                 })
@@ -3605,14 +4042,6 @@ namespace SmartStore.Web.Infrastructure.Installation
                 {
                     x.Name = "Motorräder";
                 })
-                .Alter("computer", x =>
-                {
-                    x.Name = "Computer";
-                })
-                .Alter("notebook", x =>
-                {
-                    x.Name = "Notebook";
-                })
                 .Alter("download", x =>
                 {
                     x.Name = "Download";
@@ -3620,10 +4049,6 @@ namespace SmartStore.Web.Infrastructure.Installation
                 .Alter("watches", x =>
                 {
                     x.Name = "Uhren";
-                })
-                .Alter("book", x =>
-                {
-                    x.Name = "Buch";
                 });
         }
 
@@ -3670,7 +4095,7 @@ namespace SmartStore.Web.Infrastructure.Installation
             {
                 x.Title = "Kundendienst - Unser Service";
                 x.Body = "<p>Bei uns wird Service GROSS geschrieben! Auch nach Ihrem Einkauf bei uns können Sie mit uns Rechnen!<br></p>";
-                x.Tags = "Shopsystem, SmartStore.NET, asp.net, sample tag, Service";
+                x.Tags = "Shopsystem, Smartstore.NET, asp.net, sample tag, Service";
 				x.Language = base.DbContext.Set<Language>().FirstOrDefault();
             });
             
@@ -3683,19 +4108,19 @@ namespace SmartStore.Web.Infrastructure.Installation
             base.Alter(entities);
 
             entities.WithKey(x => x.MetaTitle)
-            .Alter("smartstore.net new release!", x =>
+            .Alter("Smartstore.NET new release!", x =>
             {
-                x.Title = "SmartStore.NET - das clevere Shopsystem!";
-                x.Short = "SmartStore.NET ist die neue dynamische E-Commerce Lösung von SmartStore. SmartStore.NET bietet alle Funktionen und Möglichkeiten, um schnell und einfach einen leistungsfähigen und funktional kompletten Online-Shop zu erstellen.";
-                x.Full = "<p>Mit SmartStore.NET haben Sie alles im Griff. Verwalten Sie Ihren Lagerbestand, Ihre Aufträge und alle kundenspezifischen Funktionen, wie kundenindividuelle Rabatte, Gutscheine oder Zugriffsrechte für spezielle Kundengruppen.  </p>  <p>  Durch sprechende URL's und eine durchdachte HTML-Struktur ist SmartStore.NET perfekt für Suchmaschinen optimiert.  </p>  <p>  SmartStore.NET erkennt automatisch, ob Ihre Shopbesucher mit einem mobilen Endgerät auf Ihren Shop zugreifen und zeigt den Shop in einer Ansicht, die für geringe Auflösungen optimiert ist.  </p>  <p>  Steigern sie Ihren Umsatz und animieren Sie mehr Kunden zum Kauf mit Produkt-Rezensionen und -Bewertungen.  </p>  <p>  SmartStore.NET wird bereits mit Sprachpaketen für Deutsch und Englisch ausgeliefert und unterstützt die Verwaltung unendlich vieler weiterer Sprachen.  </p>  <p>  Starten Sie sofort durch!<br>  Importieren Sie Ihren SmartStore.biz Shop mit nur einem Klick in SmartStore.NET.</p>";
+                x.Title = "Smartstore.NET - das clevere Shopsystem!";
+                x.Short = "Smartstore.NET ist die neue dynamische E-Commerce Lösung von Smartstore. Smartstore.NET bietet alle Funktionen und Möglichkeiten, um schnell und einfach einen leistungsfähigen und funktional kompletten Online-Shop zu erstellen.";
+                x.Full = "<p>Mit Smartstore.NET haben Sie alles im Griff. Verwalten Sie Ihren Lagerbestand, Ihre Aufträge und alle kundenspezifischen Funktionen, wie kundenindividuelle Rabatte, Gutscheine oder Zugriffsrechte für spezielle Kundengruppen.  </p>  <p>  Durch sprechende URL's und eine durchdachte HTML-Struktur ist Smartstore.NET perfekt für Suchmaschinen optimiert.  </p>  <p>  Smartstore.NET erkennt automatisch, ob Ihre Shopbesucher mit einem mobilen Endgerät auf Ihren Shop zugreifen und zeigt den Shop in einer Ansicht, die für geringe Auflösungen optimiert ist.  </p>  <p>  Steigern sie Ihren Umsatz und animieren Sie mehr Kunden zum Kauf mit Produkt-Rezensionen und -Bewertungen.  </p>  <p>  Smartstore.NET wird bereits mit Sprachpaketen für Deutsch und Englisch ausgeliefert und unterstützt die Verwaltung unendlich vieler weiterer Sprachen.  </p>  <p>  Starten Sie sofort durch!<br>  Importieren Sie Ihren Smartstore.biz Shop mit nur einem Klick in Smartstore.NET.</p>";
                 x.Language = defaultLanguage;
             })
 
-            .Alter("New online store is open!", x =>
+            .Alter("Smartstore.NET 3.2", x =>
             {
-                x.Title = "Kundendienst - Service";
-                x.Short = "Hier finden Sie Antworten auf Fragen zu unserem Onlineshop";
-                x.Full = "<p> Warum ein Benutzerkonto?<br> Wenn Sie in unserem Online-Shop bestellen wollen, können Sie gerne als Gast, ohne ein Benutzerkonto zu erstellen, oder als registrierter Kunde mmit einem Benutzerkonto bestellen. Mit dem Benutzerkonto gestaltet sich der Einkauf im Online-Shop bequemer und zusätzlich haben Sie eine Übersicht der hinterlegten Daten und Ihrer Bestellungen. </p> <p> Welche Funnktionen beinhaltet das Benutzerkonto?<br> In Ihrem Benutzerkonto haben Sie Zugriff auf alle wichtigen, persönlichen Daten und können diese bei Bedarf entsprechend bearbeiten: Bearbeiten der Rechnungsadresse Bearbeiten, Löschen und Neuanlage von Lieferadressen Ändern des Passwortes Aktuelle Bestellung und Übersicht über Ihre Bestellhistorie Merkliste <br> Darüberhinaus, können Sie im Forum teilnehmen, unsere Blogs und News kommentieren. </p>";
+                x.Title = "Smartstore.NET 3.2 jetzt mit dem neuen CMS Page Builder";
+                x.Short = "Erstellen Sie faszinierende Inhalte mit dem neuen Page Builder.";
+                x.Full = "<p>Mit dem neuen Smartstore.NET Page Builder gestalten Sie faszinierende Inhalte aus Produkten, Warengruppen, Bildern, Videos und Texten. Designelemente wie Animationen, Übergänge, Verläufe, Hover-Effekte, Overlays und die Bedienung über den WYSIWYG Editor lassen in Bezug auf Design und Flexibilität keine Wünsche offen.<br/>Mehr Informationen über Smartstore 3.2 und Page Builder finden Sie unter <a href=\"http://www.smartstore.com\">www.smartstore.com</a></p>";
                 x.Language = defaultLanguage;
             });
         }
@@ -3764,7 +4189,6 @@ namespace SmartStore.Web.Infrastructure.Installation
 
         protected override void Alter(IList<PollAnswer> entities)
         {
-            var defaultLanguage = base.DbContext.Set<DeliveryTime>().FirstOrDefault();
             base.Alter(entities);
 
             entities.WithKey(x => x.DisplayOrder)
@@ -3801,5 +4225,5 @@ namespace SmartStore.Web.Infrastructure.Installation
                 x.Name = "Einmal im Monat";
             });
         }
-    }
+	}
 }

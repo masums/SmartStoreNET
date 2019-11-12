@@ -3,23 +3,20 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
+using NUnit.Framework;
+using Rhino.Mocks;
 using SmartStore.Core;
 using SmartStore.Core.Caching;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Directory;
 using SmartStore.Core.Domain.Localization;
-using SmartStore.Core.Domain.Stores;
 using SmartStore.Core.Domain.Tax;
-using SmartStore.Core.Infrastructure;
 using SmartStore.Core.Plugins;
 using SmartStore.Services.Catalog;
-using SmartStore.Services.Customers;
 using SmartStore.Services.Directory;
 using SmartStore.Services.Localization;
-using SmartStore.Tests;
-using NUnit.Framework;
-using Rhino.Mocks;
 using SmartStore.Services.Stores;
+using SmartStore.Tests;
 
 namespace SmartStore.Services.Tests.Catalog
 {
@@ -34,6 +31,7 @@ namespace SmartStore.Services.Tests.Catalog
         ILocalizationService _localizationService;
         TaxSettings _taxSettings;
         IPriceFormatter _priceFormatter;
+		IStoreContext _storeContext;
         
         [SetUp]
         public new void SetUp()
@@ -67,14 +65,16 @@ namespace SmartStore.Services.Tests.Catalog
                 CreatedOnUtc = DateTime.UtcNow,
                 UpdatedOnUtc= DateTime.UtcNow
             };            
+
             _currencyRepo = MockRepository.GenerateMock<IRepository<Currency>>();
             _currencyRepo.Expect(x => x.Table).Return(new List<Currency>() { currency1, currency2 }.AsQueryable());
 
 			_storeMappingService = MockRepository.GenerateMock<IStoreMappingService>();
+			_storeContext = MockRepository.GenerateMock<IStoreContext>();
 
-            var pluginFinder = new PluginFinder();
-			_currencyService = new CurrencyService(cacheManager, _currencyRepo, _storeMappingService,
-                _currencySettings, pluginFinder, null, this.ProviderManager);
+            var pluginFinder = PluginFinder.Current;
+			_currencyService = new CurrencyService(_currencyRepo, _storeMappingService,
+                _currencySettings, pluginFinder, null, this.ProviderManager, _storeContext);
             
             _taxSettings = new TaxSettings();
 
@@ -120,9 +120,9 @@ namespace SmartStore.Services.Tests.Catalog
             var rub_currency = new Currency()
             {
                 Id = 2,
-                Name = "Russian Ruble",
-                CurrencyCode = "RUB",
-                DisplayLocale = "ru-RU",
+                Name = "British Pound",
+                CurrencyCode = "GBP",
+				DisplayLocale = "en-GB",
             };
             var language = new Language()
             {
@@ -131,7 +131,7 @@ namespace SmartStore.Services.Tests.Catalog
                 LanguageCulture = "en-US"
             };
             _priceFormatter.FormatPrice(1234.5M, true, usd_currency, language, false, false).ShouldEqual("$1,234.50");
-            _priceFormatter.FormatPrice(1234.5M, true, rub_currency, language, false, false).ShouldEqual("1 234,50р.");
+			_priceFormatter.FormatPrice(1234.5M, true, rub_currency, language, false, false).ShouldEqual("£1,234.50");
         }
 
         [Test]

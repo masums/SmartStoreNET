@@ -24,6 +24,7 @@ namespace SmartStore.Services.Security
         public static readonly PermissionRecord ManageBlog = new PermissionRecord { Name = "Admin area. Manage Blog", SystemName = "ManageBlog", Category = "Content Management" };
         public static readonly PermissionRecord ManageWidgets = new PermissionRecord { Name = "Admin area. Manage Widgets", SystemName = "ManageWidgets", Category = "Content Management" };
         public static readonly PermissionRecord ManageTopics = new PermissionRecord { Name = "Admin area. Manage Topics", SystemName = "ManageTopics", Category = "Content Management" };
+        public static readonly PermissionRecord ManageMenus = new PermissionRecord { Name = "Admin area. Manage Menus", SystemName = "ManageMenus", Category = "Content Management" };
         public static readonly PermissionRecord ManageForums = new PermissionRecord { Name = "Admin area. Manage Forums", SystemName = "ManageForums", Category = "Content Management" };
         public static readonly PermissionRecord ManageMessageTemplates = new PermissionRecord { Name = "Admin area. Manage Message Templates", SystemName = "ManageMessageTemplates", Category = "Content Management" };
         public static readonly PermissionRecord ManageCountries = new PermissionRecord { Name = "Admin area. Manage Countries", SystemName = "ManageCountries", Category = "Configuration" };
@@ -34,11 +35,8 @@ namespace SmartStore.Services.Security
         public static readonly PermissionRecord ManageTaxSettings = new PermissionRecord { Name = "Admin area. Manage Tax Settings", SystemName = "ManageTaxSettings", Category = "Configuration" };
         public static readonly PermissionRecord ManageShippingSettings = new PermissionRecord { Name = "Admin area. Manage Shipping Settings", SystemName = "ManageShippingSettings", Category = "Configuration" };
         public static readonly PermissionRecord ManageCurrencies = new PermissionRecord { Name = "Admin area. Manage Currencies", SystemName = "ManageCurrencies", Category = "Configuration" };
-        //codehint: sm-add begin
         public static readonly PermissionRecord ManageDeliveryTimes = new PermissionRecord { Name = "Admin area. Manage Delivery Times", SystemName = "ManageDeliveryTimes", Category = "Configuration" };
-        public static readonly PermissionRecord ManageContentSlider = new PermissionRecord { Name = "Admin area. Manage Content Slider", SystemName = "ManageContentSlider", Category = "Configuration" };
         public static readonly PermissionRecord ManageThemes = new PermissionRecord { Name = "Admin area. Manage Themes", SystemName = "ManageThemes", Category = "Configuration" };
-        //codehint: sm-add end
         public static readonly PermissionRecord ManageMeasures = new PermissionRecord { Name = "Admin area. Manage Measures", SystemName = "ManageMeasures", Category = "Configuration" };
         public static readonly PermissionRecord ManageActivityLog = new PermissionRecord { Name = "Admin area. Manage Activity Log", SystemName = "ManageActivityLog", Category = "Configuration" };
         public static readonly PermissionRecord ManageAcl = new PermissionRecord { Name = "Admin area. Manage ACL", SystemName = "ManageACL", Category = "Configuration" };
@@ -50,10 +48,12 @@ namespace SmartStore.Services.Security
         public static readonly PermissionRecord ManageMaintenance = new PermissionRecord { Name = "Admin area. Manage Maintenance", SystemName = "ManageMaintenance", Category = "Configuration" };
         public static readonly PermissionRecord UploadPictures = new PermissionRecord { Name = "Admin area. Upload Pictures", SystemName = "UploadPictures", Category = "Configuration" };
         public static readonly PermissionRecord ManageScheduleTasks = new PermissionRecord { Name = "Admin area. Manage Schedule Tasks", SystemName = "ManageScheduleTasks", Category = "Configuration" };
+		public static readonly PermissionRecord ManageExports = new PermissionRecord { Name = "Admin area. Manage Exports", SystemName = "ManageExports", Category = "Configuration" };
+		public static readonly PermissionRecord ManageImports = new PermissionRecord { Name = "Admin area. Manage Imports", SystemName = "ManageImports", Category = "Configuration" };
+		public static readonly PermissionRecord ManageUrlRecords = new PermissionRecord { Name = "Admin area. Manage Url Records", SystemName = "ManageUrlRecords", Category = "Configuration" };
 
-
-        //public store permissions
-        public static readonly PermissionRecord DisplayPrices = new PermissionRecord { Name = "Public store. Display Prices", SystemName = "DisplayPrices", Category = "PublicStore" };
+		//public store permissions
+		public static readonly PermissionRecord DisplayPrices = new PermissionRecord { Name = "Public store. Display Prices", SystemName = "DisplayPrices", Category = "PublicStore" };
         public static readonly PermissionRecord EnableShoppingCart = new PermissionRecord { Name = "Public store. Enable shopping cart", SystemName = "EnableShoppingCart", Category = "PublicStore" };
         public static readonly PermissionRecord EnableWishlist = new PermissionRecord { Name = "Public store. Enable wishlist", SystemName = "EnableWishlist", Category = "PublicStore" };
         public static readonly PermissionRecord PublicStoreAllowNavigation = new PermissionRecord { Name = "Public store. Allow navigation", SystemName = "PublicStoreAllowNavigation", Category = "PublicStore" };
@@ -80,6 +80,7 @@ namespace SmartStore.Services.Security
                 ManageBlog,
                 ManageWidgets,
                 ManageTopics,
+                ManageMenus,
                 ManageForums,
                 ManageMessageTemplates,
                 ManageCountries,
@@ -90,9 +91,8 @@ namespace SmartStore.Services.Security
                 ManageTaxSettings,
                 ManageShippingSettings,
                 ManageCurrencies,
-                ManageDeliveryTimes,    //codehint: sm-add
-                ManageContentSlider,    //codehint: sm-add
-                ManageThemes,    //codehint: sm-add
+                ManageDeliveryTimes, 
+                ManageThemes, 
                 ManageMeasures,
                 ManageActivityLog,
                 ManageAcl,
@@ -104,7 +104,10 @@ namespace SmartStore.Services.Security
                 ManageMaintenance,
                 UploadPictures,
                 ManageScheduleTasks,
-                DisplayPrices,
+				ManageExports,
+				ManageImports,
+				ManageUrlRecords,
+				DisplayPrices,
                 EnableShoppingCart,
                 EnableWishlist,
                 PublicStoreAllowNavigation,
@@ -137,6 +140,7 @@ namespace SmartStore.Services.Security
                         ManageBlog,
                         ManageWidgets,
                         ManageTopics,
+                        ManageMenus,
                         ManageForums,
                         ManageMessageTemplates,
                         ManageCountries,
@@ -147,9 +151,8 @@ namespace SmartStore.Services.Security
                         ManageTaxSettings,
                         ManageShippingSettings,
                         ManageCurrencies,
-                        ManageDeliveryTimes,    //codehint: sm-add
-                        ManageContentSlider,    //codehint: sm-add
-                        ManageThemes,    //codehint: sm-add
+                        ManageDeliveryTimes,
+                        ManageThemes,
                         ManageMeasures,
                         ManageActivityLog,
                         ManageAcl,
@@ -161,6 +164,9 @@ namespace SmartStore.Services.Security
                         ManageMaintenance,
                         UploadPictures,
                         ManageScheduleTasks,
+						ManageExports,
+						ManageImports,
+						ManageUrlRecords,
                         DisplayPrices,
                         EnableShoppingCart,
                         EnableWishlist,

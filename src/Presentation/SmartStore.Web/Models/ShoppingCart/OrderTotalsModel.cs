@@ -1,5 +1,5 @@
 ﻿using System.Collections.Generic;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Web.Models.ShoppingCart
 {
@@ -10,6 +10,7 @@ namespace SmartStore.Web.Models.ShoppingCart
             TaxRates = new List<TaxRate>();
             GiftCards = new List<GiftCard>();
         }
+
         public bool IsEditable { get; set; }
 
         public string SubTotal { get; set; }
@@ -35,12 +36,18 @@ namespace SmartStore.Web.Models.ShoppingCart
         public bool AllowRemovingOrderTotalDiscount { get; set; }
         public int RedeemedRewardPoints { get; set; }
         public string RedeemedRewardPointsAmount { get; set; }
+		public string CreditBalance { get; set; }
+		public string OrderTotalRounding { get; set; }
         public string OrderTotal { get; set; }
         public decimal Weight { get; set; }
+        public string WeightMeasureUnitName { get; set; }
 
-        #region Nested classes
+        public bool ShowConfirmOrderLegalHint { get; set; }
+		public string MinOrderSubtotalWarning { get; set; }
 
-        public partial class TaxRate: ModelBase
+		#region Nested classes
+
+		public partial class TaxRate : ModelBase
         {
             public string Rate { get; set; }
             public string Value { get; set; }
@@ -53,6 +60,7 @@ namespace SmartStore.Web.Models.ShoppingCart
             public string Amount { get; set; }
             public string Remaining { get; set; }
         }
+
         #endregion
     }
 }

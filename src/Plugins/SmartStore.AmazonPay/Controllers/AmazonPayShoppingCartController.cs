@@ -3,19 +3,18 @@ using SmartStore.AmazonPay.Services;
 
 namespace SmartStore.AmazonPay.Controllers
 {
-	public class AmazonPayShoppingCartController : AmazonPayControllerBase
+    public class AmazonPayShoppingCartController : AmazonPayControllerBase
 	{
-		private readonly IAmazonPayService _apiService;
+        private readonly IAmazonPayService _apiService;
 
 		public AmazonPayShoppingCartController(IAmazonPayService apiService)
 		{
 			_apiService = apiService;
 		}
 
-		public ActionResult LoginHandler(string orderReferenceId)
+		public ActionResult PayButtonHandler()
 		{
-			var model = _apiService.ProcessPluginRequest(AmazonPayRequestType.LoginHandler, TempData, orderReferenceId);
-
+			var model = _apiService.CreateViewModel(AmazonPayRequestType.PayButtonHandler, TempData);
 			return GetActionResult(model);
 		}
 
@@ -24,10 +23,11 @@ namespace SmartStore.AmazonPay.Controllers
 		{
 			if (ControllerContext.ParentActionViewContext.RequestContext.RouteData.IsRouteEqual("ShoppingCart", "Cart"))
 			{
-				var model = _apiService.ProcessPluginRequest(AmazonPayRequestType.ShoppingCart, TempData);
+				var model = _apiService.CreateViewModel(AmazonPayRequestType.ShoppingCart, TempData);
 
 				return GetActionResult(model);
 			}
+
 			return new EmptyResult();
 		}
 
@@ -36,7 +36,7 @@ namespace SmartStore.AmazonPay.Controllers
 		{
 			if (renderAmazonPayView)
 			{
-				var model = _apiService.ProcessPluginRequest(AmazonPayRequestType.OrderReviewData, TempData);
+				var model = _apiService.CreateViewModel(AmazonPayRequestType.OrderReviewData, TempData);
 
 				return View(model);
 			}
@@ -48,24 +48,11 @@ namespace SmartStore.AmazonPay.Controllers
 		{
 			if (renderAmazonPayView)
 			{
-				var model = _apiService.ProcessPluginRequest(AmazonPayRequestType.MiniShoppingCart, TempData);
+				var model = _apiService.CreateViewModel(AmazonPayRequestType.MiniShoppingCart, TempData);
 
 				return GetActionResult(model);
 			}
 			return new EmptyResult();
 		}
-
-		[ChildActionOnly]
-		public ActionResult WidgetLibrary()
-		{
-			// not possible to load it asynchronously cause of document.write inside
-			string widgetUrl = _apiService.GetWidgetUrl();
-
-			if (widgetUrl.HasValue())
-			{
-				return this.Content("<script src=\"{0}\" type=\"text/javascript\"></script>".FormatWith(widgetUrl));
-			}
-			return new EmptyResult();
-		}
-	}
+    }
 }

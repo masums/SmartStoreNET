@@ -1,117 +1,166 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
+using System.Globalization;
 using System.Net;
 using System.Text;
-using System.Web;
-using System.Web.Caching;
 using System.Web.Routing;
-using Autofac;
 using SmartStore.Core.Configuration;
+using SmartStore.Core.Domain.Directory;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Payments;
-using SmartStore.Core.Localization;
 using SmartStore.Core.Logging;
+using SmartStore.Core.Plugins;
+using SmartStore.PayPal.PayPalSvc;
+using SmartStore.PayPal.Settings;
 using SmartStore.Services;
 using SmartStore.Services.Orders;
 using SmartStore.Services.Payments;
-using SmartStore.Utilities;
-using SmartStore.Web.Framework.Plugins;
-using SmartStore.PayPal.PayPalSvc;
-using SmartStore.PayPal.Settings;
-using System.Globalization;
-using SmartStore.PayPal.Services;
-using SmartStore.Core.Plugins;
 
 namespace SmartStore.PayPal
 {
-    public abstract class PayPalProviderBase<TSetting> : PaymentMethodBase, IConfigurable where TSetting : PayPalApiSettingsBase, ISettings, new()
+	public abstract class PayPalProviderBase<TSetting> : PaymentMethodBase, IConfigurable where TSetting : PayPalApiSettingsBase, ISettings, new()
     {
         protected PayPalProviderBase()
 		{
 			Logger = NullLogger.Instance;
 		}
 
-		public TSetting Settings { get; set; }
+		public static string ApiVersion
+		{
+			get { return "109"; }
+		}
 
 		public ILogger Logger { get; set; }
-
-		public ICommonServices CommonServices { get; set; }
-
+		public ICommonServices Services { get; set; }
 		public IOrderService OrderService { get; set; }
-
         public IOrderTotalCalculationService OrderTotalCalculationService { get; set; }
 
-		public IComponentContext ComponentContext { get; set; }
+		public override bool SupportCapture
+		{
+			get { return true; }
+		}
+
+		public override bool SupportPartiallyRefund
+		{
+			get { return true; }
+		}
+
+		public override bool SupportRefund
+		{
+			get { return true; }
+		}
+
+		public override bool SupportVoid
+		{
+			get { return true; }
+		}
 
 		protected abstract string GetResourceRootKey();
 
-		private PluginHelper _helper;
-		public PluginHelper Helper 
+		protected PayPalAPIAASoapBinding GetApiAaService(TSetting settings)
 		{
-			get
-			{
-				if (_helper == null)
-				{
-					_helper = new PluginHelper(this.ComponentContext, "SmartStore.PayPal", GetResourceRootKey());
-				}
-				return _helper;
-			}
+			var service = new PayPalAPIAASoapBinding();
+
+			service.Url = settings.UseSandbox ? "https://api-3t.sandbox.paypal.com/2.0/" : "https://api-3t.paypal.com/2.0/";
+
+			service.RequesterCredentials = GetApiCredentials(settings);
+
+			return service;
 		}
 
-        /// <summary>
-        /// Verifies IPN
-        /// </summary>
-        /// <param name="formString">Form string</param>
-        /// <param name="values">Values</param>
-        /// <returns>Result</returns>
-        public bool VerifyIPN(string formString, out Dictionary<string, string> values)
+		protected PayPalAPISoapBinding GetApiService(TSetting settings)
+		{
+			var service = new PayPalAPISoapBinding();
+
+			service.Url = settings.UseSandbox ? "https://api-3t.sandbox.paypal.com/2.0/" : "https://api-3t.paypal.com/2.0/";
+
+			service.RequesterCredentials = GetApiCredentials(settings);
+
+			return service;
+		}
+
+		protected CustomSecurityHeaderType GetApiCredentials(PayPalApiSettingsBase settings)
+		{
+			var customSecurityHeaderType = new CustomSecurityHeaderType();
+
+			customSecurityHeaderType.Credentials = new UserIdPasswordType();
+			customSecurityHeaderType.Credentials.Username = settings.ApiAccountName;
+			customSecurityHeaderType.Credentials.Password = settings.ApiAccountPassword;
+			customSecurityHeaderType.Credentials.Signature = settings.Signature;
+			customSecurityHeaderType.Credentials.Subject = "";
+
+			return customSecurityHeaderType;
+		}
+
+		protected CurrencyCodeType GetApiCurrency(Currency currency)
+		{
+			var currencyCodeType = CurrencyCodeType.USD;
+			try
+			{
+				currencyCodeType = (CurrencyCodeType)Enum.Parse(typeof(CurrencyCodeType), currency.CurrencyCode, true);
+			}
+			catch {	}
+
+			return currencyCodeType;
+		}
+
+		protected bool IsSuccess(AbstractResponseType abstractResponse, out string errorMsg)
+		{
+			var success = false;
+			var sb = new StringBuilder();
+
+			switch (abstractResponse.Ack)
+			{
+				case AckCodeType.Success:
+				case AckCodeType.SuccessWithWarning:
+					success = true;
+					break;
+				default:
+					break;
+			}
+
+			if (null != abstractResponse.Errors)
+			{
+				foreach (ErrorType errorType in abstractResponse.Errors)
+				{
+					if (errorType.ShortMessage.IsEmpty())
+						continue;
+
+					if (sb.Length > 0)
+						sb.Append(Environment.NewLine);
+
+					sb.Append("{0}: {1}".FormatInvariant(Services.Localization.GetResource("Admin.System.Log.Fields.ShortMessage"), errorType.ShortMessage));
+					sb.AppendLine(" ({0}).".FormatInvariant(errorType.ErrorCode));
+
+					if (errorType.LongMessage.HasValue() && errorType.LongMessage != errorType.ShortMessage)
+						sb.AppendLine("{0}: {1}".FormatInvariant(Services.Localization.GetResource("Admin.System.Log.Fields.FullMessage"), errorType.LongMessage));
+				}
+			}
+
+			errorMsg = sb.ToString();
+			return success;
+		}
+
+		protected abstract string GetControllerName();
+
+		/// <summary>
+		/// Gets additional handling fee
+		/// </summary>
+		/// <param name="cart">Shoping cart</param>
+		/// <returns>Additional handling fee</returns>
+		public override decimal GetAdditionalHandlingFee(IList<OrganizedShoppingCartItem> cart)
         {
-            var req = (HttpWebRequest)WebRequest.Create(PayPalHelper.GetPaypalUrl(Settings));
-            req.Method = "POST";
-            req.ContentType = "application/x-www-form-urlencoded";
-            req.UserAgent = HttpContext.Current.Request.UserAgent;
+			var result = decimal.Zero;
+			try
+			{
+				var settings = Services.Settings.LoadSetting<TSetting>();
 
-            string formContent = string.Format("{0}&cmd=_notify-validate", formString);
-            req.ContentLength = formContent.Length;
-
-            using (var sw = new StreamWriter(req.GetRequestStream(), Encoding.ASCII))
-            {
-                sw.Write(formContent);
-            }
-
-            string response = null;
-            using (var sr = new StreamReader(req.GetResponse().GetResponseStream()))
-            {
-                response = HttpUtility.UrlDecode(sr.ReadToEnd());
-            }
-            bool success = response.Trim().Equals("VERIFIED", StringComparison.OrdinalIgnoreCase);
-
-            values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string l in formString.Split('&'))
-            {
-                string line = HttpUtility.UrlDecode(l).Trim();
-                int equalPox = line.IndexOf('=');
-                if (equalPox >= 0)
-                    values.Add(line.Substring(0, equalPox), line.Substring(equalPox + 1));
-            }
-
-            return success;
-        }
-
-        /// <summary>
-        /// Gets additional handling fee
-        /// </summary>
-        /// <param name="cart">Shoping cart</param>
-        /// <returns>Additional handling fee</returns>
-        public override decimal GetAdditionalHandlingFee(IList<OrganizedShoppingCartItem> cart)
-        {
-            var result = this.CalculateAdditionalFee(OrderTotalCalculationService, cart,
-                Settings.AdditionalFee, Settings.AdditionalFeePercentage);
-            return result;
+				result = this.CalculateAdditionalFee(OrderTotalCalculationService, cart, settings.AdditionalFee, settings.AdditionalFeePercentage);
+			}
+			catch (Exception)
+			{
+			}
+			return result;
         }
 
         /// <summary>
@@ -121,26 +170,32 @@ namespace SmartStore.PayPal
         /// <returns>Capture payment result</returns>
         public override CapturePaymentResult Capture(CapturePaymentRequest capturePaymentRequest)
         {
-            var result = new CapturePaymentResult();
+			var result = new CapturePaymentResult
+			{
+				NewPaymentStatus = capturePaymentRequest.Order.PaymentStatus
+			};
 
-            string authorizationId = capturePaymentRequest.Order.AuthorizationTransactionId;
+			var settings = Services.Settings.LoadSetting<TSetting>(capturePaymentRequest.Order.StoreId);
+			var currencyCode = Services.WorkContext.WorkingCurrency.CurrencyCode ?? "EUR";
+
+			var authorizationId = capturePaymentRequest.Order.AuthorizationTransactionId;			
+
             var req = new DoCaptureReq();
             req.DoCaptureRequest = new DoCaptureRequestType();
-            req.DoCaptureRequest.Version = PayPalHelper.GetApiVersion();
+            req.DoCaptureRequest.Version = ApiVersion;
             req.DoCaptureRequest.AuthorizationID = authorizationId;
             req.DoCaptureRequest.Amount = new BasicAmountType();
             req.DoCaptureRequest.Amount.Value = Math.Round(capturePaymentRequest.Order.OrderTotal, 2).ToString("N", new CultureInfo("en-us"));
-            req.DoCaptureRequest.Amount.currencyID = (CurrencyCodeType)Enum.Parse(typeof(CurrencyCodeType), Helper.CurrencyCode, true);
+            req.DoCaptureRequest.Amount.currencyID = (CurrencyCodeType)Enum.Parse(typeof(CurrencyCodeType), currencyCode, true);
             req.DoCaptureRequest.CompleteType = CompleteCodeType.Complete;
 
-            using (var service = new PayPalAPIAASoapBinding())
+            using (var service = GetApiAaService(settings))
             {
-                service.Url = PayPalHelper.GetPaypalServiceUrl(Settings);
-                service.RequesterCredentials = PayPalHelper.GetPaypalApiCredentials(Settings);
-                DoCaptureResponseType response = service.DoCapture(req);
+                var response = service.DoCapture(req);
 
-                string error = "";
-                bool success = PayPalHelper.CheckSuccess(_helper, response, out error);
+                var error = "";
+                var success = IsSuccess(response, out error);
+
                 if (success)
                 {
                     result.NewPaymentStatus = PaymentStatus.Paid;
@@ -155,35 +210,64 @@ namespace SmartStore.PayPal
             return result;
         }
 
-        /// <summary>
-        /// Handles refund
-        /// </summary>
-        /// <param name="request">RefundPaymentRequest</param>
-        /// <returns>RefundPaymentResult</returns>
         public override RefundPaymentResult Refund(RefundPaymentRequest request)
         {
-            var result = new RefundPaymentResult();
-            string transactionId = request.Order.CaptureTransactionId;
+			// "Transaction refused (10009). You can not refund this type of transaction.":
+			// merchant must accept the payment in his PayPal account
+			var result = new RefundPaymentResult
+			{
+				NewPaymentStatus = request.Order.PaymentStatus
+			};
 
-            var req = new RefundTransactionReq();
+			var settings = Services.Settings.LoadSetting<TSetting>(request.Order.StoreId);
+
+			var transactionId = request.Order.CaptureTransactionId;
+
+			var req = new RefundTransactionReq();
             req.RefundTransactionRequest = new RefundTransactionRequestType();
-            //NOTE: Specify amount in partial refund
-            req.RefundTransactionRequest.RefundType = RefundType.Full;
+
+			if (request.IsPartialRefund)
+			{
+				var store = Services.StoreService.GetStoreById(request.Order.StoreId);
+				var currencyCode = store.PrimaryStoreCurrency.CurrencyCode;
+
+				req.RefundTransactionRequest.RefundType = RefundType.Partial;
+
+				req.RefundTransactionRequest.Amount = new BasicAmountType();
+				req.RefundTransactionRequest.Amount.Value = Math.Round(request.AmountToRefund, 2).ToString("N", new CultureInfo("en-us"));
+				req.RefundTransactionRequest.Amount.currencyID = (CurrencyCodeType)Enum.Parse(typeof(CurrencyCodeType), currencyCode, true);
+
+				// see https://developer.paypal.com/docs/classic/express-checkout/digital-goods/ECDGIssuingRefunds/
+				// https://developer.paypal.com/docs/classic/api/merchant/RefundTransaction_API_Operation_NVP/
+				var memo = Services.Localization.GetResource("Plugins.SmartStore.PayPal.PartialRefundMemo", 0, false, "", true);
+				if (memo.HasValue())
+				{
+					req.RefundTransactionRequest.Memo = memo.FormatInvariant(req.RefundTransactionRequest.Amount.Value);
+				}
+			}
+			else
+			{
+				req.RefundTransactionRequest.RefundType = RefundType.Full;
+			}
+
             req.RefundTransactionRequest.RefundTypeSpecified = true;
-            req.RefundTransactionRequest.Version = PayPalHelper.GetApiVersion();
+            req.RefundTransactionRequest.Version = ApiVersion;
             req.RefundTransactionRequest.TransactionID = transactionId;
 
-            using (var service = new PayPalAPISoapBinding())
+            using (var service = GetApiService(settings))
             {
-                service.Url = PayPalHelper.GetPaypalServiceUrl(Settings);
-                service.RequesterCredentials = PayPalHelper.GetPaypalApiCredentials(Settings);
-                RefundTransactionResponseType response = service.RefundTransaction(req);
+                var response = service.RefundTransaction(req);
 
-                string error = string.Empty;
-                bool Success = PayPalHelper.CheckSuccess(_helper, response, out error);
+                var error = "";
+                var Success = IsSuccess(response, out error);
+
                 if (Success)
                 {
-                    result.NewPaymentStatus = PaymentStatus.Refunded;
+					if (request.IsPartialRefund)
+						result.NewPaymentStatus = PaymentStatus.PartiallyRefunded;
+					else
+						result.NewPaymentStatus = PaymentStatus.Refunded;
+
                     //cancelPaymentResult.RefundTransactionID = response.RefundTransactionID;
                 }
                 else
@@ -202,26 +286,30 @@ namespace SmartStore.PayPal
         /// <returns>Result</returns>
         public override VoidPaymentResult Void(VoidPaymentRequest request)
         {
-            var result = new VoidPaymentResult();
+			var result = new VoidPaymentResult
+			{
+				NewPaymentStatus = request.Order.PaymentStatus
+			};
 
-            string transactionId = request.Order.AuthorizationTransactionId;
-            if (String.IsNullOrEmpty(transactionId))
+			var settings = Services.Settings.LoadSetting<TSetting>(request.Order.StoreId);
+
+			var transactionId = request.Order.AuthorizationTransactionId;
+
+            if (transactionId.IsEmpty())
                 transactionId = request.Order.CaptureTransactionId;
 
             var req = new DoVoidReq();
             req.DoVoidRequest = new DoVoidRequestType();
-            req.DoVoidRequest.Version = PayPalHelper.GetApiVersion();
+            req.DoVoidRequest.Version = ApiVersion;
             req.DoVoidRequest.AuthorizationID = transactionId;
 
-
-            using (var service = new PayPalAPIAASoapBinding())
+            using (var service = GetApiAaService(settings))
             {
-                service.Url = PayPalHelper.GetPaypalServiceUrl(Settings);
-                service.RequesterCredentials = PayPalHelper.GetPaypalApiCredentials(Settings);
-                DoVoidResponseType response = service.DoVoid(req);
+                var response = service.DoVoid(req);
 
-                string error = "";
-                bool success = PayPalHelper.CheckSuccess(_helper, response, out error);
+                var error = "";
+                var success = IsSuccess(response, out error);
+
                 if (success)
                 {
                     result.NewPaymentStatus = PaymentStatus.Voided;
@@ -242,13 +330,13 @@ namespace SmartStore.PayPal
         /// <returns>Result</returns>
         public override CancelRecurringPaymentResult CancelRecurringPayment(CancelRecurringPaymentRequest request)
         {
-
             var result = new CancelRecurringPaymentResult();
             var order = request.Order;
+			var settings = Services.Settings.LoadSetting<TSetting>(order.StoreId);
 
             var req = new ManageRecurringPaymentsProfileStatusReq();
             req.ManageRecurringPaymentsProfileStatusRequest = new ManageRecurringPaymentsProfileStatusRequestType();
-            req.ManageRecurringPaymentsProfileStatusRequest.Version = PayPalHelper.GetApiVersion();
+            req.ManageRecurringPaymentsProfileStatusRequest.Version = ApiVersion;
             var details = new ManageRecurringPaymentsProfileStatusRequestDetailsType();
             req.ManageRecurringPaymentsProfileStatusRequest.ManageRecurringPaymentsProfileStatusRequestDetails = details;
 
@@ -256,14 +344,12 @@ namespace SmartStore.PayPal
             //Recurring payments profile ID returned in the CreateRecurringPaymentsProfile response
             details.ProfileID = order.SubscriptionTransactionId;
 
-            using (var service = new PayPalAPIAASoapBinding())
+            using (var service = GetApiAaService(settings))
             {
-                service.Url = PayPalHelper.GetPaypalServiceUrl(Settings);
-                service.RequesterCredentials = PayPalHelper.GetPaypalApiCredentials(Settings);
                 var response = service.ManageRecurringPaymentsProfileStatus(req);
 
                 string error = "";
-                if (!PayPalHelper.CheckSuccess(_helper, response, out error))
+                if (!IsSuccess(response, out error))
                 {
                     result.AddError(error);
                 }
@@ -296,28 +382,6 @@ namespace SmartStore.PayPal
             actionName = "PaymentInfo";
             controllerName = GetControllerName();
             routeValues = new RouteValueDictionary() { { "area", "SmartStore.PayPal" } };
-        }
-
-        protected abstract string GetControllerName();
-
-        public override bool SupportCapture
-        {
-            get { return true; }
-        }
-
-        public override bool SupportPartiallyRefund
-        {
-            get { return false; }
-        }
-
-        public override bool SupportRefund
-        {
-            get { return true; }
-        }
-
-        public override bool SupportVoid
-        {
-            get { return true; }
         }
     }
 }

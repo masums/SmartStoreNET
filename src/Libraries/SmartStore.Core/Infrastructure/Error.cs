@@ -2,8 +2,6 @@
 using System.Globalization;
 using System.Diagnostics;
 
-using Fasterflect;
-
 namespace SmartStore
 {
     public static class Error
@@ -77,7 +75,7 @@ namespace SmartStore
         [DebuggerStepThrough]
         public static Exception InvalidOperation(string message, params object[] args)
         {
-            return Error.InvalidOperation(message, null, args);
+            return InvalidOperation(message, null, args);
         }
 
         [DebuggerStepThrough]
@@ -95,8 +93,8 @@ namespace SmartStore
         [DebuggerStepThrough]
         public static Exception InvalidOperation<T>(string message, Exception innerException, Func<T> member)
         {
-            Guard.ArgumentNotNull(message, "message");
-            Guard.ArgumentNotNull(member, "member");
+            Guard.NotNull(message, "message");
+            Guard.NotNull(member, "member");
 
             return new InvalidOperationException(message.FormatCurrent(member.Method.Name), innerException);
         }

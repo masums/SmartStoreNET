@@ -14,6 +14,7 @@ namespace SmartStore.Admin.Models.Settings
             ShippingTaxCategories = new List<SelectListItem>();
             EuVatShopCountries = new List<SelectListItem>();
 			DefaultTaxAddress = new AddressModel();
+            VatRequired = false;
         }
 
         [SmartResourceDisplayName("Admin.Configuration.Settings.Tax.PricesIncludeTax")]
@@ -24,7 +25,6 @@ namespace SmartStore.Admin.Models.Settings
         
 		[SmartResourceDisplayName("Admin.Configuration.Settings.Tax.TaxDisplayType")]
         public TaxDisplayType TaxDisplayType { get; set; }
-		public SelectList TaxDisplayTypeValues { get; set; }
         
 		[SmartResourceDisplayName("Admin.Configuration.Settings.Tax.DisplayTaxSuffix")]
         public bool DisplayTaxSuffix { get; set; }
@@ -51,7 +51,6 @@ namespace SmartStore.Admin.Models.Settings
 		
         [SmartResourceDisplayName("Admin.Configuration.Settings.Tax.TaxBasedOn")]
         public TaxBasedOn TaxBasedOn { get; set; }
-		public SelectList TaxBasedOnValues { get; set; }
         
 		[SmartResourceDisplayName("Admin.Configuration.Settings.Tax.DefaultTaxAddress")]
         public AddressModel DefaultTaxAddress { get; set; }
@@ -77,9 +76,12 @@ namespace SmartStore.Admin.Models.Settings
 		[SmartResourceDisplayName("Admin.Configuration.Settings.Tax.PaymentMethodAdditionalFeeTaxClass")]
         public int? PaymentMethodAdditionalFeeTaxClassId { get; set; }
 		public IList<SelectListItem> PaymentMethodAdditionalFeeTaxCategories { get; set; }
-		
 
-        [SmartResourceDisplayName("Admin.Configuration.Settings.Tax.EuVatEnabled")]
+		[SmartResourceDisplayName("Admin.Configuration.Settings.Tax.AuxiliaryServicesTaxingType")]
+		public AuxiliaryServicesTaxType AuxiliaryServicesTaxingType { get; set; }
+
+
+		[SmartResourceDisplayName("Admin.Configuration.Settings.Tax.EuVatEnabled")]
         public bool EuVatEnabled { get; set; }
         
 		[SmartResourceDisplayName("Admin.Configuration.Settings.Tax.EuVatShopCountry")]
@@ -94,5 +96,8 @@ namespace SmartStore.Admin.Models.Settings
         
 		[SmartResourceDisplayName("Admin.Configuration.Settings.Tax.EuVatEmailAdminWhenNewVatSubmitted")]
         public bool EuVatEmailAdminWhenNewVatSubmitted { get; set; }
+
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Tax.VatRequired")]
+        public bool VatRequired { get; set; }
     }
 }

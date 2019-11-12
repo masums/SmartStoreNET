@@ -1,41 +1,39 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-using SmartStore.Core.Caching;
+using NUnit.Framework;
+using Rhino.Mocks;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Shipping;
-using SmartStore.Core.Plugins;
-using SmartStore.Services.Catalog;
+using SmartStore.Core.Domain.Stores;
 using SmartStore.Core.Events;
-using SmartStore.Services.Localization;
-using SmartStore.Core.Logging;
-using SmartStore.Services.Logging;
+using SmartStore.Core.Infrastructure;
+using SmartStore.Services.Catalog;
+using SmartStore.Services.Common;
+using SmartStore.Services.Configuration;
 using SmartStore.Services.Orders;
 using SmartStore.Services.Shipping;
 using SmartStore.Tests;
-using NUnit.Framework;
-using Rhino.Mocks;
-using SmartStore.Services.Common;
-using SmartStore.Services.Configuration;
 
 namespace SmartStore.Services.Tests.Shipping
 {
-    [TestFixture]
+	[TestFixture]
     public class ShippingServiceTests : ServiceTest
     {
         IRepository<ShippingMethod> _shippingMethodRepository;
-        ILogger _logger;
-        IProductAttributeParser _productAttributeParser;
+		IRepository<StoreMapping> _storeMappingRepository;
+		IProductAttributeParser _productAttributeParser;
 		IProductService _productService;
         ICheckoutAttributeParser _checkoutAttributeParser;
-        ShippingSettings _shippingSettings;
+		ICommonServices _services;
+		ShippingSettings _shippingSettings;
         IEventPublisher _eventPublisher;
-        ILocalizationService _localizationService;
 		IGenericAttributeService _genericAttributeService;
         IShippingService _shippingService;
         ShoppingCartSettings _shoppingCartSettings;
 		ISettingService _settingService;
+		ITypeFinder _typeFinder;
 
         [SetUp]
         public new void SetUp()
@@ -45,35 +43,34 @@ namespace SmartStore.Services.Tests.Shipping
             _shippingSettings.ActiveShippingRateComputationMethodSystemNames.Add("FixedRateTestShippingRateComputationMethod");
 
             _shippingMethodRepository = MockRepository.GenerateMock<IRepository<ShippingMethod>>();
-            _logger = new NullLogger();
-            _productAttributeParser = MockRepository.GenerateMock<IProductAttributeParser>();
+			_storeMappingRepository = MockRepository.GenerateMock<IRepository<StoreMapping>>();
+			_productAttributeParser = MockRepository.GenerateMock<IProductAttributeParser>();
 			_productService = MockRepository.GenerateMock<IProductService>();
             _checkoutAttributeParser = MockRepository.GenerateMock<ICheckoutAttributeParser>();
+			_services = MockRepository.GenerateMock<ICommonServices>();
 
-            var cacheManager = new NullCache();
-
-            var pluginFinder = new PluginFinder();
-
-            _eventPublisher = MockRepository.GenerateMock<IEventPublisher>();
+			_eventPublisher = MockRepository.GenerateMock<IEventPublisher>();
             _eventPublisher.Expect(x => x.Publish(Arg<object>.Is.Anything));
 
-            _localizationService = MockRepository.GenerateMock<ILocalizationService>();
 			_genericAttributeService = MockRepository.GenerateMock<IGenericAttributeService>();
 			_settingService = MockRepository.GenerateMock<ISettingService>();
+			_typeFinder = MockRepository.GenerateMock<ITypeFinder>();
 
             _shoppingCartSettings = new ShoppingCartSettings();
-            _shippingService = new ShippingService(cacheManager, 
-                _shippingMethodRepository, 
-                _logger,
-                _productAttributeParser,
+            _shippingService = new ShippingService(
+                _shippingMethodRepository,
+				_storeMappingRepository,
+				_productAttributeParser,
 				_productService,
                 _checkoutAttributeParser,
 				_genericAttributeService,
-                _localizationService,
-                _shippingSettings, pluginFinder, _eventPublisher,
+                _shippingSettings,
+				_eventPublisher,
                 _shoppingCartSettings,
 				_settingService, 
-				this.ProviderManager);
+				this.ProviderManager,
+				_typeFinder,
+				_services);
         }
 
         [Test]

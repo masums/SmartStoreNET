@@ -6,6 +6,7 @@ using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Tax;
 using SmartStore.Core.Plugins;
+using SmartStore.Core.Domain.Directory;
 
 namespace SmartStore.Services.Tax
 {
@@ -83,105 +84,140 @@ namespace SmartStore.Services.Tax
         /// <returns>Price</returns>
         decimal GetProductPrice(Product product, decimal price, Customer customer, out decimal taxRate);
 
-        /// <summary>
-        /// Gets price
-        /// </summary>
+		/// <summary>
+		/// Gets price
+		/// </summary>
 		/// <param name="product">Product</param>
-        /// <param name="price">Price</param>
-        /// <param name="includingTax">A value indicating whether calculated price should include tax</param>
-        /// <param name="customer">Customer</param>
-        /// <param name="taxRate">Tax rate</param>
-        /// <returns>Price</returns>
-        decimal GetProductPrice(Product product, decimal price, bool includingTax, Customer customer, out decimal taxRate);
+		/// <param name="price">Price</param>
+		/// <param name="customer">Customer</param>
+		/// <param name="currency">Currency</param>
+		/// <param name="taxRate">Tax rate</param>
+		/// <returns>Price</returns>
+		decimal GetProductPrice(Product product, decimal price, Customer customer, Currency currency, out decimal taxRate);
 
-        /// <summary>
-        /// Gets price
-        /// </summary>
+		/// <summary>
+		/// Gets price
+		/// </summary>
 		/// <param name="product">Product</param>
-        /// <param name="taxCategoryId">Tax category identifier</param>
-        /// <param name="price">Price</param>
-        /// <param name="includingTax">A value indicating whether calculated price should include tax</param>
-        /// <param name="customer">Customer</param>
-        /// <param name="priceIncludesTax">A value indicating whether price already includes tax</param>
-        /// <param name="taxRate">Tax rate</param>
-        /// <returns>Price</returns>
-        decimal GetProductPrice(Product product, int taxCategoryId, decimal price,
-            bool includingTax, Customer customer,
-            bool priceIncludesTax, out decimal taxRate);
+		/// <param name="price">Price</param>
+		/// <param name="includingTax">A value indicating whether calculated price should include tax</param>
+		/// <param name="customer">Customer</param>
+		/// <param name="taxRate">Tax rate</param>
+		/// <returns>Price</returns>
+		decimal GetProductPrice(Product product, decimal price, bool includingTax, Customer customer, out decimal taxRate);
+
+		/// <summary>
+		/// Gets price
+		/// </summary>
+		/// <param name="product">Product</param>
+		/// <param name="taxCategoryId">Tax category identifier</param>
+		/// <param name="price">Price</param>
+		/// <param name="includingTax">A value indicating whether calculated price should include tax</param>
+		/// <param name="customer">Customer</param>
+		/// <param name="currency">Currency</param>
+		/// <param name="priceIncludesTax">A value indicating whether price already includes tax</param>
+		/// <param name="taxRate">Tax rate</param>
+		/// <returns>Price</returns>
+		decimal GetProductPrice(Product product,
+			int taxCategoryId,
+			decimal price,
+            bool includingTax,
+			Customer customer,
+			Currency currency,
+			bool priceIncludesTax,
+			out decimal taxRate);
 
 
 
 
-        /// <summary>
-        /// Gets shipping price
-        /// </summary>
-        /// <param name="price">Price</param>
-        /// <param name="customer">Customer</param>
-        /// <returns>Price</returns>
-        decimal GetShippingPrice(decimal price, Customer customer);
+		/// <summary>
+		/// Gets the shipping price
+		/// </summary>
+		/// <param name="price">Price</param>
+		/// <param name="customer">Customer</param>
+		/// <returns>Shipping price</returns>
+		decimal GetShippingPrice(decimal price, Customer customer);
 
-        /// <summary>
-        /// Gets shipping price
-        /// </summary>
-        /// <param name="price">Price</param>
-        /// <param name="includingTax">A value indicating whether calculated price should include tax</param>
-        /// <param name="customer">Customer</param>
-        /// <returns>Price</returns>
-        decimal GetShippingPrice(decimal price, bool includingTax, Customer customer);
+		/// <summary>
+		/// Gets the shipping price
+		/// </summary>
+		/// <param name="price">Price</param>
+		/// <param name="includingTax">A value indicating whether calculated price should include tax</param>
+		/// <param name="customer">Customer</param>
+		/// <returns>Shipping price</returns>
+		decimal GetShippingPrice(decimal price, bool includingTax, Customer customer);
 
-        /// <summary>
-        /// Gets shipping price
-        /// </summary>
-        /// <param name="price">Price</param>
-        /// <param name="includingTax">A value indicating whether calculated price should include tax</param>
-        /// <param name="customer">Customer</param>
-        /// <param name="taxRate">Tax rate</param>
-        /// <returns>Price</returns>
-        decimal GetShippingPrice(decimal price, bool includingTax, Customer customer, out decimal taxRate);
+		/// <summary>
+		/// Gets the shipping price
+		/// </summary>
+		/// <param name="price">Price</param>
+		/// <param name="includingTax">A value indicating whether calculated price should include tax</param>
+		/// <param name="customer">Customer</param>
+		/// <param name="taxRate">Tax rate</param>
+		/// <returns>Shipping price</returns>
+		decimal GetShippingPrice(decimal price, bool includingTax, Customer customer, out decimal taxRate);
 
-
-
-
-
-        /// <summary>
-        /// Gets payment method additional handling fee
-        /// </summary>
-        /// <param name="price">Price</param>
-        /// <param name="customer">Customer</param>
-        /// <returns>Price</returns>
-        decimal GetPaymentMethodAdditionalFee(decimal price, Customer customer);
-
-        /// <summary>
-        /// Gets payment method additional handling fee
-        /// </summary>
-        /// <param name="price">Price</param>
-        /// <param name="includingTax">A value indicating whether calculated price should include tax</param>
-        /// <param name="customer">Customer</param>
-        /// <returns>Price</returns>
-        decimal GetPaymentMethodAdditionalFee(decimal price, bool includingTax, Customer customer);
-
-        /// <summary>
-        /// Gets payment method additional handling fee
-        /// </summary>
-        /// <param name="price">Price</param>
-        /// <param name="includingTax">A value indicating whether calculated price should include tax</param>
-        /// <param name="customer">Customer</param>
-        /// <param name="taxRate">Tax rate</param>
-        /// <returns>Price</returns>
-        decimal GetPaymentMethodAdditionalFee(decimal price, bool includingTax, Customer customer, out decimal taxRate);
+		/// <summary>
+		/// Gets the shipping price
+		/// </summary>
+		/// <param name="price">Price</param>
+		/// <param name="includingTax">A value indicating whether calculated price should include tax</param>
+		/// <param name="customer">Customer</param>
+		/// <param name="taxCategoryId">Tax category id</param>
+		/// <param name="taxRate">Tax rate</param>
+		/// <returns>Shipping price</returns>
+		decimal GetShippingPrice(decimal price, bool includingTax, Customer customer, int taxCategoryId, out decimal taxRate);
 
 
 
 
+		/// <summary>
+		/// Gets payment method additional handling fee
+		/// </summary>
+		/// <param name="price">Price</param>
+		/// <param name="customer">Customer</param>
+		/// <returns>Payment fee</returns>
+		decimal GetPaymentMethodAdditionalFee(decimal price, Customer customer);
+
+		/// <summary>
+		/// Gets payment method additional handling fee
+		/// </summary>
+		/// <param name="price">Price</param>
+		/// <param name="includingTax">A value indicating whether calculated price should include tax</param>
+		/// <param name="customer">Customer</param>
+		/// <returns>Payment fee</returns>
+		decimal GetPaymentMethodAdditionalFee(decimal price, bool includingTax, Customer customer);
+
+		/// <summary>
+		/// Gets payment method additional handling fee
+		/// </summary>
+		/// <param name="price">Price</param>
+		/// <param name="includingTax">A value indicating whether calculated price should include tax</param>
+		/// <param name="customer">Customer</param>
+		/// <param name="taxRate">Tax rate</param>
+		/// <returns>Payment fee</returns>
+		decimal GetPaymentMethodAdditionalFee(decimal price, bool includingTax, Customer customer, out decimal taxRate);
+
+		/// <summary>
+		/// Gets payment method additional handling fee
+		/// </summary>
+		/// <param name="price">Price</param>
+		/// <param name="includingTax">A value indicating whether calculated price should include tax</param>
+		/// <param name="customer">Customer</param>
+		/// <param name="taxCategoryId">Tax category id</param>
+		/// <param name="taxRate">Tax rate</param>
+		/// <returns>Payment fee</returns>
+		decimal GetPaymentMethodAdditionalFee(decimal price, bool includingTax, Customer customer, int taxCategoryId, out decimal taxRate);
 
 
 
-        /// <summary>
-        /// Gets checkout attribute value price
-        /// </summary>
-        /// <param name="cav">Checkout attribute value</param>
-        /// <returns>Price</returns>
-        decimal GetCheckoutAttributePrice(CheckoutAttributeValue cav);
+
+		/// <summary>
+		/// Gets checkout attribute value price
+		/// </summary>
+		/// <param name="cav">Checkout attribute value</param>
+		/// <returns>Price</returns>
+		decimal GetCheckoutAttributePrice(CheckoutAttributeValue cav);
 
         /// <summary>
         /// Gets checkout attribute value price

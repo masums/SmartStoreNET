@@ -2,77 +2,44 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using SmartStore.Core;
-using SmartStore.Core.Caching;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Directory;
 using SmartStore.Core.Domain.Stores;
 using SmartStore.Core.Events;
 using SmartStore.Core.Plugins;
-using SmartStore.Services.Customers;
+using SmartStore.Data.Caching;
 using SmartStore.Services.Stores;
 
 namespace SmartStore.Services.Directory
 {
-    /// <summary>
-    /// Currency service
-    /// </summary>
     public partial class CurrencyService : ICurrencyService
     {
-        #region Constants
-        private const string CURRENCIES_ALL_KEY = "SmartStore.currency.all-{0}";
-        private const string CURRENCIES_PATTERN_KEY = "SmartStore.currency.";
-        private const string CURRENCIES_BY_ID_KEY = "SmartStore.currency.id-{0}";
-        #endregion
-
-        #region Fields
-
         private readonly IRepository<Currency> _currencyRepository;
 		private readonly IStoreMappingService _storeMappingService;
-        private readonly ICacheManager _cacheManager;
         private readonly CurrencySettings _currencySettings;
         private readonly IPluginFinder _pluginFinder;
         private readonly IEventPublisher _eventPublisher;
 		private readonly IProviderManager _providerManager;
+		private readonly IStoreContext _storeContext;
 
-        #endregion
-
-        #region Ctor
-
-        /// <summary>
-        /// Ctor
-        /// </summary>
-        /// <param name="cacheManager">Cache manager</param>
-        /// <param name="currencyRepository">Currency repository</param>
-		/// <param name="storeMappingRepository">Store mapping repository</param>
-        /// <param name="currencySettings">Currency settings</param>
-        /// <param name="pluginFinder">Plugin finder</param>
-        /// <param name="eventPublisher">Event published</param>
-        public CurrencyService(ICacheManager cacheManager,
+        public CurrencyService(
             IRepository<Currency> currencyRepository,
 			IStoreMappingService storeMappingService,
             CurrencySettings currencySettings,
             IPluginFinder pluginFinder,
             IEventPublisher eventPublisher,
-			IProviderManager providerManager)
+			IProviderManager providerManager,
+			IStoreContext storeContext)
         {
-            this._cacheManager = cacheManager;
-            this._currencyRepository = currencyRepository;
-			this._storeMappingService = storeMappingService;
-            this._currencySettings = currencySettings;
-            this._pluginFinder = pluginFinder;
-            this._eventPublisher = eventPublisher;
-			this._providerManager = providerManager;
+            _currencyRepository = currencyRepository;
+			_storeMappingService = storeMappingService;
+            _currencySettings = currencySettings;
+            _pluginFinder = pluginFinder;
+            _eventPublisher = eventPublisher;
+			_providerManager = providerManager;
+			_storeContext = storeContext;
         }
 
-        #endregion
-        
-        #region Methods
-
-        /// <summary>
-        /// Gets currency live rates
-        /// </summary>
-        /// <param name="exchangeRateCurrencyCode">Exchange rate currency code</param>
-        /// <returns>Exchange rates</returns>
         public virtual IList<ExchangeRate> GetCurrencyLiveRates(string exchangeRateCurrencyCode)
         {
             var exchangeRateProvider = LoadActiveExchangeRateProvider();
@@ -83,68 +50,40 @@ namespace SmartStore.Services.Directory
 			return new List<ExchangeRate>();
         }
 
-        /// <summary>
-        /// Deletes currency
-        /// </summary>
-        /// <param name="currency">Currency</param>
         public virtual void DeleteCurrency(Currency currency)
         {
-            if (currency == null)
-                throw new ArgumentNullException("currency");
+			Guard.NotNull(currency, nameof(currency));
             
             _currencyRepository.Delete(currency);
-
-            _cacheManager.RemoveByPattern(CURRENCIES_PATTERN_KEY);
-
-            //event notification
-            _eventPublisher.EntityDeleted(currency);
         }
 
-        /// <summary>
-        /// Gets a currency
-        /// </summary>
-        /// <param name="currencyId">Currency identifier</param>
-        /// <returns>Currency</returns>
         public virtual Currency GetCurrencyById(int currencyId)
         {
             if (currencyId == 0)
                 return null;
 
-            string key = string.Format(CURRENCIES_BY_ID_KEY, currencyId);
-            return _cacheManager.Get(key, () => _currencyRepository.GetById(currencyId));
-        }
+			return _currencyRepository.GetByIdCached(currencyId, "db.cur.id-" + currencyId);
+		}
 
-        /// <summary>
-        /// Gets a currency by code
-        /// </summary>
-        /// <param name="currencyCode">Currency code</param>
-        /// <returns>Currency</returns>
         public virtual Currency GetCurrencyByCode(string currencyCode)
         {
-            if (String.IsNullOrEmpty(currencyCode))
-                return null;
-            return GetAllCurrencies(true).FirstOrDefault(c => c.CurrencyCode.ToLower() == currencyCode.ToLower());
+			Guard.NotNull(currencyCode, nameof(currencyCode));
+
+			return GetAllCurrencies(true).FirstOrDefault(c => c.CurrencyCode.ToLower() == currencyCode.ToLower());
         }
 
-        /// <summary>
-        /// Gets all currencies
-        /// </summary>
-        /// <param name="showHidden">A value indicating whether to show hidden records</param>
-		/// <param name="storeId">Load records allows only in specified store; pass 0 to load all records</param>
-        /// <returns>Currency collection</returns>
 		public virtual IList<Currency> GetAllCurrencies(bool showHidden = false, int storeId = 0)
         {
-			string key = string.Format(CURRENCIES_ALL_KEY, showHidden);
-			var currencies = _cacheManager.Get(key, () =>
-			{
-				var query = _currencyRepository.Table;
-				if (!showHidden)
-					query = query.Where(c => c.Published);
-				query = query.OrderBy(c => c.DisplayOrder);
-				return query.ToList();
-			});
+			var query = _currencyRepository.Table;
 
-			//store mapping
+			if (!showHidden)
+				query = query.Where(c => c.Published);
+
+			query = query.OrderBy(c => c.DisplayOrder);
+
+			var currencies = query.ToListCached();
+
+			// store mapping
 			if (storeId > 0)
 			{
 				currencies = currencies
@@ -154,177 +93,109 @@ namespace SmartStore.Services.Directory
 			return currencies;
         }
 
-        /// <summary>
-        /// Inserts a currency
-        /// </summary>
-        /// <param name="currency">Currency</param>
         public virtual void InsertCurrency(Currency currency)
         {
-            if (currency == null)
-                throw new ArgumentNullException("currency");
+			Guard.NotNull(currency, nameof(currency));
 
-            _currencyRepository.Insert(currency);
-
-            _cacheManager.RemoveByPattern(CURRENCIES_PATTERN_KEY);
-
-            //event notification
-            _eventPublisher.EntityInserted(currency);
+			_currencyRepository.Insert(currency);
         }
 
-        /// <summary>
-        /// Updates the currency
-        /// </summary>
-        /// <param name="currency">Currency</param>
         public virtual void UpdateCurrency(Currency currency)
         {
-            if (currency == null)
-                throw new ArgumentNullException("currency");
+			Guard.NotNull(currency, nameof(currency));
 
-            _currencyRepository.Update(currency);
-
-            _cacheManager.RemoveByPattern(CURRENCIES_PATTERN_KEY);
-
-            //event notification
-            _eventPublisher.EntityUpdated(currency);
+			_currencyRepository.Update(currency);
         }
 
-
-
-        /// <summary>
-        /// Converts currency
-        /// </summary>
-        /// <param name="amount">Amount</param>
-        /// <param name="exchangeRate">Currency exchange rate</param>
-        /// <returns>Converted value</returns>
         public virtual decimal ConvertCurrency(decimal amount, decimal exchangeRate)
         {
             if (amount != decimal.Zero && exchangeRate != decimal.Zero)
                 return amount * exchangeRate;
+
             return decimal.Zero;
         }
 
-        /// <summary>
-        /// Converts currency
-        /// </summary>
-        /// <param name="amount">Amount</param>
-        /// <param name="sourceCurrencyCode">Source currency code</param>
-        /// <param name="targetCurrencyCode">Target currency code</param>
-        /// <returns>Converted value</returns>
-        public virtual decimal ConvertCurrency(decimal amount, Currency sourceCurrencyCode, Currency targetCurrencyCode)
+		public virtual decimal ConvertCurrency(decimal amount, Currency sourceCurrency, Currency targetCurrency, Store store = null)
         {
             decimal result = amount;
-            if (sourceCurrencyCode.Id == targetCurrencyCode.Id)
+            if (sourceCurrency.Id == targetCurrency.Id)
                 return result;
-            if (result != decimal.Zero && sourceCurrencyCode.Id != targetCurrencyCode.Id)
+
+            if (result != decimal.Zero && sourceCurrency.Id != targetCurrency.Id)
             {
-                result = ConvertToPrimaryExchangeRateCurrency(result, sourceCurrencyCode);
-                result = ConvertFromPrimaryExchangeRateCurrency(result, targetCurrencyCode);
+                result = ConvertToPrimaryExchangeRateCurrency(result, sourceCurrency, store);
+                result = ConvertFromPrimaryExchangeRateCurrency(result, targetCurrency, store);
             }
+
             return result;
         }
 
-        /// <summary>
-        /// Converts to primary exchange rate currency 
-        /// </summary>
-        /// <param name="amount">Amount</param>
-        /// <param name="sourceCurrencyCode">Source currency code</param>
-        /// <returns>Converted value</returns>
-        public virtual decimal ConvertToPrimaryExchangeRateCurrency(decimal amount, Currency sourceCurrencyCode)
+		public virtual decimal ConvertToPrimaryExchangeRateCurrency(decimal amount, Currency sourceCurrency, Store store = null)
         {
             decimal result = amount;
-            var primaryExchangeRateCurrency = GetCurrencyById(_currencySettings.PrimaryExchangeRateCurrencyId);
-            if (result != decimal.Zero && sourceCurrencyCode.Id != primaryExchangeRateCurrency.Id)
+			var primaryExchangeRateCurrency = (store == null ? _storeContext.CurrentStore.PrimaryExchangeRateCurrency : store.PrimaryExchangeRateCurrency);
+
+            if (result != decimal.Zero && sourceCurrency.Id != primaryExchangeRateCurrency.Id)
             {
-                decimal exchangeRate = sourceCurrencyCode.Rate;
+                decimal exchangeRate = sourceCurrency.Rate;
                 if (exchangeRate == decimal.Zero)
-                    throw new SmartException(string.Format("Exchange rate not found for currency [{0}]", sourceCurrencyCode.Name));
+                    throw new SmartException(string.Format("Exchange rate not found for currency [{0}]", sourceCurrency.Name));
                 result = result / exchangeRate;
             }
             return result;
         }
 
-        /// <summary>
-        /// Converts from primary exchange rate currency
-        /// </summary>
-        /// <param name="amount">Amount</param>
-        /// <param name="targetCurrencyCode">Target currency code</param>
-        /// <returns>Converted value</returns>
-        public virtual decimal ConvertFromPrimaryExchangeRateCurrency(decimal amount, Currency targetCurrencyCode)
+		public virtual decimal ConvertFromPrimaryExchangeRateCurrency(decimal amount, Currency targetCurrency, Store store = null)
         {
             decimal result = amount;
-            var primaryExchangeRateCurrency = GetCurrencyById(_currencySettings.PrimaryExchangeRateCurrencyId);
-            if (result != decimal.Zero && targetCurrencyCode.Id != primaryExchangeRateCurrency.Id)
+            var primaryExchangeRateCurrency = (store == null ? _storeContext.CurrentStore.PrimaryExchangeRateCurrency : store.PrimaryExchangeRateCurrency);
+
+            if (result != decimal.Zero && targetCurrency.Id != primaryExchangeRateCurrency.Id)
             {
-                decimal exchangeRate = targetCurrencyCode.Rate;
+                decimal exchangeRate = targetCurrency.Rate;
                 if (exchangeRate == decimal.Zero)
-                    throw new SmartException(string.Format("Exchange rate not found for currency [{0}]", targetCurrencyCode.Name));
+                    throw new SmartException(string.Format("Exchange rate not found for currency [{0}]", targetCurrency.Name));
                 result = result * exchangeRate;
             }
             return result;
         }
 
-        /// <summary>
-        /// Converts to primary store currency 
-        /// </summary>
-        /// <param name="amount">Amount</param>
-        /// <param name="sourceCurrencyCode">Source currency code</param>
-        /// <returns>Converted value</returns>
-        public virtual decimal ConvertToPrimaryStoreCurrency(decimal amount, Currency sourceCurrencyCode)
+        public virtual decimal ConvertToPrimaryStoreCurrency(decimal amount, Currency sourceCurrency, Store store = null)
         {
             decimal result = amount;
-            var primaryStoreCurrency = GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId);
-            if (result != decimal.Zero && sourceCurrencyCode.Id != primaryStoreCurrency.Id)
+			var primaryStoreCurrency = (store == null ? _storeContext.CurrentStore.PrimaryStoreCurrency : store.PrimaryStoreCurrency);
+
+            if (result != decimal.Zero && sourceCurrency.Id != primaryStoreCurrency.Id)
             {
-                decimal exchangeRate = sourceCurrencyCode.Rate;
+                decimal exchangeRate = sourceCurrency.Rate;
                 if (exchangeRate == decimal.Zero)
-                    throw new SmartException(string.Format("Exchange rate not found for currency [{0}]", sourceCurrencyCode.Name));
+                    throw new SmartException(string.Format("Exchange rate not found for currency [{0}]", sourceCurrency.Name));
                 result = result / exchangeRate;
             }
             return result;
         }
 
-        /// <summary>
-        /// Converts from primary store currency
-        /// </summary>
-        /// <param name="amount">Amount</param>
-        /// <param name="targetCurrencyCode">Target currency code</param>
-        /// <returns>Converted value</returns>
-        public virtual decimal ConvertFromPrimaryStoreCurrency(decimal amount, Currency targetCurrencyCode)
+		public virtual decimal ConvertFromPrimaryStoreCurrency(decimal amount, Currency targetCurrency, Store store = null)
         {
             decimal result = amount;
-            var primaryStoreCurrency = GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId);
-            result = ConvertCurrency(amount, primaryStoreCurrency, targetCurrencyCode);
+			var primaryStoreCurrency = (store == null ? _storeContext.CurrentStore.PrimaryStoreCurrency : store.PrimaryStoreCurrency);
+            result = ConvertCurrency(amount, primaryStoreCurrency, targetCurrency, store);
             return result;
         }
-       
 
-        /// <summary>
-        /// Load active exchange rate provider
-        /// </summary>
-        /// <returns>Active exchange rate provider</returns>
         public virtual Provider<IExchangeRateProvider> LoadActiveExchangeRateProvider()
         {
 			return LoadExchangeRateProviderBySystemName(_currencySettings.ActiveExchangeRateProviderSystemName) ?? LoadAllExchangeRateProviders().FirstOrDefault();
         }
 
-        /// <summary>
-        /// Load exchange rate provider by system name
-        /// </summary>
-        /// <param name="systemName">System name</param>
-        /// <returns>Found exchange rate provider</returns>
         public virtual Provider<IExchangeRateProvider> LoadExchangeRateProviderBySystemName(string systemName)
         {
 			return _providerManager.GetProvider<IExchangeRateProvider>(systemName);
         }
 
-        /// <summary>
-        /// Load all exchange rate providers
-        /// </summary>
-        /// <returns>Exchange rate providers</returns>
         public virtual IEnumerable<Provider<IExchangeRateProvider>> LoadAllExchangeRateProviders()
         {
 			return _providerManager.GetAllProviders<IExchangeRateProvider>();
         }
-        #endregion
     }
 }

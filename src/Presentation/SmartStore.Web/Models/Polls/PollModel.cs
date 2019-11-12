@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Web.Models.Polls
 {
@@ -12,6 +12,8 @@ namespace SmartStore.Web.Models.Polls
         }
 
         public string Name { get; set; }
+
+        public string SystemKeyword { get; set; }
 
         public bool AlreadyVoted { get; set; }
 

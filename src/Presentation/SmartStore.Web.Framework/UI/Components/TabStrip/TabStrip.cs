@@ -2,10 +2,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Web.WebPages;
 
 namespace SmartStore.Web.Framework.UI
 {
-
     public enum TabsPosition
     {
         Top,
@@ -17,38 +17,51 @@ namespace SmartStore.Web.Framework.UI
     public enum TabsStyle
     {
         Tabs,
-        Pills
+        Pills,
+		Material
     }
 
     public class TabStrip : Component
     {
-
         public TabStrip()
         {
             this.Items = new List<Tab>();
             this.Fade = true;
             this.SmartTabSelection = true;
+			this.Breakpoint = "<lg";
         }
 
-        public IList<Tab> Items
+        public List<Tab> Items
         {
             get;
             private set;
         }
 
-        public TabsPosition Position
+		public bool IsResponsive
+        {
+            get;
+            set;
+        }
+
+		public string Breakpoint
+		{
+			get;
+			set;
+		}
+
+		public HelperResult TabContentHeaderContent
+		{
+			get;
+			set;
+		}
+
+		public TabsPosition Position
         {
             get;
             set;
         }
 
         public TabsStyle Style
-        {
-            get;
-            set;
-        }
-
-        public bool Stacked
         {
             get;
             set;
@@ -97,8 +110,6 @@ namespace SmartStore.Web.Framework.UI
                 return true;
             }
         }
-
-
     }
 
 }

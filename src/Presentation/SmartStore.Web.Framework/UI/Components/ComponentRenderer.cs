@@ -1,18 +1,13 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Web.Mvc;
 using System.Web;
 using System.Web.UI;
 using System.IO;
 
 namespace SmartStore.Web.Framework.UI
-{
-    
+{ 
     public abstract class ComponentRenderer<TComponent> : IHtmlString where TComponent : Component
     {
-
         protected ComponentRenderer()
         {
         }
@@ -26,6 +21,12 @@ namespace SmartStore.Web.Framework.UI
         {
             get;
             set;
+        }
+
+        protected internal HtmlHelper HtmlHelper
+        {
+            get;
+            internal set;
         }
 
         protected internal ViewContext ViewContext
@@ -42,54 +43,48 @@ namespace SmartStore.Web.Framework.UI
 
         public virtual void VerifyState()
         {
-            Guard.NotNull(() => this.Component);
+            Guard.NotNull(this.Component, nameof(this.Component));
+
             if (this.Component.NameIsRequired && !this.Component.Id.HasValue())
             {
                 throw Error.InvalidOperation("A component must have a unique 'Name'. Please provide a name.");
             }
         }
 
-        protected void WriteHtml(HtmlTextWriter writer)
-        {
-            this.VerifyState();
-            this.Component.Id = SanitizeId(this.Component.Id);
+		protected string SanitizeId(string id)
+		{
+			return id.SanitizeHtmlId();
+		}
 
-            this.WriteHtmlCore(writer);
-        }
-
-        protected virtual void WriteHtmlCore(HtmlTextWriter writer)
+		public virtual void Render()
         {
-            throw new NotImplementedException();
-        }
+			WriteHtml(ViewContext.Writer);
+		}
 
-        public void Render()
+        public virtual string ToHtmlString()
         {
-            using (HtmlTextWriter htmlTextWriter = new HtmlTextWriter(this.ViewContext.Writer))
-            {
-                this.WriteHtml(htmlTextWriter);
-            }
-        }
-
-        public string ToHtmlString()
-        {
-            string str;
             using (var stringWriter = new StringWriter())
             {
-				using (var htmlWriter = new HtmlTextWriter(stringWriter))
-				{
-					this.WriteHtml(htmlWriter);
-					str = stringWriter.ToString();
-				}
-            }
-            return str;
-        }
+				WriteHtml(stringWriter);
+				var str = stringWriter.ToString();
+				return str;
+			}
+		}
 
+		protected void WriteHtml(TextWriter writer)
+		{
+			this.VerifyState();
+			this.Component.Id = SanitizeId(this.Component.Id);
 
-        protected string SanitizeId(string id)
-        {
-            return id.SanitizeHtmlId();
-        }
+			using (var htmlWriter = new HtmlTextWriter(writer))
+			{
+				WriteHtmlCore(htmlWriter);
+			}
+		}
 
+		protected virtual void WriteHtmlCore(HtmlTextWriter writer)
+		{
+			throw new NotImplementedException();
+		}
     }
-
 }

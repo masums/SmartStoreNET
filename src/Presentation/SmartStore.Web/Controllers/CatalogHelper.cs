@@ -1,43 +1,50 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.Data.Entity;
 using System.Linq;
 using System.Web;
 using System.Web.Mvc;
-using SmartStore.Collections;
-using SmartStore.Core.Caching;
+using System.Web.Routing;
+using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Catalog;
+using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Directory;
 using SmartStore.Core.Domain.Media;
+using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Tax;
-using SmartStore.Core.Localization; 
+using SmartStore.Core.Fakes;
+using SmartStore.Core.Localization;
 using SmartStore.Core.Logging;
 using SmartStore.Services;
 using SmartStore.Services.Catalog;
-using SmartStore.Services.Configuration;
+using SmartStore.Services.Catalog.Extensions;
+using SmartStore.Services.Catalog.Modelling;
+using SmartStore.Services.Cms;
 using SmartStore.Services.Customers;
+using SmartStore.Services.DataExchange.Export;
 using SmartStore.Services.Directory;
 using SmartStore.Services.Helpers;
 using SmartStore.Services.Localization;
-using SmartStore.Services.Media; 
+using SmartStore.Services.Media;
+using SmartStore.Services.Search;
+using SmartStore.Services.Search.Modelling;
 using SmartStore.Services.Security;
 using SmartStore.Services.Seo;
 using SmartStore.Services.Tax;
+using SmartStore.Web.Framework;
+using SmartStore.Web.Framework.Security;
 using SmartStore.Web.Framework.UI;
-using SmartStore.Web.Framework.UI.Captcha;
 using SmartStore.Web.Infrastructure.Cache;
 using SmartStore.Web.Models.Catalog;
 using SmartStore.Web.Models.Media;
 
 namespace SmartStore.Web.Controllers
 {
-	public class CatalogHelper
+    public partial class CatalogHelper
 	{
-		private static object s_lock = new object();
-		
 		private readonly ICommonServices _services;
-		private readonly ICategoryService _categoryService;
+        private readonly IMenuService _menuService;
 		private readonly IManufacturerService _manufacturerService;
 		private readonly IProductService _productService;
 		private readonly IProductTemplateService _productTemplateService;
@@ -58,20 +65,26 @@ namespace SmartStore.Web.Controllers
 		private readonly CatalogSettings _catalogSettings;
 		private readonly CustomerSettings _customerSettings;
 		private readonly CaptchaSettings _captchaSettings;
-		private readonly CurrencySettings _currencySettings;
 		private readonly TaxSettings _taxSettings;
+		private readonly PerformanceSettings _performanceSettings;
 		private readonly IMeasureService _measureService;
+        private readonly IQuantityUnitService _quantityUnitService;
 		private readonly MeasureSettings _measureSettings;
 		private readonly IDeliveryTimeService _deliveryTimeService;
-		private readonly ISettingService _settingService;
-		private readonly Lazy<IMenuPublisher> _menuPublisher;
-
+		private readonly Lazy<IDataExporter> _dataExporter;
+        private readonly Lazy<IPermissionService> _permissionService;
+        private readonly ICatalogSearchService _catalogSearchService;
+		private readonly ICatalogSearchQueryFactory _catalogSearchQueryFactory;
 		private readonly HttpRequestBase _httpRequest;
 		private readonly UrlHelper _urlHelper;
+		private readonly ProductUrlHelper _productUrlHelper;
+		private readonly ILocalizedEntityService _localizedEntityService;
+		private readonly IUrlRecordService _urlRecordService;
+        private readonly ILinkResolver _linkResolver;
 
-		public CatalogHelper(
+        public CatalogHelper(
 			ICommonServices services,
-			ICategoryService categoryService,
+            IMenuService menuService,
 			IManufacturerService manufacturerService,
 			IProductService productService,
 			IProductTemplateService productTemplateService,
@@ -90,49 +103,63 @@ namespace SmartStore.Web.Controllers
 			MediaSettings mediaSettings,
 			CatalogSettings catalogSettings,
 			CustomerSettings customerSettings,
-			CurrencySettings currencySettings,
 			CaptchaSettings captchaSettings,
 			IMeasureService measureService,
+            IQuantityUnitService quantityUnitService,
 			MeasureSettings measureSettings,
 			TaxSettings taxSettings,
+			PerformanceSettings performanceSettings,
 			IDeliveryTimeService deliveryTimeService,
-			ISettingService settingService,
 			Lazy<IMenuPublisher> _menuPublisher,
+			Lazy<IDataExporter> dataExporter,
+            Lazy<IPermissionService> permissionService,
+            ICatalogSearchService catalogSearchService,
+			ICatalogSearchQueryFactory catalogSearchQueryFactory,
 			HttpRequestBase httpRequest,
-			UrlHelper urlHelper)
+			UrlHelper urlHelper,
+			ProductUrlHelper productUrlHelper,
+			ILocalizedEntityService localizedEntityService,
+			IUrlRecordService urlRecordService,
+            ILinkResolver linkResolver)
 		{
-			this._services = services;
-			this._categoryService = categoryService;
-			this._manufacturerService = manufacturerService;
-			this._productService = productService;
-			this._productTemplateService = productTemplateService;
-			this._productAttributeService = productAttributeService;
-			this._productAttributeParser = productAttributeParser;
-			this._productAttributeFormatter = productAttributeFormatter;
-			this._taxService = taxService;
-			this._currencyService = currencyService;
-			this._pictureService = pictureService;
-			this._localizationService = _services.Localization;
-			this._priceCalculationService = priceCalculationService;
-			this._priceFormatter = priceFormatter;
-			this._specificationAttributeService = specificationAttributeService;
-			this._dateTimeHelper = dateTimeHelper;
-			this._backInStockSubscriptionService = backInStockSubscriptionService;
-			this._downloadService = downloadService;
-			this._measureService = measureService;
-			this._measureSettings = measureSettings;
-			this._taxSettings = taxSettings;
-			this._deliveryTimeService = deliveryTimeService;
-			this._settingService = settingService;
-			this._mediaSettings = mediaSettings;
-			this._catalogSettings = catalogSettings;
-			this._customerSettings = customerSettings;
-			this._captchaSettings = captchaSettings;
-			this._currencySettings = currencySettings;
-			this._menuPublisher = _menuPublisher;
-
-			this._httpRequest = httpRequest;
-			this._urlHelper = urlHelper;
+			_services = services;
+            _menuService = menuService;
+			_manufacturerService = manufacturerService;
+			_productService = productService;
+			_productTemplateService = productTemplateService;
+			_productAttributeService = productAttributeService;
+			_productAttributeParser = productAttributeParser;
+			_productAttributeFormatter = productAttributeFormatter;
+			_taxService = taxService;
+			_currencyService = currencyService;
+			_pictureService = pictureService;
+			_localizationService = _services.Localization;
+			_priceCalculationService = priceCalculationService;
+			_priceFormatter = priceFormatter;
+			_specificationAttributeService = specificationAttributeService;
+			_dateTimeHelper = dateTimeHelper;
+			_backInStockSubscriptionService = backInStockSubscriptionService;
+			_downloadService = downloadService;
+			_measureService = measureService;
+            _quantityUnitService = quantityUnitService;
+			_measureSettings = measureSettings;
+			_taxSettings = taxSettings;
+			_performanceSettings = performanceSettings;
+			_deliveryTimeService = deliveryTimeService;
+			_mediaSettings = mediaSettings;
+			_catalogSettings = catalogSettings;
+			_customerSettings = customerSettings;
+			_captchaSettings = captchaSettings;
+			_dataExporter = dataExporter;
+            _permissionService = permissionService;
+            _catalogSearchService = catalogSearchService;
+			_catalogSearchQueryFactory = catalogSearchQueryFactory;
+			_httpRequest = httpRequest;
+			_urlHelper = urlHelper;
+			_productUrlHelper = productUrlHelper;
+			_localizedEntityService = localizedEntityService;
+			_urlRecordService = urlRecordService;
+            _linkResolver = linkResolver;
 
 			T = NullLocalizer.Instance;
 		}
@@ -141,172 +168,422 @@ namespace SmartStore.Web.Controllers
 
 		public ILogger Logger { get; set; }
 
-		public ProductDetailsModel PrepareProductDetailsPageModel(Product product, bool isAssociatedProduct = false,
-			ProductBundleItemData productBundleItem = null, IList<ProductBundleItemData> productBundleItems = null, FormCollection selectedAttributes = null)
+        #region Category
+
+        public IList<CategorySummaryModel> MapCategorySummaryModel(IEnumerable<Category> categories, int pictureSize)
+        {
+            Guard.NotNull(categories, nameof(categories));
+
+            var pictureFallbackType = _catalogSettings.HideCategoryDefaultPictures ? FallbackPictureType.NoFallback : FallbackPictureType.Entity;
+            var allPictureInfos = _pictureService.GetPictureInfos(categories.Select(x => x.PictureId.GetValueOrDefault()));
+
+            return categories
+                .Select(c => 
+                {
+                    var name = c.GetLocalized(y => y.Name);
+                    var model = new CategorySummaryModel
+                    {
+                        Id = c.Id,
+                        Name = name
+                    };
+
+                    _services.DisplayControl.Announce(c);
+
+                    // Generate URL
+                    if (c.ExternalLink.HasValue())
+                    {
+                        var link = _linkResolver.Resolve(c.ExternalLink);
+                        if (link.Status == LinkStatus.Ok)
+                        {
+                            model.Url = link.Link;
+                        }
+                    }
+
+                    if (model.Url.IsEmpty())
+                    {
+                        model.Url = _urlHelper.RouteUrl("Category", new { SeName = c.GetSeName() });
+                    }          
+
+                    // Prepare picture model.
+                    var pictureInfo = allPictureInfos.Get(c.PictureId.GetValueOrDefault());
+
+                    model.PictureModel = new PictureModel
+                    {
+                        PictureId = pictureInfo?.Id ?? 0,
+                        Size = pictureSize,
+                        ImageUrl = _pictureService.GetUrl(pictureInfo, pictureSize, pictureFallbackType),
+                        FullSizeImageUrl = _pictureService.GetUrl(pictureInfo, 0, FallbackPictureType.NoFallback),
+                        FullSizeImageWidth = pictureInfo?.Width,
+                        FullSizeImageHeight = pictureInfo?.Height,
+                        Title = string.Format(T("Media.Category.ImageLinkTitleFormat"), name),
+                        AlternateText = string.Format(T("Media.Category.ImageAlternateTextFormat"), name)
+                    };
+
+                    return model;
+                })
+                .ToList();
+        }
+
+        public IEnumerable<int> GetChildCategoryIds(int parentCategoryId, bool deep = true)
+        {
+            var root = _menuService.GetRootNode("Main");
+            var node = root.SelectNodeById(parentCategoryId) ?? root.SelectNode(x => x.Value.EntityId == parentCategoryId);
+            if (node != null)
+            {
+                var children = deep ? node.Flatten(false) : node.Children.Select(x => x.Value);
+                var ids = children.Select(x => x.EntityId);
+                return ids;
+            }
+
+            return Enumerable.Empty<int>();
+        }
+
+        public void GetCategoryBreadcrumb(IBreadcrumb breadcrumb, ControllerContext context, Product product = null)
+        {
+            var menu = _menuService.GetMenu("Main");
+            var currentNode = menu.ResolveCurrentNode(context);
+
+            if (currentNode != null)
+            {
+                currentNode.Trail.Where(x => !x.IsRoot).Each(x => breadcrumb.Track(x.Value));
+            }
+
+            // Add trail of parent product if product has no category assigned.
+            if (product != null && !(breadcrumb.Trail?.Any() ?? false))
+            {
+                var parentProduct = _productService.GetProductById(product.ParentGroupedProductId);
+                if (parentProduct != null)
+                {
+                    var fc = new FakeController();
+                    var rd = new RouteData();
+                    rd.Values.Add("currentProductId", parentProduct.Id);
+                    var fcc = new ControllerContext(new RequestContext(context.HttpContext, rd), fc);
+                    fc.ControllerContext = fcc;
+
+                    currentNode = menu.ResolveCurrentNode(fcc);
+                    if (currentNode != null)
+                    {
+                        currentNode.Trail.Where(x => !x.IsRoot).Each(x => breadcrumb.Track(x.Value));
+                        var parentName = parentProduct.GetLocalized(x => x.Name);
+
+                        breadcrumb.Track(new MenuItem
+                        {
+                            Text = parentName,
+                            Rtl = parentName.CurrentLanguage.Rtl,
+                            EntityId = parentProduct.Id,
+                            Url = _urlHelper.RouteUrl("Product", new { SeName = parentProduct.GetSeName() })
+                        });
+                    }
+                }
+            }
+        }
+
+        #endregion
+
+        public ProductDetailsModel PrepareProductDetailsPageModel(
+			Product product,
+			ProductVariantQuery query,
+			bool isAssociatedProduct = false,
+			ProductBundleItemData productBundleItem = null, 
+			IList<ProductBundleItemData> productBundleItems = null)
 		{
-			if (product == null)
-				throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
 
-			var model = new ProductDetailsModel()
+			var customer = _services.WorkContext.CurrentCustomer;
+			var store = _services.StoreContext.CurrentStore;
+
+			using (_services.Chronometer.Step("PrepareProductDetailsPageModel"))
 			{
-				Id = product.Id,
-				Name = product.GetLocalized(x => x.Name),
-				ShortDescription = product.GetLocalized(x => x.ShortDescription),
-				FullDescription = product.GetLocalized(x => x.FullDescription),
-				MetaKeywords = product.GetLocalized(x => x.MetaKeywords),
-				MetaDescription = product.GetLocalized(x => x.MetaDescription),
-				MetaTitle = product.GetLocalized(x => x.MetaTitle),
-				SeName = product.GetSeName(),
-				ProductType = product.ProductType,
-				VisibleIndividually = product.VisibleIndividually,
-				//Manufacturers = _manufacturerService.GetProductManufacturersByProductId(product.Id),
-				Manufacturers = PrepareManufacturersOverviewModel(_manufacturerService.GetProductManufacturersByProductId(product.Id)),
-				ReviewCount = product.ApprovedTotalReviews,
-				DisplayAdminLink = _services.Permissions.Authorize(StandardPermissionProvider.AccessAdminPanel),
-				//EnableHtmlTextCollapser = Convert.ToBoolean(_settingService.GetSettingByKey<string>("CatalogSettings.EnableHtmlTextCollapser")),
-				//HtmlTextCollapsedHeight = Convert.ToString(_settingService.GetSettingByKey<string>("CatalogSettings.HtmlTextCollapsedHeight")),
-				ShowSku = _catalogSettings.ShowProductSku,
-				Sku = product.Sku,
-				ShowManufacturerPartNumber = _catalogSettings.ShowManufacturerPartNumber,
-				ManufacturerPartNumber = product.ManufacturerPartNumber,
-				ShowGtin = _catalogSettings.ShowGtin,
-				Gtin = product.Gtin,
-				StockAvailability = product.FormatStockMessage(_localizationService),
-				HasSampleDownload = product.IsDownload && product.HasSampleDownload,
-				IsCurrentCustomerRegistered = _services.WorkContext.CurrentCustomer.IsRegistered()
-			};
-
-			// Back in stock subscriptions
-			if (product.ManageInventoryMethod == ManageInventoryMethod.ManageStock &&
-				 product.BackorderMode == BackorderMode.NoBackorders &&
-				 product.AllowBackInStockSubscriptions &&
-				 product.StockQuantity <= 0)
-			{
-				//out of stock
-				model.DisplayBackInStockSubscription = true;
-				model.BackInStockAlreadySubscribed = _backInStockSubscriptionService
-					.FindSubscription(_services.WorkContext.CurrentCustomer.Id, product.Id, _services.StoreContext.CurrentStore.Id) != null;
-			}
-
-			//template
-			var templateCacheKey = string.Format(ModelCacheEventConsumer.PRODUCT_TEMPLATE_MODEL_KEY, product.ProductTemplateId);
-			model.ProductTemplateViewPath = _services.Cache.Get(templateCacheKey, () =>
-			{
-				var template = _productTemplateService.GetProductTemplateById(product.ProductTemplateId);
-				if (template == null)
-					template = _productTemplateService.GetAllProductTemplates().FirstOrDefault();
-				return template.ViewPath;
-			});
-
-			IList<ProductBundleItemData> bundleItems = null;
-			ProductVariantAttributeCombination combination = null;
-			var combinationImageIds = new List<int>();
-
-			if (product.ProductType == ProductType.GroupedProduct && !isAssociatedProduct)	// associated products
-			{
-				var searchContext = new ProductSearchContext()
+				var model = new ProductDetailsModel
 				{
-					StoreId = _services.StoreContext.CurrentStore.Id,
-					ParentGroupedProductId = product.Id,
-					PageSize = int.MaxValue,
-					VisibleIndividuallyOnly = false
-				};
+					Id = product.Id,
+					Name = product.GetLocalized(x => x.Name),
+					ShortDescription = product.GetLocalized(x => x.ShortDescription),
+					FullDescription = product.GetLocalized(x => x.FullDescription, detectEmptyHtml: true),
+					MetaKeywords = product.GetLocalized(x => x.MetaKeywords),
+					MetaDescription = product.GetLocalized(x => x.MetaDescription),
+					MetaTitle = product.GetLocalized(x => x.MetaTitle),
+					SeName = product.GetSeName(),
+					ProductType = product.ProductType,
+					VisibleIndividually = product.VisibleIndividually,
+					Manufacturers = _catalogSettings.ShowManufacturerInProductDetail 
+						? PrepareManufacturersOverviewModel(_manufacturerService.GetProductManufacturersByProductId(product.Id), null, _catalogSettings.ShowManufacturerPicturesInProductDetail)
+						: null,
+					ReviewCount = product.ApprovedTotalReviews,
+					DisplayAdminLink = _services.Permissions.Authorize(StandardPermissionProvider.AccessAdminPanel, customer),
+					ShowSku = _catalogSettings.ShowProductSku,
+					Sku = product.Sku,
+					ShowManufacturerPartNumber = _catalogSettings.ShowManufacturerPartNumber,
+                    DisplayProductReviews = _catalogSettings.ShowProductReviewsInProductDetail && product.AllowCustomerReviews,
+                    ManufacturerPartNumber = product.ManufacturerPartNumber,
+					ShowGtin = _catalogSettings.ShowGtin,
+					Gtin = product.Gtin,
+					StockAvailability = product.FormatStockMessage(_localizationService),
+					HasSampleDownload = product.IsDownload && product.HasSampleDownload,
+					IsCurrentCustomerRegistered = customer.IsRegistered(),
+					IsAssociatedProduct = isAssociatedProduct,
+					CompareEnabled = !isAssociatedProduct && _catalogSettings.CompareProductsEnabled,
+					TellAFriendEnabled = !isAssociatedProduct && _catalogSettings.EmailAFriendEnabled,
+					AskQuestionEnabled = !isAssociatedProduct && _catalogSettings.AskQuestionEnabled,
+                    PriceDisplayStyle = _catalogSettings.PriceDisplayStyle,
+                    DisplayTextForZeroPrices = _catalogSettings.DisplayTextForZeroPrices
+                };
 
-				var associatedProducts = _productService.SearchProducts(searchContext);
-
-				foreach (var associatedProduct in associatedProducts)
-					model.AssociatedProducts.Add(PrepareProductDetailsPageModel(associatedProduct, true));
-			}
-			else if (product.ProductType == ProductType.BundledProduct && productBundleItem == null)		// bundled items
-			{
-				bundleItems = _productService.GetBundleItems(product.Id);
-
-				foreach (var itemData in bundleItems.Where(x => x.Item.Product.CanBeBundleItem()))
+				// Social share code
+				if (_catalogSettings.ShowShareButton && _catalogSettings.PageShareCode.HasValue())
 				{
-					var item = itemData.Item;
-					var bundledProductModel = PrepareProductDetailsPageModel(item.Product, false, itemData);
+					var shareCode = _catalogSettings.PageShareCode;
+					if (_services.WebHelper.IsCurrentConnectionSecured())
+					{
+						// Need to change the addthis link to be https linked when the page is, so that the page doesn't ask about mixed mode when viewed in https...
+						shareCode = shareCode.Replace("http://", "https://");
+					}
 
-					bundledProductModel.BundleItem.Id = item.Id;
-					bundledProductModel.BundleItem.Quantity = item.Quantity;
-					bundledProductModel.BundleItem.HideThumbnail = item.HideThumbnail;
-					bundledProductModel.BundleItem.Visible = item.Visible;
-					bundledProductModel.BundleItem.IsBundleItemPricing = item.BundleProduct.BundlePerItemPricing;
-
-					string bundleItemName = item.GetLocalized(x => x.Name);
-					if (bundleItemName.HasValue())
-						bundledProductModel.Name = bundleItemName;
-
-					string bundleItemShortDescription = item.GetLocalized(x => x.ShortDescription);
-					if (bundleItemShortDescription.HasValue())
-						bundledProductModel.ShortDescription = bundleItemShortDescription;
-
-					model.BundledItems.Add(bundledProductModel);
+					model.ProductShareCode = shareCode;
 				}
+
+				// Get gift card values from query string.
+				if (product.IsGiftCard)
+				{
+					model.GiftCard.RecipientName = query.GetGiftCardValue(product.Id, 0, "RecipientName");
+					model.GiftCard.RecipientEmail = query.GetGiftCardValue(product.Id, 0, "RecipientEmail");
+					model.GiftCard.SenderName = query.GetGiftCardValue(product.Id, 0, "SenderName");
+					model.GiftCard.SenderEmail = query.GetGiftCardValue(product.Id, 0, "SenderEmail");
+					model.GiftCard.Message = query.GetGiftCardValue(product.Id, 0, "Message");
+				}
+
+				// Back in stock subscriptions
+				if (product.ManageInventoryMethod == ManageInventoryMethod.ManageStock &&
+					 product.BackorderMode == BackorderMode.NoBackorders &&
+					 product.AllowBackInStockSubscriptions &&
+					 product.StockQuantity <= 0)
+				{
+					//out of stock
+					model.DisplayBackInStockSubscription = true;
+					model.BackInStockAlreadySubscribed = _backInStockSubscriptionService.FindSubscription(customer.Id, product.Id, store.Id) != null;
+				}
+
+				// template
+				var templateCacheKey = string.Format(ModelCacheEventConsumer.PRODUCT_TEMPLATE_MODEL_KEY, product.ProductTemplateId);
+				model.ProductTemplateViewPath = _services.Cache.Get(templateCacheKey, () =>
+				{
+					var template = _productTemplateService.GetProductTemplateById(product.ProductTemplateId);
+					if (template == null)
+						template = _productTemplateService.GetAllProductTemplates().FirstOrDefault();
+					return template.ViewPath;
+				});
+
+				IList<ProductBundleItemData> bundleItems = null;
+				ProductVariantAttributeCombination combination = null;
+
+				if (product.ProductType == ProductType.GroupedProduct && !isAssociatedProduct)
+				{
+					// associated products
+					var searchQuery = new CatalogSearchQuery()
+						.VisibleOnly(customer)
+						.HasStoreId(store.Id)
+						.HasParentGroupedProduct(product.Id);
+
+					var associatedProducts = _catalogSearchService.Search(searchQuery).Hits;
+
+					foreach (var associatedProduct in associatedProducts)
+					{
+						var assciatedProductModel = PrepareProductDetailsPageModel(associatedProduct, query, true, null, null);
+						model.AssociatedProducts.Add(assciatedProductModel);
+					}
+				}
+				else if (product.ProductType == ProductType.BundledProduct && productBundleItem == null)
+				{
+					// bundled items
+					bundleItems = _productService.GetBundleItems(product.Id);
+
+					foreach (var itemData in bundleItems.Where(x => x.Item.Product.CanBeBundleItem()))
+					{
+						var item = itemData.Item;
+						var bundledProductModel = PrepareProductDetailsPageModel(item.Product, query, false, itemData, null);
+
+						bundledProductModel.ShowLegalInfo = false;
+						bundledProductModel.DisplayDeliveryTime = false;
+
+						bundledProductModel.BundleItem.Id = item.Id;
+						bundledProductModel.BundleItem.Quantity = item.Quantity;
+						bundledProductModel.BundleItem.HideThumbnail = item.HideThumbnail;
+						bundledProductModel.BundleItem.Visible = item.Visible;
+						bundledProductModel.BundleItem.IsBundleItemPricing = item.BundleProduct.BundlePerItemPricing;
+
+						var bundleItemName = item.GetLocalized(x => x.Name);
+						if (bundleItemName.Value.HasValue())
+							bundledProductModel.Name = bundleItemName;
+
+						var bundleItemShortDescription = item.GetLocalized(x => x.ShortDescription);
+						if (bundleItemShortDescription.Value.HasValue())
+							bundledProductModel.ShortDescription = bundleItemShortDescription;
+
+						model.BundledItems.Add(bundledProductModel);
+					}
+				}
+
+				model = PrepareProductDetailModel(model, product, query, isAssociatedProduct, productBundleItem, bundleItems);
+
+				// Action items
+				{
+					if (model.HasSampleDownload)
+					{
+						model.ActionItems["sample"] = new ProductDetailsModel.ActionItemModel
+						{
+							Key = "sample",
+							Title = T("Products.DownloadSample"),
+							CssClass = "action-download-sample",
+							IconCssClass = "fa fa-download",
+							Href = _urlHelper.Action("Sample", "Download", new { productId = model.Id }),
+							IsPrimary = true,
+							PrimaryActionColor = "danger"
+						};
+					}
+
+					if (!model.AddToCart.DisableWishlistButton && model.ProductType != ProductType.GroupedProduct)
+					{
+						model.ActionItems["wishlist"] = new ProductDetailsModel.ActionItemModel
+						{
+							Key = "wishlist",
+							Title = T("ShoppingCart.AddToWishlist.Short"),
+							Tooltip = T("ShoppingCart.AddToWishlist"),
+							CssClass = "ajax-cart-link action-add-to-wishlist",
+							IconCssClass = "icm icm-heart",
+							Href = _urlHelper.Action("AddProduct", "ShoppingCart", new { productId = model.Id, shoppingCartTypeId = (int)ShoppingCartType.Wishlist })
+						};
+					}
+
+					if (model.CompareEnabled)
+					{
+						model.ActionItems["compare"] = new ProductDetailsModel.ActionItemModel
+						{
+							Key = "compare",
+							Title = T("Common.Shopbar.Compare"),
+							Tooltip = T("Products.Compare.AddToCompareList"),
+							CssClass = "action-compare ajax-cart-link",
+							IconCssClass = "icm icm-repeat",
+							Href = _urlHelper.Action("AddProductToCompare", "Catalog", new { id = model.Id })
+						};
+					}
+
+					if (model.AskQuestionEnabled && !model.ProductPrice.CallForPrice)
+					{
+						model.ActionItems["ask"] = new ProductDetailsModel.ActionItemModel
+						{
+							Key = "ask",
+							Title = T("Products.AskQuestion.Short"),
+							Tooltip = T("Products.AskQuestion"),
+							CssClass = "action-ask-question",
+							IconCssClass = "icm icm-envelope",
+							Href = _urlHelper.Action("AskQuestion", new { id = model.Id })
+						};
+					}
+
+					if (model.TellAFriendEnabled)
+					{
+						model.ActionItems["tell"] = new ProductDetailsModel.ActionItemModel
+						{
+							Key = "tell",
+							Title = T("Products.EmailAFriend"),
+							CssClass = "action-bullhorn",
+							IconCssClass = "icm icm-bullhorn",
+							Href = _urlHelper.Action("EmailAFriend", new { id = model.Id })
+						};
+					}
+				}
+
+				IList<int> combinationPictureIds = null;
+
+				if (productBundleItem == null)
+				{
+					combinationPictureIds = _productAttributeService.GetAllProductVariantAttributeCombinationPictureIds(product.Id);
+					if (combination == null && model.SelectedCombination != null)
+						combination = model.SelectedCombination;
+				}
+
+				// pictures
+				var pictures = _pictureService.GetPicturesByProductId(product.Id);
+
+                if (product.HasPreviewPicture && pictures.Count > 1)
+                {
+                    pictures.RemoveAt(0);
+                }
+
+                PrepareProductDetailsPictureModel(model.DetailsPictureModel, pictures, model.Name, combinationPictureIds, isAssociatedProduct, productBundleItem, combination);
+
+				return model;
 			}
-
-			model = PrepareProductDetailModel(model, product, isAssociatedProduct, productBundleItem, bundleItems, selectedAttributes);
-
-			if (productBundleItem == null)
-			{
-				model.Combinations.GetAllCombinationImageIds(combinationImageIds);
-
-				if (combination == null && model.CombinationSelected != null)
-					combination = model.CombinationSelected;
-			}
-
-			// pictures
-			var pictures = _pictureService.GetPicturesByProductId(product.Id);
-			PrepareProductDetailsPictureModel(model.DetailsPictureModel, pictures, model.Name, combinationImageIds, isAssociatedProduct, productBundleItem, combination);
-
-			return model;
 		}
 
-		public void PrepareProductReviewsModel(ProductReviewsModel model, Product product)
+		public void PrepareProductReviewsModel(ProductReviewsModel model, Product product, int take = int.MaxValue)
 		{
-			if (product == null)
-				throw new ArgumentNullException("product");
-
-			if (model == null)
-				throw new ArgumentNullException("model");
+			Guard.NotNull(product, nameof(product));
+			Guard.NotNull(model, nameof(model));
 
 			model.ProductId = product.Id;
 			model.ProductName = product.GetLocalized(x => x.Name);
 			model.ProductSeName = product.GetSeName();
 
-			var productReviews = product.ProductReviews.Where(pr => pr.IsApproved).OrderBy(pr => pr.CreatedOnUtc);
-			foreach (var pr in productReviews)
+			var query = _services.DbContext
+				.QueryForCollection<Product, ProductReview>(product, x => x.ProductReviews)
+				.Where(x => x.IsApproved);
+
+			if (DataSettings.Current.IsSqlServer)
 			{
-				model.Items.Add(new ProductReviewModel()
-				{
-					Id = pr.Id,
-					CustomerId = pr.CustomerId,
-					CustomerName = pr.Customer.FormatUserName(),
-					AllowViewingProfiles = _customerSettings.AllowViewingProfiles && pr.Customer != null && !pr.Customer.IsGuest(),
-					Title = pr.Title,
-					ReviewText = pr.ReviewText,
-					Rating = pr.Rating,
-					Helpfulness = new ProductReviewHelpfulnessModel()
-					{
-						ProductReviewId = pr.Id,
-						HelpfulYesTotal = pr.HelpfulYesTotal,
-						HelpfulNoTotal = pr.HelpfulNoTotal,
-					},
-					WrittenOnStr = _dateTimeHelper.ConvertToUserTime(pr.CreatedOnUtc, DateTimeKind.Utc).ToString("g"),
-				});
+				// SQCE throw NotImplementedException with .Expand()
+				query = query
+					.Expand(x => x.Customer.CustomerRoles)
+					.Expand(x => x.Customer.CustomerContent);
 			}
 
-			model.AddProductReview.CanCurrentCustomerLeaveReview = _catalogSettings.AllowAnonymousUsersToReviewProduct || !_services.WorkContext.CurrentCustomer.IsGuest();
-			model.AddProductReview.DisplayCaptcha = _captchaSettings.Enabled && _captchaSettings.ShowOnProductReviewPage;
+			int totalCount = query.Count();
+			model.TotalReviewsCount = totalCount;
+
+			var reviews = query
+				.OrderByDescending(x => x.CreatedOnUtc)
+				.Take(() => take)
+				.ToList();
+
+			foreach (var review in reviews)
+			{
+				model.Items.Add(new ProductReviewModel
+				{
+					Id = review.Id,
+					CustomerId = review.CustomerId,
+					CustomerName = review.Customer.FormatUserName(),
+					AllowViewingProfiles = _customerSettings.AllowViewingProfiles && review.Customer != null && !review.Customer.IsGuest(),
+					Title = review.Title,
+					ReviewText = review.ReviewText,
+					Rating = review.Rating,
+					Helpfulness = new ProductReviewHelpfulnessModel
+					{
+						ProductReviewId = review.Id,
+						HelpfulYesTotal = review.HelpfulYesTotal,
+						HelpfulNoTotal = review.HelpfulNoTotal,
+					},
+					WrittenOnStr = _dateTimeHelper.ConvertToUserTime(review.CreatedOnUtc, DateTimeKind.Utc).ToString("D"),
+                    WrittenOn = review.CreatedOnUtc
+                });
+			}
+
+			model.CanCurrentCustomerLeaveReview = _catalogSettings.AllowAnonymousUsersToReviewProduct || !_services.WorkContext.CurrentCustomer.IsGuest();
+			model.DisplayCaptcha = _captchaSettings.Enabled && _captchaSettings.ShowOnProductReviewPage;
 		}
 
 		private PictureModel CreatePictureModel(ProductDetailsPictureModel model, Picture picture, int pictureSize)
 		{
-			var result = new PictureModel()
+			var info = _pictureService.GetPictureInfo(picture);
+
+			var result = new PictureModel
 			{
-				PictureId = picture.Id,
-				ThumbImageUrl = _pictureService.GetPictureUrl(picture, _mediaSettings.ProductThumbPictureSizeOnProductDetailsPage),
-				ImageUrl = _pictureService.GetPictureUrl(picture, pictureSize),
-				FullSizeImageUrl = _pictureService.GetPictureUrl(picture),
+				PictureId = info?.Id ?? 0,
+				Size = pictureSize,
+				ThumbImageUrl = _pictureService.GetUrl(info, _mediaSettings.ProductThumbPictureSizeOnProductDetailsPage),
+				ImageUrl = _pictureService.GetUrl(info, pictureSize, !_catalogSettings.HideProductDefaultPictures),
+				FullSizeImageUrl = _pictureService.GetUrl(info, 0, false),
+				FullSizeImageWidth = info?.Width,
+				FullSizeImageHeight = info?.Height,
 				Title = model.Name,
 				AlternateText = model.AlternateText
 			};
@@ -314,8 +591,50 @@ namespace SmartStore.Web.Controllers
 			return result;
 		}
 
-		public void PrepareProductDetailsPictureModel(ProductDetailsPictureModel model, IList<Picture> pictures, string name, List<int> allCombinationImageIds,
-			bool isAssociatedProduct, ProductBundleItemData bundleItem = null, ProductVariantAttributeCombination combination = null)
+        public IList<ProductDetailsModel.TierPriceModel> CreateTierPriceModel (Product product, decimal adjustment = decimal.Zero)
+        {
+            var model = product.TierPrices
+                .OrderBy(x => x.Quantity)
+                .FilterByStore(_services.StoreContext.CurrentStore.Id)
+                .FilterForCustomer(_services.WorkContext.CurrentCustomer)
+                .ToList()
+                .RemoveDuplicatedQuantities()
+                .Select(tierPrice =>
+                {
+                    var currentAdjustment = adjustment;
+                    var m = new ProductDetailsModel.TierPriceModel
+                    {
+                        Quantity = tierPrice.Quantity,
+                    };
+
+                    if (currentAdjustment != 0 && tierPrice.CalculationMethod == TierPriceCalculationMethod.Percental && _catalogSettings.ApplyTierPricePercentageToAttributePriceAdjustments)
+                    {
+                        currentAdjustment = currentAdjustment - (currentAdjustment / 100 * tierPrice.Price);
+                    }
+                    else
+                    {
+                        currentAdjustment = decimal.Zero;
+                    }
+
+                    decimal taxRate = decimal.Zero;
+                    decimal priceBase = _taxService.GetProductPrice(product, _priceCalculationService.GetFinalPrice(product, _services.WorkContext.CurrentCustomer, currentAdjustment, _catalogSettings.DisplayTierPricesWithDiscounts, tierPrice.Quantity, null, null, true), out taxRate);
+                    decimal price = _currencyService.ConvertFromPrimaryStoreCurrency(priceBase, _services.WorkContext.WorkingCurrency);
+                    m.Price = _priceFormatter.FormatPrice(price, true, false);
+                    return m;
+                })
+                .ToList();
+
+            return model;
+        }
+
+		public void PrepareProductDetailsPictureModel(
+			ProductDetailsPictureModel model, 
+			IList<Picture> pictures, 
+			string name, 
+			IList<int> allCombinationImageIds,
+			bool isAssociatedProduct, 
+			ProductBundleItemData bundleItem = null, 
+			ProductVariantAttributeCombination combination = null)
 		{
 			model.Name = name;
 			model.DefaultPictureZoomEnabled = _mediaSettings.DefaultPictureZoomEnabled;
@@ -333,64 +652,77 @@ namespace SmartStore.Web.Controllers
 			else
 				defaultPictureSize = _mediaSettings.ProductDetailsPictureSize;
 
-			if (pictures.Count > 0)
+			using (var scope = new DbContextScope(_services.DbContext, autoCommit: false))
 			{
-				if (pictures.Count <= _catalogSettings.DisplayAllImagesNumber)
-				{
-					// show all images
-					foreach (var picture in pictures)
-					{
-						model.PictureModels.Add(CreatePictureModel(model, picture, _mediaSettings.ProductDetailsPictureSize));
+				// Scope this part: it's quite possible that IPictureService.UpdatePicture()
+				// is called when a picture is new or its size is missing in DB.
 
-						if (defaultPicture == null && combiAssignedImages != null && combiAssignedImages.Contains(picture.Id))
-						{
-							model.GalleryStartIndex = model.PictureModels.Count - 1;
-							defaultPicture = picture;
-						}
-					}
-				}
-				else
+				if (pictures.Count > 0)
 				{
-					// images not belonging to any combination...
-					foreach (var picture in pictures.Where(p => !allCombinationImageIds.Contains(p.Id)))
+					if (pictures.Count <= _catalogSettings.DisplayAllImagesNumber)
 					{
-						model.PictureModels.Add(CreatePictureModel(model, picture, _mediaSettings.ProductDetailsPictureSize));
-					}
-
-					// plus images belonging to selected combination
-					if (combiAssignedImages != null)
-					{
-						foreach (var picture in pictures.Where(p => combiAssignedImages.Contains(p.Id)))
+						// show all images
+						foreach (var picture in pictures)
 						{
 							model.PictureModels.Add(CreatePictureModel(model, picture, _mediaSettings.ProductDetailsPictureSize));
 
-							if (defaultPicture == null)
+							if (defaultPicture == null && combiAssignedImages != null && combiAssignedImages.Contains(picture.Id))
 							{
 								model.GalleryStartIndex = model.PictureModels.Count - 1;
 								defaultPicture = picture;
 							}
 						}
 					}
+					else
+					{
+						// images not belonging to any combination...
+						allCombinationImageIds = allCombinationImageIds ?? new List<int>();
+						foreach (var picture in pictures.Where(p => !allCombinationImageIds.Contains(p.Id)))
+						{
+							model.PictureModels.Add(CreatePictureModel(model, picture, _mediaSettings.ProductDetailsPictureSize));
+						}
+
+						// plus images belonging to selected combination
+						if (combiAssignedImages != null)
+						{
+							foreach (var picture in pictures.Where(p => combiAssignedImages.Contains(p.Id)))
+							{
+								model.PictureModels.Add(CreatePictureModel(model, picture, _mediaSettings.ProductDetailsPictureSize));
+
+								if (defaultPicture == null)
+								{
+									model.GalleryStartIndex = model.PictureModels.Count - 1;
+									defaultPicture = picture;
+								}
+							}
+						}
+					}
+
+					if (defaultPicture == null)
+					{    
+                        model.GalleryStartIndex = 0;
+						defaultPicture = pictures.First();
+					}
 				}
 
-				if (defaultPicture == null)
-				{
-					model.GalleryStartIndex = 0;
-					defaultPicture = pictures.First();
-				}
+				scope.Commit();
 			}
 
-			// default picture
 			if (defaultPicture == null)
 			{
-				model.DefaultPictureModel = new PictureModel()
+				model.DefaultPictureModel = new PictureModel
 				{
-					ThumbImageUrl = _pictureService.GetDefaultPictureUrl(_mediaSettings.ProductThumbPictureSizeOnProductDetailsPage),
-					ImageUrl = _pictureService.GetDefaultPictureUrl(defaultPictureSize),
-					FullSizeImageUrl = _pictureService.GetDefaultPictureUrl(),
 					Title = T("Media.Product.ImageLinkTitleFormat", model.Name),
 					AlternateText = model.AlternateText
 				};
+
+				if (!_catalogSettings.HideProductDefaultPictures)
+				{
+					model.DefaultPictureModel.Size = defaultPictureSize;
+					model.DefaultPictureModel.ThumbImageUrl = _pictureService.GetFallbackUrl(_mediaSettings.ProductThumbPictureSizeOnProductDetailsPage);
+					model.DefaultPictureModel.ImageUrl = _pictureService.GetFallbackUrl(defaultPictureSize);
+					model.DefaultPictureModel.FullSizeImageUrl = _pictureService.GetFallbackUrl();
+                }
 			}
 			else
 			{
@@ -398,54 +730,52 @@ namespace SmartStore.Web.Controllers
 			}
 		}
 
-		/// <param name="selectedAttributes">Attributes explicitly selected by user or by query string.</param>
 		public ProductDetailsModel PrepareProductDetailModel(
 			ProductDetailsModel model,
 			Product product,
+			ProductVariantQuery query,
 			bool isAssociatedProduct = false,
 			ProductBundleItemData productBundleItem = null,
 			IList<ProductBundleItemData> productBundleItems = null,
-			FormCollection selectedAttributes = null,
 			int selectedQuantity = 1)
 		{
-			if (product == null)
-				throw new ArgumentNullException("product");
+            Guard.NotNull(model, nameof(model));
+            Guard.NotNull(product, nameof(product));
 
-			if (model == null)
-				throw new ArgumentNullException("model");
+			var store = _services.StoreContext.CurrentStore;
+			var customer = _services.WorkContext.CurrentCustomer;
+			var currency = _services.WorkContext.WorkingCurrency;
 
-			if (selectedAttributes == null)
-				selectedAttributes = new FormCollection();
+			var preSelectedPriceAdjustmentBase = decimal.Zero;
+			var preSelectedWeightAdjustment = decimal.Zero;
+			var displayPrices = _services.Permissions.Authorize(StandardPermissionProvider.DisplayPrices);
+			var isBundle = product.ProductType == ProductType.BundledProduct;
+			var isBundleItemPricing = productBundleItem != null && productBundleItem.Item.BundleProduct.BundlePerItemPricing;
+			var isBundlePricing = productBundleItem != null && !productBundleItem.Item.BundleProduct.BundlePerItemPricing;
+			var bundleItemId = productBundleItem == null ? 0 : productBundleItem.Item.Id;
 
-			decimal preSelectedPriceAdjustmentBase = decimal.Zero;
-			decimal preSelectedWeightAdjustment = decimal.Zero;
-			bool displayPrices = _services.Permissions.Authorize(StandardPermissionProvider.DisplayPrices);
-			bool isBundle = (product.ProductType == ProductType.BundledProduct);
-			bool isBundleItemPricing = (productBundleItem != null && productBundleItem.Item.BundleProduct.BundlePerItemPricing);
-			bool isBundlePricing = (productBundleItem != null && !productBundleItem.Item.BundleProduct.BundlePerItemPricing);
-			int bundleItemId = (productBundleItem == null ? 0 : productBundleItem.Item.Id);
-
-			bool hasSelectedAttributesValues = false;
-			bool hasSelectedAttributes = (selectedAttributes.Count > 0);
+			var hasSelectedAttributesValues = false;
+			var hasSelectedAttributes = query.Variants.Count > 0;
 			List<ProductVariantAttributeValue> selectedAttributeValues = null;
+			var variantAttributes = isBundle ? new List<ProductVariantAttribute>() : _productAttributeService.GetProductVariantAttributesByProductId(product.Id);
 
-			var variantAttributes = (isBundle ? new List<ProductVariantAttribute>() : _productAttributeService.GetProductVariantAttributesByProductId(product.Id));
-
+			model.IsBundlePart = product.ProductType != ProductType.BundledProduct && productBundleItem != null;
 			model.ProductPrice.DynamicPriceUpdate = _catalogSettings.EnableDynamicPriceUpdate;
 			model.ProductPrice.BundleItemShowBasePrice = _catalogSettings.BundleItemShowBasePrice;
 
-			if (!model.ProductPrice.DynamicPriceUpdate)
-				selectedQuantity = 1;
+            if (!model.ProductPrice.DynamicPriceUpdate)
+            {
+                selectedQuantity = 1;
+            }
 
 			#region Product attributes
 
-			if (!isBundle)		// bundles doesn't have attributes
+			// Bundles doesn't have attributes.
+			if (!isBundle)
 			{
 				foreach (var attribute in variantAttributes)
 				{
-					int preSelectedValueId = 0;
-
-					var pvaModel = new ProductDetailsModel.ProductVariantAttributeModel()
+					var pvaModel = new ProductDetailsModel.ProductVariantAttributeModel
 					{
 						Id = attribute.Id,
 						ProductId = attribute.ProductId,
@@ -460,109 +790,172 @@ namespace SmartStore.Web.Controllers
 						AllowedFileExtensions = _catalogSettings.FileUploadAllowedExtensions
 					};
 
-					if (attribute.AttributeControlType == AttributeControlType.Datepicker)
+					if (hasSelectedAttributes)
 					{
-						if (pvaModel.Alias.HasValue() && RegularExpressions.IsYearRange.IsMatch(pvaModel.Alias))
+						var selectedVariant = query.Variants.FirstOrDefault(x =>
+							x.ProductId == product.Id &&
+							x.BundleItemId == bundleItemId &&
+							x.AttributeId == attribute.ProductAttributeId &&
+							x.VariantAttributeId == attribute.Id);
+
+						if (selectedVariant != null)
 						{
-							var match = RegularExpressions.IsYearRange.Match(pvaModel.Alias);
-							pvaModel.BeginYear = match.Groups[1].Value.ToInt();
-							pvaModel.EndYear = match.Groups[2].Value.ToInt();
+							switch (attribute.AttributeControlType)
+							{
+								case AttributeControlType.Datepicker:
+									if (selectedVariant.Date.HasValue)
+									{
+										pvaModel.SelectedDay = selectedVariant.Date.Value.Day;
+										pvaModel.SelectedMonth = selectedVariant.Date.Value.Month;
+										pvaModel.SelectedYear = selectedVariant.Date.Value.Year;
+									}
+									break;
+								case AttributeControlType.FileUpload:
+									pvaModel.UploadedFileGuid = selectedVariant.Value;
+
+									Guid guid;
+									if (selectedVariant.Value.HasValue() && Guid.TryParse(selectedVariant.Value, out guid))
+									{										
+										var download = _downloadService.GetDownloadByGuid(guid);
+										if (download != null)
+										{
+											pvaModel.UploadedFileName = string.Concat(download.Filename ?? download.DownloadGuid.ToString(), download.Extension);
+										}
+									}
+									break;
+								case AttributeControlType.TextBox:
+								case AttributeControlType.MultilineTextbox:
+									pvaModel.TextValue = selectedVariant.Value;
+									break;
+							}
 						}
 					}
 
-					if (attribute.ShouldHaveValues())
+					// TODO: obsolete? Alias field is not used for custom values anymore, only for URL as URL variant alias.
+					if (attribute.AttributeControlType == AttributeControlType.Datepicker && pvaModel.Alias.HasValue() && RegularExpressions.IsYearRange.IsMatch(pvaModel.Alias))
 					{
-						var pvaValues = _productAttributeService.GetProductVariantAttributeValues(attribute.Id);
+						var match = RegularExpressions.IsYearRange.Match(pvaModel.Alias);
+						pvaModel.BeginYear = match.Groups[1].Value.ToInt();
+						pvaModel.EndYear = match.Groups[2].Value.ToInt();
+					}
 
-						foreach (var pvaValue in pvaValues)
+					var preSelectedValueId = 0;
+					var pvaValues = attribute.ShouldHaveValues() 
+						? _productAttributeService.GetProductVariantAttributeValues(attribute.Id)
+						: new List<ProductVariantAttributeValue>();
+
+					foreach (var pvaValue in pvaValues)
+					{
+						ProductBundleItemAttributeFilter attributeFilter = null;
+
+						if (productBundleItem?.Item?.FilterOut(pvaValue, out attributeFilter) ?? false)
+							continue;
+
+						if (preSelectedValueId == 0 && attributeFilter != null && attributeFilter.IsPreSelected)
+							preSelectedValueId = attributeFilter.AttributeValueId;
+
+						var linkedProduct = _productService.GetProductById(pvaValue.LinkedProductId);
+
+						var pvaValueModel = new ProductDetailsModel.ProductVariantAttributeValueModel();
+						pvaValueModel.PriceAdjustment = string.Empty;
+						pvaValueModel.Id = pvaValue.Id;
+						pvaValueModel.Name = pvaValue.GetLocalized(x => x.Name);
+						pvaValueModel.Alias = pvaValue.Alias;
+						pvaValueModel.Color = pvaValue.Color; // used with "Boxes" attribute type
+						pvaValueModel.IsPreSelected = pvaValue.IsPreSelected;
+
+						if (linkedProduct != null && linkedProduct.VisibleIndividually)
+							pvaValueModel.SeName = linkedProduct.GetSeName();
+
+						// Explicitly selected always discards pre-selected by merchant.
+						if (hasSelectedAttributes)
+							pvaValueModel.IsPreSelected = false;
+
+						// Display price if allowed.
+						if (displayPrices && !isBundlePricing)
 						{
-							ProductBundleItemAttributeFilter attributeFilter = null;
+							decimal taxRate = decimal.Zero;
+							decimal attributeValuePriceAdjustment = _priceCalculationService.GetProductVariantAttributeValuePriceAdjustment(pvaValue, 
+                                product, _services.WorkContext.CurrentCustomer, null, selectedQuantity);
+							decimal priceAdjustmentBase = _taxService.GetProductPrice(product, attributeValuePriceAdjustment, out taxRate);
+							decimal priceAdjustment = _currencyService.ConvertFromPrimaryStoreCurrency(priceAdjustmentBase, currency);
 
-							if (productBundleItem.FilterOut(pvaValue, out attributeFilter))
-								continue;
-
-							if (preSelectedValueId == 0 && attributeFilter != null && attributeFilter.IsPreSelected)
-								preSelectedValueId = attributeFilter.AttributeValueId;
-
-							var linkedProduct = _productService.GetProductById(pvaValue.LinkedProductId);
-
-							var pvaValueModel = new ProductDetailsModel.ProductVariantAttributeValueModel();
-							pvaValueModel.Id = pvaValue.Id;
-							pvaValueModel.Name = pvaValue.GetLocalized(x => x.Name);
-							pvaValueModel.Alias = pvaValue.Alias;
-							pvaValueModel.ColorSquaresRgb = pvaValue.ColorSquaresRgb; //used with "Color squares" attribute type
-							pvaValueModel.IsPreSelected = pvaValue.IsPreSelected;
-
-							if (linkedProduct != null && linkedProduct.VisibleIndividually)
-								pvaValueModel.SeName = linkedProduct.GetSeName();
-
-							if (hasSelectedAttributes)
-								pvaValueModel.IsPreSelected = false;	// explicitly selected always discards pre-selected by merchant
-
-							// display price if allowed
-							if (displayPrices && !isBundlePricing)
+							if (_catalogSettings.ShowVariantCombinationPriceAdjustment)
 							{
-								decimal taxRate = decimal.Zero;
-								decimal attributeValuePriceAdjustment = _priceCalculationService.GetProductVariantAttributeValuePriceAdjustment(pvaValue);
-								decimal priceAdjustmentBase = _taxService.GetProductPrice(product, attributeValuePriceAdjustment, out taxRate);
-								decimal priceAdjustment = _currencyService.ConvertFromPrimaryStoreCurrency(priceAdjustmentBase, _services.WorkContext.WorkingCurrency);
-
 								if (priceAdjustmentBase > decimal.Zero)
 									pvaValueModel.PriceAdjustment = "+" + _priceFormatter.FormatPrice(priceAdjustment, true, false);
 								else if (priceAdjustmentBase < decimal.Zero)
 									pvaValueModel.PriceAdjustment = "-" + _priceFormatter.FormatPrice(-priceAdjustment, true, false);
-
-								if (pvaValueModel.IsPreSelected)
-								{
-									preSelectedPriceAdjustmentBase = decimal.Add(preSelectedPriceAdjustmentBase, priceAdjustmentBase);
-									preSelectedWeightAdjustment = decimal.Add(preSelectedWeightAdjustment, pvaValue.WeightAdjustment);
-								}
-
-								if (_catalogSettings.ShowLinkedAttributeValueQuantity && pvaValue.ValueType == ProductVariantAttributeValueType.ProductLinkage)
-								{
-									pvaValueModel.QuantityInfo = pvaValue.Quantity;
-								}
-
-								pvaValueModel.PriceAdjustmentValue = priceAdjustment;
 							}
 
-							if (!_catalogSettings.ShowVariantCombinationPriceAdjustment)
+							if (pvaValueModel.IsPreSelected)
 							{
-								pvaValueModel.PriceAdjustment = "";
+								preSelectedPriceAdjustmentBase = decimal.Add(preSelectedPriceAdjustmentBase, priceAdjustmentBase);
+								preSelectedWeightAdjustment = decimal.Add(preSelectedWeightAdjustment, pvaValue.WeightAdjustment);
 							}
 
-							if (_catalogSettings.ShowLinkedAttributeValueImage && pvaValue.ValueType == ProductVariantAttributeValueType.ProductLinkage)
+							if (_catalogSettings.ShowLinkedAttributeValueQuantity && pvaValue.ValueType == ProductVariantAttributeValueType.ProductLinkage)
 							{
-								var linkagePicture = _pictureService.GetPicturesByProductId(pvaValue.LinkedProductId, 1).FirstOrDefault();
-								if (linkagePicture != null)
-									pvaValueModel.ImageUrl = _pictureService.GetPictureUrl(linkagePicture, _mediaSettings.AutoCompleteSearchThumbPictureSize, false);
+								pvaValueModel.QuantityInfo = pvaValue.Quantity;
 							}
 
-							pvaModel.Values.Add(pvaValueModel);
+							pvaValueModel.PriceAdjustmentValue = priceAdjustment;
 						}
+
+						if (_catalogSettings.ShowLinkedAttributeValueImage && pvaValue.ValueType == ProductVariantAttributeValueType.ProductLinkage)
+						{
+							var linkagePicture = _pictureService.GetPicturesByProductId(pvaValue.LinkedProductId, 1).FirstOrDefault();
+							if (linkagePicture != null)
+								pvaValueModel.ImageUrl = _pictureService.GetUrl(linkagePicture, _mediaSettings.VariantValueThumbPictureSize, false);
+						}
+                        else if (pvaValue.PictureId != 0)
+                        {
+                            pvaValueModel.ImageUrl = _pictureService.GetUrl(pvaValue.PictureId, _mediaSettings.VariantValueThumbPictureSize, false);
+                        }
+
+						pvaModel.Values.Add(pvaValueModel);
 					}
 
-					// we need selected attributes to get initially displayed combination images
+					// We need selected attributes to get initially displayed combination images.
 					if (!hasSelectedAttributes)
 					{
 						ProductDetailsModel.ProductVariantAttributeValueModel defaultValue = null;
 
-						if (preSelectedValueId != 0)	// value pre-selected by a bundle item filter discards the default pre-selection
+						// Value pre-selected by a bundle item filter discards the default pre-selection.
+						if (preSelectedValueId != 0)
 						{
 							pvaModel.Values.Each(x => x.IsPreSelected = false);
 
-							if ((defaultValue = pvaModel.Values.FirstOrDefault(v => v.Id == preSelectedValueId)) != null)
+							if ((defaultValue = pvaModel.Values.OfType<ProductDetailsModel.ProductVariantAttributeValueModel>().FirstOrDefault(v => v.Id == preSelectedValueId)) != null)
+							{
 								defaultValue.IsPreSelected = true;
+								query.AddVariant(new ProductVariantQueryItem(defaultValue.Id.ToString())
+								{
+									ProductId = product.Id,
+									BundleItemId = bundleItemId,
+									AttributeId = attribute.ProductAttributeId,
+									VariantAttributeId = attribute.Id,
+									Alias = attribute.ProductAttribute.Alias,
+									ValueAlias = defaultValue.Alias
+								});
+							}
 						}
 
 						if (defaultValue == null)
-							defaultValue = pvaModel.Values.FirstOrDefault(v => v.IsPreSelected);
-
-						if (defaultValue == null && pvaModel.Values.Count > 0 && attribute.IsRequired)
-							defaultValue = pvaModel.Values.First();
-
-						if (defaultValue != null)
-							selectedAttributes.AddProductAttribute(attribute.ProductAttributeId, attribute.Id, defaultValue.Id, product.Id, bundleItemId);
+						{
+							foreach (var value in pvaModel.Values.Where(x => x.IsPreSelected))
+							{
+								query.AddVariant(new ProductVariantQueryItem(value.Id.ToString())
+								{
+									ProductId = product.Id,
+									BundleItemId = bundleItemId,
+									AttributeId = attribute.ProductAttributeId,
+									VariantAttributeId = attribute.Id,
+									Alias = attribute.ProductAttribute.Alias,
+									ValueAlias = value.Alias
+								});
+							}
+						}
 					}
 
 					model.ProductVariantAttributes.Add(pvaModel);
@@ -575,36 +968,39 @@ namespace SmartStore.Web.Controllers
 
 			if (!isBundle)
 			{
-				model.Combinations = _productAttributeService.GetAllProductVariantAttributeCombinations(product.Id);
-
-				if (selectedAttributes.Count > 0)
+				if (query.Variants.Count > 0)
 				{
-					// merge with combination data if there's a match
+					// Merge with combination data if there's a match.
 					var warnings = new List<string>();
-					string attributeXml = selectedAttributes.CreateSelectedAttributesXml(product.Id, variantAttributes, _productAttributeParser, _localizationService,
-						_downloadService, _catalogSettings, _httpRequest, warnings, true, bundleItemId);
+					var attributeXml = query.CreateSelectedAttributesXml(product.Id, bundleItemId, variantAttributes, _productAttributeParser, _localizationService,
+						_downloadService, _catalogSettings, _httpRequest, warnings);
 
 					selectedAttributeValues = _productAttributeParser.ParseProductVariantAttributeValues(attributeXml).ToList();
 					hasSelectedAttributesValues = (selectedAttributeValues.Count > 0);
 
 					if (isBundlePricing)
 					{
-						model.AttributeInfo = _productAttributeFormatter.FormatAttributes(product, attributeXml, _services.WorkContext.CurrentCustomer,
-							renderPrices: false, renderGiftCardAttributes: false, allowHyperlinks: false);
+						model.AttributeInfo = _productAttributeFormatter.FormatAttributes(
+							product, 
+							attributeXml, 
+							customer,
+							serapator: ", ",
+							renderPrices: false, 
+							renderGiftCardAttributes: false, 
+							allowHyperlinks: false);
 					}
 
-					model.CombinationSelected = model.Combinations
-						.FirstOrDefault(x => _productAttributeParser.AreProductAttributesEqual(x.AttributesXml, attributeXml));
+					model.SelectedCombination = _productAttributeParser.FindProductVariantAttributeCombination(product.Id, attributeXml);
 
-					if (model.CombinationSelected != null && model.CombinationSelected.IsActive == false)
+					if (model.SelectedCombination != null && model.SelectedCombination.IsActive == false)
 					{
 						model.IsAvailable = false;
-						model.StockAvailability = T("Products.Availability.OutOfStock");
+                        model.StockAvailability = T("Products.Availability.IsNotActive");
 					}
 
-					product.MergeWithCombination(model.CombinationSelected);
+					product.MergeWithCombination(model.SelectedCombination);
 
-					// mark explicitly selected as pre-selected
+					// Mark explicitly selected as pre-selected.
 					foreach (var attribute in model.ProductVariantAttributes)
 					{
 						foreach (var value in attribute.Values)
@@ -626,10 +1022,11 @@ namespace SmartStore.Web.Controllers
 			if ((productBundleItem != null && !productBundleItem.Item.BundleProduct.BundlePerItemShoppingCart) ||
 				(product.ManageInventoryMethod == ManageInventoryMethod.ManageStockByAttributes && !hasSelectedAttributesValues))
 			{
-				// cases where stock inventory is not functional. determined by what ShoppingCartService.GetStandardWarnings and ProductService.AdjustInventory is not handling.
+				// Cases where stock inventory is not functional. Determined by what ShoppingCartService.GetStandardWarnings and ProductService.AdjustInventory is not handling.
 				model.IsAvailable = true;
-				model.StockAvailability = "";
-			}
+				var hasAttributeCombinations = _services.DbContext.QueryForCollection(product, (Product p) => p.ProductVariantAttributeCombinations).Any();
+                model.StockAvailability = !hasAttributeCombinations ? product.FormatStockMessage(_localizationService) : "";
+            }
 			else if (model.IsAvailable)
 			{
 				model.IsAvailable = product.IsAvailableByStock();
@@ -641,7 +1038,7 @@ namespace SmartStore.Web.Controllers
 			model.ShowSku = _catalogSettings.ShowProductSku;
 			model.Sku = product.Sku;
 			model.ShortDescription = product.GetLocalized(x => x.ShortDescription);
-			model.FullDescription = product.GetLocalized(x => x.FullDescription);
+			model.FullDescription = product.GetLocalized(x => x.FullDescription, detectEmptyHtml: true);
 			model.MetaKeywords = product.GetLocalized(x => x.MetaKeywords);
 			model.MetaDescription = product.GetLocalized(x => x.MetaDescription);
 			model.MetaTitle = product.GetLocalized(x => x.MetaTitle);
@@ -653,10 +1050,10 @@ namespace SmartStore.Web.Controllers
 			model.ShowGtin = _catalogSettings.ShowGtin;
 			model.Gtin = product.Gtin;
 			model.HasSampleDownload = product.IsDownload && product.HasSampleDownload;
-			model.IsCurrentCustomerRegistered = _services.WorkContext.CurrentCustomer.IsRegistered();
-			model.IsBasePriceEnabled = product.BasePriceEnabled;
-			model.BasePriceInfo = product.GetBasePriceInfo(_localizationService, _priceFormatter);
-			model.ShowLegalInfo = _taxSettings.ShowLegalHintsInProductDetails;
+			model.IsCurrentCustomerRegistered = customer.IsRegistered();
+			model.IsBasePriceEnabled = product.BasePriceEnabled && !(isBundle && product.BundlePerItemPricing);
+            model.BasePriceInfo = product.GetBasePriceInfo(_localizationService, _priceFormatter, _currencyService, _taxService, _priceCalculationService, customer, currency);
+			model.ShowLegalInfo = !model.IsBundlePart && _taxSettings.ShowLegalHintsInProductDetails;
 			model.BundleTitleText = product.GetLocalized(x => x.BundleTitleText);
 			model.BundlePerItemPricing = product.BundlePerItemPricing;
 			model.BundlePerItemShipping = product.BundlePerItemShipping;
@@ -664,28 +1061,57 @@ namespace SmartStore.Web.Controllers
 
 			//_taxSettings.TaxDisplayType == TaxDisplayType.ExcludingTax;
 
-			string taxInfo = (_services.WorkContext.GetTaxDisplayTypeFor(_services.WorkContext.CurrentCustomer, _services.StoreContext.CurrentStore.Id) == TaxDisplayType.IncludingTax)
-				? T("Tax.InclVAT")
-				: T("Tax.ExclVAT");
+			var taxDisplayType = _services.WorkContext.GetTaxDisplayTypeFor(customer, store.Id);
+			string taxInfo = T(taxDisplayType == TaxDisplayType.IncludingTax ? "Tax.InclVAT" : "Tax.ExclVAT");
 
-			string defaultTaxRate = "";
-			var taxrate = Convert.ToString(_taxService.GetTaxRate(product, _services.WorkContext.CurrentCustomer));
-			if (_taxSettings.DisplayTaxRates && !taxrate.Equals("0", StringComparison.InvariantCultureIgnoreCase))
+			var defaultTaxRate = string.Empty;
+			if (_taxSettings.DisplayTaxRates)
 			{
-				defaultTaxRate = "({0}%)".FormatWith(taxrate);
+				var taxRate = _taxService.GetTaxRate(product, customer);
+				if (taxRate != decimal.Zero)
+				{
+					var formattedTaxRate = _priceFormatter.FormatTaxRate(taxRate);
+					defaultTaxRate = $"({formattedTaxRate}%)";
+				}
 			}
 
-			var addShippingPrice = _currencyService.ConvertFromPrimaryStoreCurrency(product.AdditionalShippingCharge, _services.WorkContext.WorkingCurrency);
-			string additionalShippingCosts = "";
+			var additionalShippingCosts = string.Empty;
+			var addShippingPrice = _currencyService.ConvertFromPrimaryStoreCurrency(product.AdditionalShippingCharge, currency);
+
 			if (addShippingPrice > 0)
 			{
-				additionalShippingCosts = T("Common.AdditionalShippingSurcharge").Text.FormatWith(_priceFormatter.FormatPrice(addShippingPrice, true, false)) + ", ";
+				additionalShippingCosts = T("Common.AdditionalShippingSurcharge").Text.FormatInvariant(_priceFormatter.FormatPrice(addShippingPrice, true, false)) + ", ";
 			}
 
-			string shippingInfoLink = _urlHelper.RouteUrl("Topic", new { SystemName = "shippinginfo" });
-			model.LegalInfo = T("Tax.LegalInfoProductDetail", taxInfo, defaultTaxRate, additionalShippingCosts, shippingInfoLink);
+            if (!product.IsShipEnabled || (addShippingPrice == 0 && product.IsFreeShipping))
+            {
+                model.LegalInfo += "{0} {1}, {2}".FormatInvariant(
+                    product.IsTaxExempt ? "" : taxInfo,
+                    product.IsTaxExempt ? "" : defaultTaxRate,
+                    T("Common.FreeShipping"));
+            }
+            else
+            {
+				var shippingInfoUrl = _urlHelper.Topic("ShippingInfo").ToString();
 
-			string dimension = _measureService.GetMeasureDimensionById(_measureSettings.BaseDimensionId).Name;
+				if (shippingInfoUrl.IsEmpty())
+				{
+					model.LegalInfo = T("Tax.LegalInfoProductDetail2",
+						product.IsTaxExempt ? "" : taxInfo,
+						product.IsTaxExempt ? "" : defaultTaxRate,
+						additionalShippingCosts);
+				}
+				else
+				{
+					model.LegalInfo = T("Tax.LegalInfoProductDetail",
+						product.IsTaxExempt ? "" : taxInfo,
+						product.IsTaxExempt ? "" : defaultTaxRate,
+						additionalShippingCosts,
+						shippingInfoUrl);
+				}
+            }
+
+			var dimension = _measureService.GetMeasureDimensionById(_measureSettings.BaseDimensionId)?.SystemKeyword ?? string.Empty;
 
 			model.WeightValue = product.Weight;
 			if (!isBundle)
@@ -701,10 +1127,10 @@ namespace SmartStore.Web.Controllers
 				}
 			}
 
-			model.Weight = (model.WeightValue > 0) ? "{0} {1}".FormatCurrent(model.WeightValue.ToString("F2"), _measureService.GetMeasureWeightById(_measureSettings.BaseWeightId).Name) : "";
-			model.Height = (product.Height > 0) ? "{0} {1}".FormatCurrent(product.Height.ToString("F2"), dimension) : "";
-			model.Length = (product.Length > 0) ? "{0} {1}".FormatCurrent(product.Length.ToString("F2"), dimension) : "";
-			model.Width = (product.Width > 0) ? "{0} {1}".FormatCurrent(product.Width.ToString("F2"), dimension) : "";
+			model.Weight = (model.WeightValue > 0) ? "{0} {1}".FormatCurrent(model.WeightValue.ToString("N2"), _measureService.GetMeasureWeightById(_measureSettings.BaseWeightId).SystemKeyword) : "";
+			model.Height = (product.Height > 0) ? "{0} {1}".FormatCurrent(product.Height.ToString("N2"), dimension) : "";
+			model.Length = (product.Length > 0) ? "{0} {1}".FormatCurrent(product.Length.ToString("N2"), dimension) : "";
+			model.Width = (product.Width > 0) ? "{0} {1}".FormatCurrent(product.Width.ToString("N2"), dimension) : "";
 
 			if (productBundleItem != null)
 				model.ThumbDimensions = _mediaSettings.BundledProductPictureSize;
@@ -713,7 +1139,7 @@ namespace SmartStore.Web.Controllers
 
 			if (model.IsAvailable)
 			{
-				var deliveryTime = _deliveryTimeService.GetDeliveryTimeById(product.DeliveryTimeId.GetValueOrDefault());
+				var deliveryTime = _deliveryTimeService.GetDeliveryTime(product);
 				if (deliveryTime != null)
 				{
 					model.DeliveryTimeName = deliveryTime.GetLocalized(x => x.Name);
@@ -723,12 +1149,18 @@ namespace SmartStore.Web.Controllers
 
 			model.DisplayDeliveryTime = _catalogSettings.ShowDeliveryTimesInProductDetail;
 			model.IsShipEnabled = product.IsShipEnabled;
-			model.DisplayDeliveryTimeAccordingToStock = product.DisplayDeliveryTimeAccordingToStock();
+			model.DisplayDeliveryTimeAccordingToStock = product.DisplayDeliveryTimeAccordingToStock(_catalogSettings);
 
-			if (model.DeliveryTimeName.IsNullOrEmpty() && model.DisplayDeliveryTime)
+			if (model.DeliveryTimeName.IsEmpty() && model.DisplayDeliveryTime)
 			{
 				model.DeliveryTimeName = T("ShoppingCart.NotAvailable");
 			}
+
+            var quantityUnit = _quantityUnitService.GetQuantityUnit(product);
+            if (quantityUnit != null)
+            {
+                model.QuantityUnitName = quantityUnit.GetLocalized(x => x.Name);
+            }
 
 			//back in stock subscriptions)
 			if (product.ManageInventoryMethod == ManageInventoryMethod.ManageStock &&
@@ -738,8 +1170,7 @@ namespace SmartStore.Web.Controllers
 			{
 				//out of stock
 				model.DisplayBackInStockSubscription = true;
-				model.BackInStockAlreadySubscribed = _backInStockSubscriptionService
-					 .FindSubscription(_services.WorkContext.CurrentCustomer.Id, product.Id, _services.StoreContext.CurrentStore.Id) != null;
+				model.BackInStockAlreadySubscribed = _backInStockSubscriptionService.FindSubscription(customer.Id, product.Id, store.Id) != null;
 			}
 
 			#endregion
@@ -747,11 +1178,11 @@ namespace SmartStore.Web.Controllers
 			#region Product price
 
 			model.ProductPrice.ProductId = product.Id;
+            model.ProductPrice.HidePrices = !displayPrices;
+            model.ProductPrice.ShowLoginNote = !displayPrices && productBundleItem == null && _catalogSettings.ShowLoginForPriceNote;
 
-			if (displayPrices)
+            if (displayPrices)
 			{
-				model.ProductPrice.HidePrices = false;
-
 				if (product.CustomerEntersPrice && !isBundleItemPricing)
 				{
 					model.ProductPrice.CustomerEntersPrice = true;
@@ -764,22 +1195,26 @@ namespace SmartStore.Web.Controllers
 					}
 					else
 					{
-						decimal taxRate = decimal.Zero;
-						decimal oldPrice = decimal.Zero;
-						decimal finalPriceWithoutDiscountBase = decimal.Zero;
-						decimal finalPriceWithDiscountBase = decimal.Zero;
-						decimal attributesTotalPriceBase = decimal.Zero;
-						decimal finalPriceWithoutDiscount = decimal.Zero;
-						decimal finalPriceWithDiscount = decimal.Zero;
-
-						decimal oldPriceBase = _taxService.GetProductPrice(product, product.OldPrice, out taxRate);
+						var taxRate = decimal.Zero;
+                        var oldPrice = decimal.Zero;
+                        var finalPriceWithoutDiscountBase = decimal.Zero;
+                        var finalPriceWithDiscountBase = decimal.Zero;
+                        var attributesTotalPriceBase = decimal.Zero;
+                        var attributesTotalPriceBaseOrig = decimal.Zero;
+                        var finalPriceWithoutDiscount = decimal.Zero;
+                        var finalPriceWithDiscount = decimal.Zero;
+                        var oldPriceBase = _taxService.GetProductPrice(product, product.OldPrice, out taxRate);
 
 						if (model.ProductPrice.DynamicPriceUpdate && !isBundlePricing)
 						{
 							if (selectedAttributeValues != null)
 							{
-								selectedAttributeValues.Each(x => attributesTotalPriceBase += _priceCalculationService.GetProductVariantAttributeValuePriceAdjustment(x));
-							}
+								selectedAttributeValues.Each(x => attributesTotalPriceBase += _priceCalculationService.GetProductVariantAttributeValuePriceAdjustment(x, 
+                                    product, customer, null, selectedQuantity));
+
+                                selectedAttributeValues.Each(x => attributesTotalPriceBaseOrig += _priceCalculationService.GetProductVariantAttributeValuePriceAdjustment(x,
+                                    product, customer, null, 1));
+                            }
 							else
 							{
 								attributesTotalPriceBase = preSelectedPriceAdjustmentBase;
@@ -792,93 +1227,132 @@ namespace SmartStore.Web.Controllers
 						}
 
 						finalPriceWithoutDiscountBase = _priceCalculationService.GetFinalPrice(product, productBundleItems,
-							_services.WorkContext.CurrentCustomer, attributesTotalPriceBase, false, selectedQuantity, productBundleItem);
-
+							customer, attributesTotalPriceBaseOrig, false, selectedQuantity, productBundleItem);
+                        
 						finalPriceWithDiscountBase = _priceCalculationService.GetFinalPrice(product, productBundleItems,
-							_services.WorkContext.CurrentCustomer, attributesTotalPriceBase, true, selectedQuantity, productBundleItem);
+							customer, attributesTotalPriceBase, true, selectedQuantity, productBundleItem);
 
-						finalPriceWithoutDiscountBase = _taxService.GetProductPrice(product, finalPriceWithoutDiscountBase, out taxRate);
+                        var basePriceAdjustment = finalPriceWithDiscountBase - finalPriceWithoutDiscountBase;
+
+                        finalPriceWithoutDiscountBase = _taxService.GetProductPrice(product, finalPriceWithoutDiscountBase, out taxRate);
 						finalPriceWithDiscountBase = _taxService.GetProductPrice(product, finalPriceWithDiscountBase, out taxRate);
 
-						oldPrice = _currencyService.ConvertFromPrimaryStoreCurrency(oldPriceBase, _services.WorkContext.WorkingCurrency);
+						oldPrice = _currencyService.ConvertFromPrimaryStoreCurrency(oldPriceBase, currency);
 
-						finalPriceWithoutDiscount = _currencyService.ConvertFromPrimaryStoreCurrency(finalPriceWithoutDiscountBase, _services.WorkContext.WorkingCurrency);
-						finalPriceWithDiscount = _currencyService.ConvertFromPrimaryStoreCurrency(finalPriceWithDiscountBase, _services.WorkContext.WorkingCurrency);
+						finalPriceWithoutDiscount = _currencyService.ConvertFromPrimaryStoreCurrency(finalPriceWithoutDiscountBase, currency);
+						finalPriceWithDiscount = _currencyService.ConvertFromPrimaryStoreCurrency(finalPriceWithDiscountBase, currency);
 
 						if (productBundleItem == null || isBundleItemPricing)
 						{
-							if (finalPriceWithoutDiscountBase != oldPriceBase && oldPriceBase > decimal.Zero)
+							if (oldPriceBase > decimal.Zero && oldPriceBase > finalPriceWithoutDiscountBase)
+							{
+								model.ProductPrice.OldPriceValue = oldPrice;
 								model.ProductPrice.OldPrice = _priceFormatter.FormatPrice(oldPrice);
+							}		
 
 							model.ProductPrice.Price = _priceFormatter.FormatPrice(finalPriceWithoutDiscount);
 
 							if (finalPriceWithoutDiscountBase != finalPriceWithDiscountBase)
+							{
 								model.ProductPrice.PriceWithDiscount = _priceFormatter.FormatPrice(finalPriceWithDiscount);
+							}	
 						}
 
 						model.ProductPrice.PriceValue = finalPriceWithoutDiscount;
 						model.ProductPrice.PriceWithDiscountValue = finalPriceWithDiscount;
-
-						if (!(isBundleItemPricing && !model.ProductPrice.BundleItemShowBasePrice))
-						{
-							model.BasePriceInfo = product.GetBasePriceInfo(_localizationService, _priceFormatter, attributesTotalPriceBase);
-						}
+                        model.BasePriceInfo = product.GetBasePriceInfo(
+                            _localizationService, 
+                            _priceFormatter, 
+                            _currencyService, 
+                            _taxService, 
+                            _priceCalculationService,
+							customer,
+                            currency, 
+                            attributesTotalPriceBase);
 
 						if (!string.IsNullOrWhiteSpace(model.ProductPrice.OldPrice) || !string.IsNullOrWhiteSpace(model.ProductPrice.PriceWithDiscount))
 						{
 							model.ProductPrice.NoteWithoutDiscount = T(isBundle && product.BundlePerItemPricing ? "Products.Bundle.PriceWithoutDiscount.Note" : "Products.Price");
 						}
 
-						if (isBundle && product.BundlePerItemPricing && !string.IsNullOrWhiteSpace(model.ProductPrice.PriceWithDiscount))
+						if ((isBundle && product.BundlePerItemPricing && !string.IsNullOrWhiteSpace(model.ProductPrice.PriceWithDiscount)) || product.HasTierPrices)
 						{
-							model.ProductPrice.NoteWithDiscount = T("Products.Bundle.PriceWithDiscount.Note");
+                            if (!product.HasTierPrices)
+                            {
+                                model.ProductPrice.NoteWithDiscount = T("Products.Bundle.PriceWithDiscount.Note");
+                            }
+
+                            model.BasePriceInfo = product.GetBasePriceInfo(
+                                _localizationService, 
+                                _priceFormatter, 
+                                _currencyService,
+                                _taxService, 
+                                _priceCalculationService,
+								customer,
+                                currency,
+                                basePriceAdjustment);
+						}
+
+						// Calculate saving.
+						// Discounted price has priority over the old price (avoids differing percentage discount in product lists and detail page).
+						//var regularPrice = Math.Max(finalPriceWithoutDiscount, oldPrice);
+						var regularPrice = finalPriceWithDiscount < finalPriceWithoutDiscount
+							? finalPriceWithoutDiscount
+							: oldPrice;
+
+						if (regularPrice > 0 && regularPrice > finalPriceWithDiscount)
+						{
+							model.ProductPrice.SavingPercent = (float)((regularPrice - finalPriceWithDiscount) / regularPrice) * 100;
+							model.ProductPrice.SavingAmount = _priceFormatter.FormatPrice(regularPrice - finalPriceWithDiscount, true, false);
 						}
 					}
 				}
 			}
 			else
 			{
-				model.ProductPrice.HidePrices = true;
-				model.ProductPrice.OldPrice = null;
+                model.ProductPrice.OldPrice = null;
 				model.ProductPrice.Price = null;
 			}
+
 			#endregion
 
 			#region 'Add to cart' model
 
 			model.AddToCart.ProductId = product.Id;
+			model.AddToCart.EnteredQuantity = product.OrderMinimumQuantity > selectedQuantity ? product.OrderMinimumQuantity : selectedQuantity;
+            model.AddToCart.MinOrderAmount = product.OrderMinimumQuantity;
+            model.AddToCart.MaxOrderAmount = product.OrderMaximumQuantity;
+			model.AddToCart.QuantityUnitName = model.QuantityUnitName; // TODO: (mc) remove 'QuantityUnitName' from parent model later
+            model.AddToCart.QuantityStep = product.QuantityStep > 0 ? product.QuantityStep : 1;
+            model.AddToCart.HideQuantityControl = product.HideQuantityControl;
+            model.AddToCart.QuantiyControlType = product.QuantiyControlType;
+            model.AddToCart.AvailableForPreOrder = product.AvailableForPreOrder;
 
-			//quantity
-			model.AddToCart.EnteredQuantity = product.OrderMinimumQuantity;
+            // 'add to cart', 'add to wishlist' buttons.
+            model.AddToCart.DisableBuyButton = !displayPrices || product.DisableBuyButton || 
+                !_services.Permissions.Authorize(StandardPermissionProvider.EnableShoppingCart);
 
-			//'add to cart', 'add to wishlist' buttons
-			model.AddToCart.DisableBuyButton = product.DisableBuyButton || !_services.Permissions.Authorize(StandardPermissionProvider.EnableShoppingCart);
-			model.AddToCart.DisableWishlistButton = product.DisableWishlistButton || !_services.Permissions.Authorize(StandardPermissionProvider.EnableWishlist);
-			if (!displayPrices)
-			{
-				model.AddToCart.DisableBuyButton = true;
-				model.AddToCart.DisableWishlistButton = true;
-			}
-			//pre-order
-			model.AddToCart.AvailableForPreOrder = product.AvailableForPreOrder;
+			model.AddToCart.DisableWishlistButton = !displayPrices || product.DisableWishlistButton
+                || product.ProductType == ProductType.GroupedProduct
+                || !_services.Permissions.Authorize(StandardPermissionProvider.EnableWishlist);
 
-			//customer entered price
 			model.AddToCart.CustomerEntersPrice = product.CustomerEntersPrice;
 			if (model.AddToCart.CustomerEntersPrice)
 			{
-				decimal minimumCustomerEnteredPrice = _currencyService.ConvertFromPrimaryStoreCurrency(product.MinimumCustomerEnteredPrice, _services.WorkContext.WorkingCurrency);
-				decimal maximumCustomerEnteredPrice = _currencyService.ConvertFromPrimaryStoreCurrency(product.MaximumCustomerEnteredPrice, _services.WorkContext.WorkingCurrency);
+				var minimumCustomerEnteredPrice = _currencyService.ConvertFromPrimaryStoreCurrency(product.MinimumCustomerEnteredPrice, currency);
+				var maximumCustomerEnteredPrice = _currencyService.ConvertFromPrimaryStoreCurrency(product.MaximumCustomerEnteredPrice, currency);
 
 				model.AddToCart.CustomerEnteredPrice = minimumCustomerEnteredPrice;
+
 				model.AddToCart.CustomerEnteredPriceRange = string.Format(T("Products.EnterProductPrice.Range"),
 					_priceFormatter.FormatPrice(minimumCustomerEnteredPrice, true, false),
 					_priceFormatter.FormatPrice(maximumCustomerEnteredPrice, true, false));
 			}
-			//allowed quantities
+
 			var allowedQuantities = product.ParseAllowedQuatities();
 			foreach (var qty in allowedQuantities)
 			{
-				model.AddToCart.AllowedQuantities.Add(new SelectListItem()
+				model.AddToCart.AllowedQuantities.Add(new SelectListItem
 				{
 					Text = qty.ToString(),
 					Value = qty.ToString()
@@ -893,750 +1367,150 @@ namespace SmartStore.Web.Controllers
 			if (model.GiftCard.IsGiftCard)
 			{
 				model.GiftCard.GiftCardType = product.GiftCardType;
-				model.GiftCard.SenderName = _services.WorkContext.CurrentCustomer.GetFullName();
-				model.GiftCard.SenderEmail = _services.WorkContext.CurrentCustomer.Email;
+				model.GiftCard.SenderName = customer.GetFullName();
+				model.GiftCard.SenderEmail = customer.Email;
 			}
 
 			#endregion
 
+			_services.DisplayControl.Announce(product);
+
 			return model;
-		}
-
-		public List<int> GetChildCategoryIds(int parentCategoryId)
-		{
-			var customerRolesIds = _services.WorkContext.CurrentCustomer.CustomerRoles.Where(cr => cr.Active).Select(cr => cr.Id).ToList();
-			string cacheKey = string.Format(ModelCacheEventConsumer.CATEGORY_CHILD_IDENTIFIERS_MODEL_KEY,
-				parentCategoryId,
-				false,
-				string.Join(",", customerRolesIds),
-				_services.StoreContext.CurrentStore.Id);
-
-			return _services.Cache.Get(cacheKey, () =>
-			{
-				var root = GetCategoryMenu();
-				var node = root.SelectNode(x => x.Value.EntityId == parentCategoryId);
-				if (node != null)
-				{
-					var ids = node.Flatten(false).Select(x => x.EntityId).ToList();
-					return ids;
-				}
-				return new List<int>();
-			});
-		}
-
-		public IList<MenuItem> GetCategoryBreadCrumb(int currentCategoryId, int currentProductId)
-		{
-			var requestCache = SmartStore.Core.Infrastructure.EngineContext.Current.Resolve<ICacheManager>(); // _cacheFactory("request").Value;
-			string cacheKey = "sm.temp.category.path.{0}-{1}".FormatInvariant(currentCategoryId, currentProductId);
-
-			var breadcrumb = requestCache.Get(cacheKey, () =>
-			{
-				var root = GetCategoryMenu();
-				TreeNode<MenuItem> node = null;
-
-				if (currentCategoryId > 0)
-				{
-					node = root.SelectNode(x => x.Value.EntityId == currentCategoryId);
-				}
-				if (node == null && currentProductId > 0)
-				{
-					var productCategories = _categoryService.GetProductCategoriesByProductId(currentProductId);
-					if (productCategories.Count > 0)
-					{
-						currentCategoryId = productCategories[0].Category.Id;
-						node = root.SelectNode(x => x.Value.EntityId == currentCategoryId);
-					}
-				}
-
-				if (node != null)
-				{
-					var path = node.GetBreadcrumb();
-					return path;
-				}
-
-				return new List<MenuItem>();
-			});
-
-			return breadcrumb;
-		}
-
-		public IEnumerable<ProductOverviewModel> PrepareProductOverviewModels(IEnumerable<Product> products,
-			bool preparePriceModel = true, bool preparePictureModel = true,
-			int? productThumbPictureSize = null, bool prepareSpecificationAttributes = false,
-			bool forceRedirectionAfterAddingToCart = false, bool prepareColorAttributes = false)
-		{
-			if (products == null)
-				throw new ArgumentNullException("products");
-
-			var models = new List<ProductOverviewModel>();
-
-			foreach (var product in products)
-			{
-				var minPriceProduct = product;
-
-				var model = new ProductOverviewModel()
-				{
-					Id = product.Id,
-					Name = product.GetLocalized(x => x.Name).EmptyNull(),
-					ShortDescription = product.GetLocalized(x => x.ShortDescription),
-					FullDescription = product.GetLocalized(x => x.FullDescription),
-					SeName = product.GetSeName()
-				};
-
-				// price
-				if (preparePriceModel)
-				{
-					#region Prepare product price
-
-					var priceModel = new ProductOverviewModel.ProductPriceModel()
-					{
-						ForceRedirectionAfterAddingToCart = forceRedirectionAfterAddingToCart,
-						ShowDiscountSign = _catalogSettings.ShowDiscountSign
-					};
-
-					switch (product.ProductType)
-					{
-						case ProductType.GroupedProduct:
-							{
-								#region Grouped product
-
-								var searchContext = new ProductSearchContext()
-								{
-									StoreId = _services.StoreContext.CurrentStore.Id,
-									ParentGroupedProductId = product.Id,
-									PageSize = int.MaxValue,
-									VisibleIndividuallyOnly = false
-								};
-
-								var associatedProducts = _productService.SearchProducts(searchContext);
-
-								if (associatedProducts.Count <= 0)
-								{
-									priceModel.OldPrice = null;
-									priceModel.Price = null;
-									priceModel.DisableBuyButton = true;
-									priceModel.DisableWishListButton = true;
-									priceModel.AvailableForPreOrder = false;
-								}
-								else
-								{
-									priceModel.DisableBuyButton = true;
-									priceModel.DisableWishListButton = true;
-									priceModel.AvailableForPreOrder = false;
-
-									if (_services.Permissions.Authorize(StandardPermissionProvider.DisplayPrices))
-									{
-										decimal? minPossiblePrice = _priceCalculationService.GetLowestPrice(product, associatedProducts, out minPriceProduct);
-
-										if (minPriceProduct != null && !minPriceProduct.CustomerEntersPrice)
-										{
-											if (minPriceProduct.CallForPrice)
-											{
-												priceModel.OldPrice = null;
-												priceModel.Price = T("Products.CallForPrice");
-											}
-											else if (minPossiblePrice.HasValue)
-											{
-												//calculate prices
-												decimal taxRate = decimal.Zero;
-												decimal oldPriceBase = _taxService.GetProductPrice(minPriceProduct, minPriceProduct.OldPrice, out taxRate);
-												decimal finalPriceBase = _taxService.GetProductPrice(minPriceProduct, minPossiblePrice.Value, out taxRate);
-												decimal finalPrice = _currencyService.ConvertFromPrimaryStoreCurrency(finalPriceBase, _services.WorkContext.WorkingCurrency);
-
-												priceModel.OldPrice = null;
-												priceModel.Price = String.Format(T("Products.PriceRangeFrom"), _priceFormatter.FormatPrice(finalPrice));
-												priceModel.HasDiscount = finalPriceBase != oldPriceBase && oldPriceBase != decimal.Zero;
-											}
-											else
-											{
-												//Actually it's not possible (we presume that minimalPrice always has a value)
-												//We never should get here
-												Debug.WriteLine(string.Format("Cannot calculate minPrice for product #{0}", product.Id));
-											}
-										}
-									}
-									else
-									{
-										//hide prices
-										priceModel.OldPrice = null;
-										priceModel.Price = null;
-									}
-								}
-
-								#endregion
-							}
-							break;
-						case ProductType.SimpleProduct:
-						default:
-							{
-								#region Simple product
-
-								//add to cart button
-								priceModel.DisableBuyButton = product.DisableBuyButton ||
-									!_services.Permissions.Authorize(StandardPermissionProvider.EnableShoppingCart) ||
-									!_services.Permissions.Authorize(StandardPermissionProvider.DisplayPrices);
-
-								//add to wishlist button
-								priceModel.DisableWishListButton = product.DisableWishlistButton ||
-									!_services.Permissions.Authorize(StandardPermissionProvider.EnableWishlist) ||
-									!_services.Permissions.Authorize(StandardPermissionProvider.DisplayPrices);
-
-								//pre-order
-								priceModel.AvailableForPreOrder = product.AvailableForPreOrder;
-
-								//prices
-								if (_services.Permissions.Authorize(StandardPermissionProvider.DisplayPrices))
-								{
-									if (!product.CustomerEntersPrice)
-									{
-										if (product.CallForPrice)
-										{
-											//call for price
-											priceModel.OldPrice = null;
-											priceModel.Price = T("Products.CallForPrice");
-										}
-										else
-										{
-											//calculate prices
-											bool isBundlePerItemPricing = (product.ProductType == ProductType.BundledProduct && product.BundlePerItemPricing);
-
-											bool displayFromMessage = false;
-											decimal minPossiblePrice = _priceCalculationService.GetLowestPrice(product, out displayFromMessage);
-
-											decimal taxRate = decimal.Zero;
-											decimal oldPriceBase = _taxService.GetProductPrice(product, product.OldPrice, out taxRate);
-											decimal finalPriceBase = _taxService.GetProductPrice(product, minPossiblePrice, out taxRate);
-
-											decimal oldPrice = _currencyService.ConvertFromPrimaryStoreCurrency(oldPriceBase, _services.WorkContext.WorkingCurrency);
-											decimal finalPrice = _currencyService.ConvertFromPrimaryStoreCurrency(finalPriceBase, _services.WorkContext.WorkingCurrency);
-
-											priceModel.HasDiscount = (finalPriceBase != oldPriceBase && oldPriceBase != decimal.Zero);
-
-											// check tier prices
-											if (product.HasTierPrices && !isBundlePerItemPricing && !displayFromMessage)
-											{
-												var tierPrices = new List<TierPrice>();
-
-												tierPrices.AddRange(product.TierPrices
-													.OrderBy(tp => tp.Quantity)
-													.FilterByStore(_services.StoreContext.CurrentStore.Id)
-													.FilterForCustomer(_services.WorkContext.CurrentCustomer)
-													.ToList()
-													.RemoveDuplicatedQuantities());
-
-												// When there is just one tier (with  qty 1), there are no actual savings in the list.
-												displayFromMessage = (tierPrices.Count > 0 && !(tierPrices.Count == 1 && tierPrices[0].Quantity <= 1));
-											}
-
-											if (displayFromMessage)
-											{
-												priceModel.OldPrice = null;
-												priceModel.Price = String.Format(T("Products.PriceRangeFrom"), _priceFormatter.FormatPrice(finalPrice));
-											}
-											else
-											{
-												if (priceModel.HasDiscount)
-												{
-													priceModel.OldPrice = _priceFormatter.FormatPrice(oldPrice);
-													priceModel.Price = _priceFormatter.FormatPrice(finalPrice);
-												}
-												else
-												{
-													priceModel.OldPrice = null;
-													priceModel.Price = _priceFormatter.FormatPrice(finalPrice);
-												}
-											}
-										}
-									}
-								}
-								else
-								{
-									//hide prices
-									priceModel.OldPrice = null;
-									priceModel.Price = null;
-								}
-
-								#endregion
-							}
-							break;
-					}
-
-					model.ProductPrice = priceModel;
-                    model.ProductPrice.CallForPrice = product.CallForPrice;
-
-					#endregion
-				}
-
-				// picture
-				if (preparePictureModel)
-				{
-					#region Prepare product picture
-
-					//If a size has been set in the view, we use it in priority
-					int pictureSize = productThumbPictureSize.HasValue ? productThumbPictureSize.Value : _mediaSettings.ProductThumbPictureSize;
-
-					//prepare picture model
-					var defaultProductPictureCacheKey = string.Format(ModelCacheEventConsumer.PRODUCT_DEFAULTPICTURE_MODEL_KEY, product.Id, pictureSize, true,
-						_services.WorkContext.WorkingLanguage.Id, _services.WebHelper.IsCurrentConnectionSecured(), _services.StoreContext.CurrentStore.Id);
-
-					model.DefaultPictureModel = _services.Cache.Get(defaultProductPictureCacheKey, () =>
-					{
-						var picture = product.GetDefaultProductPicture(_pictureService);
-						var pictureModel = new PictureModel()
-						{
-							ImageUrl = _pictureService.GetPictureUrl(picture, pictureSize),
-							FullSizeImageUrl = _pictureService.GetPictureUrl(picture),
-							Title = string.Format(T("Media.Product.ImageLinkTitleFormat"), model.Name),
-							AlternateText = string.Format(T("Media.Product.ImageAlternateTextFormat"), model.Name)
-						};
-						return pictureModel;
-					});
-
-					#endregion
-				}
-
-				// specs
-				if (prepareSpecificationAttributes)
-				{
-					model.SpecificationAttributeModels = PrepareProductSpecificationModel(product);
-				}
-
-				// available colors
-				if (prepareColorAttributes && _catalogSettings.ShowColorSquaresInLists)
-				{
-					#region Prepare color attributes
-
-					// get the FIRST color type attribute
-					var colorAttr = _productAttributeService.GetProductVariantAttributesByProductId(minPriceProduct.Id)
-						.FirstOrDefault(x => x.AttributeControlType == AttributeControlType.ColorSquares);
-
-					if (colorAttr != null)
-					{
-						var colorValues =
-							from a in colorAttr.ProductVariantAttributeValues.Take(50)
-							where (a.ColorSquaresRgb.HasValue() && !a.ColorSquaresRgb.IsCaseInsensitiveEqual("transparent"))
-							select new ProductOverviewModel.ColorAttributeModel()
-							{
-								Color = a.ColorSquaresRgb,
-								Alias = a.Alias,
-								FriendlyName = a.GetLocalized(l => l.Name)
-							};
-
-						if (colorValues.Any())
-						{
-							model.ColorAttributes.AddRange(colorValues.Distinct());
-						}
-					}
-
-					#endregion
-				}
-
-				var currentCustomer = _services.WorkContext.CurrentCustomer;
-				var taxDisplayType = _services.WorkContext.GetTaxDisplayTypeFor(currentCustomer, _services.StoreContext.CurrentStore.Id);
-				string taxInfo = T(taxDisplayType == TaxDisplayType.IncludingTax ? "Tax.InclVAT" : "Tax.ExclVAT");
-				string shippingInfoLink = _urlHelper.RouteUrl("Topic", new { SystemName = "shippinginfo" });
-
-				model.ProductMinPriceId = minPriceProduct.Id;
-				model.Manufacturers = PrepareManufacturersOverviewModel(_manufacturerService.GetProductManufacturersByProductId(product.Id));
-				model.ShowSku = _catalogSettings.ShowProductSku;
-				model.ShowWeight = _catalogSettings.ShowWeight;
-				model.ShowDimensions = _catalogSettings.ShowDimensions;
-				model.Sku = minPriceProduct.Sku;
-				model.Dimensions = T("Products.DimensionsValue").Text.FormatCurrent(
-					minPriceProduct.Width.ToString("F2"),
-					minPriceProduct.Height.ToString("F2"),
-					minPriceProduct.Length.ToString("F2")
-				);
-				model.DimensionMeasureUnit = _measureService.GetMeasureDimensionById(_measureSettings.BaseDimensionId).Name;
-				model.ThumbDimension = _mediaSettings.ProductThumbPictureSize;
-				model.ShowLegalInfo = _taxSettings.ShowLegalHintsInProductList;
-				model.LegalInfo = T("Tax.LegalInfoFooter").Text.FormatWith(taxInfo, shippingInfoLink);
-				model.RatingSum = product.ApprovedRatingSum;
-				model.TotalReviews = product.ApprovedTotalReviews;
-				model.ShowReviews = _catalogSettings.ShowProductReviewsInProductLists;
-				model.ShowDeliveryTimes = _catalogSettings.ShowDeliveryTimesInProductLists;
-				var deliveryTime = _deliveryTimeService.GetDeliveryTimeById(minPriceProduct.DeliveryTimeId.GetValueOrDefault());
-				if (deliveryTime != null)
-				{
-					model.DeliveryTimeName = deliveryTime.GetLocalized(x => x.Name);
-					model.DeliveryTimeHexValue = deliveryTime.ColorHexValue;
-				}
-
-				model.IsShipEnabled = minPriceProduct.IsShipEnabled;
-				model.DisplayDeliveryTimeAccordingToStock = minPriceProduct.DisplayDeliveryTimeAccordingToStock();
-				model.StockAvailablity = minPriceProduct.FormatStockMessage(_localizationService);
-
-				model.DisplayBasePrice = _catalogSettings.ShowBasePriceInProductLists;
-				model.BasePriceInfo = minPriceProduct.GetBasePriceInfo(_localizationService, _priceFormatter);
-				model.CompareEnabled = _catalogSettings.CompareProductsEnabled;
-				model.HideBuyButtonInLists = _catalogSettings.HideBuyButtonInLists;
-
-				var addShippingPrice = _currencyService.ConvertCurrency(minPriceProduct.AdditionalShippingCharge,
-					_currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId), _services.WorkContext.WorkingCurrency);
-
-				if (addShippingPrice > 0)
-				{
-					model.TransportSurcharge = T("Common.AdditionalShippingSurcharge").Text.FormatWith(_priceFormatter.FormatPrice(addShippingPrice, true, false));
-				}
-
-				if (minPriceProduct.Weight > 0)
-				{
-					model.Weight = "{0} {1}".FormatCurrent(minPriceProduct.Weight.ToString("F2"), _measureService.GetMeasureWeightById(_measureSettings.BaseWeightId).Name);
-				}
-
-				// IsNew
-				if (_catalogSettings.LabelAsNewForMaxDays.HasValue)
-				{
-					model.IsNew = (DateTime.UtcNow - product.CreatedOnUtc).Days <= _catalogSettings.LabelAsNewForMaxDays.Value;
-				}
-
-				models.Add(model);
-			}
-			return models;
 		}
 
 		public IList<ProductSpecificationModel> PrepareProductSpecificationModel(Product product)
 		{
-			if (product == null)
-				throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
+			
+			if (_services.Cache.IsDistributedCache)
+			{
+				// How bad we cannot cache LocalizedValue in distributed caches
+				return Execute();
+			}
+			else
+			{
+				string cacheKey = string.Format(ModelCacheEventConsumer.PRODUCT_SPECS_MODEL_KEY, product.Id, _services.WorkContext.WorkingLanguage.Id);
+				return _services.Cache.Get(cacheKey, () =>
+				{
+					return Execute();
+				});
+			}
 
-			string cacheKey = string.Format(ModelCacheEventConsumer.PRODUCT_SPECS_MODEL_KEY, product.Id, _services.WorkContext.WorkingLanguage.Id);
-			return _services.Cache.Get(cacheKey, () =>
+			List<ProductSpecificationModel> Execute()
 			{
 				var model = _specificationAttributeService.GetProductSpecificationAttributesByProductId(product.Id, null, true)
 				   .Select(psa =>
 				   {
-					   return new ProductSpecificationModel()
+					   return new ProductSpecificationModel
 					   {
 						   SpecificationAttributeId = psa.SpecificationAttributeOption.SpecificationAttributeId,
 						   SpecificationAttributeName = psa.SpecificationAttributeOption.SpecificationAttribute.GetLocalized(x => x.Name),
 						   SpecificationAttributeOption = psa.SpecificationAttributeOption.GetLocalized(x => x.Name)
 					   };
 				   }).ToList();
+
 				return model;
-			});
-		}
-
-		public NavigationModel PrepareCategoryNavigationModel(int currentCategoryId, int currentProductId)
-		{
-			var root = GetCategoryMenu();
-			var breadcrumb = GetCategoryBreadCrumb(currentCategoryId, currentProductId);
-
-			// resolve number of products
-			if (_catalogSettings.ShowCategoryProductNumber)
-			{
-				var curItem = breadcrumb.LastOrDefault();
-				var curNode = curItem == null ? root.Root : root.Find(curItem);
-
-				this.ResolveCategoryProductsCount(curNode);
-			}
-
-			var model = new NavigationModel
-			{
-				Root = root,
-				Path = breadcrumb,
-			};
-
-			return model;
-		}
-
-		protected void ResolveCategoryProductsCount(TreeNode<MenuItem> curNode)
-		{
-			try
-			{
-				// Perf: only resolve counts for categories in the current path.
-				while (curNode != null)
-				{
-					if (curNode.Children.Any(x => !x.Value.ElementsCount.HasValue))
-					{
-						lock (s_lock)
-						{
-							if (curNode.Children.Any(x => !x.Value.ElementsCount.HasValue))
-							{
-								foreach (var node in curNode.Children)
-								{
-									var categoryIds = new List<int>();
-
-									if (_catalogSettings.ShowCategoryProductNumberIncludingSubcategories)
-									{
-										// include subcategories
-										node.TraverseTree(x => categoryIds.Add(x.Value.EntityId));
-									}
-									else
-									{
-										categoryIds.Add(node.Value.EntityId);
-									}
-
-									var ctx = new ProductSearchContext();
-									ctx.CategoryIds = categoryIds;
-									ctx.StoreId = _services.StoreContext.CurrentStoreIdIfMultiStoreMode;
-									node.Value.ElementsCount = _productService.CountProducts(ctx);
-								}
-							}
-						}
-					}
-
-					curNode = curNode.Parent;
-				}
-			}
-			catch (Exception exc)
-			{
-				Logger.Error(exc.Message, exc);
 			}
 		}
 
-		public TreeNode<MenuItem> GetCategoryMenu()
+		public List<ManufacturerOverviewModel> PrepareManufacturersOverviewModel(
+			ICollection<ProductManufacturer> manufacturers, 
+			IDictionary<int, ManufacturerOverviewModel> cachedModels = null,
+			bool withPicture = false)
 		{
-			var customerRolesIds = _services.WorkContext.CurrentCustomer.CustomerRoles.Where(cr => cr.Active).Select(cr => cr.Id).ToList();
-			string cacheKey = string.Format(ModelCacheEventConsumer.CATEGORY_NAVIGATION_MODEL_KEY,
-				_services.WorkContext.WorkingLanguage.Id,
-				string.Join(",", customerRolesIds),
-				_services.StoreContext.CurrentStore.Id);
-
-			var model = _services.Cache.Get(cacheKey, () =>
-			{
-				var curParent = new TreeNode<MenuItem>(new MenuItem
-				{
-					EntityId = 0,
-					Text = "Home",
-					RouteName = "HomePage"
-				});
-
-				Category prevCat = null;
-
-				var categories = _categoryService.GetAllCategories();
-				foreach (var category in categories)
-				{
-					var menuItem = new MenuItem
-					{
-						EntityId = category.Id,
-						Text = category.GetLocalized(x => x.Name),
-						RouteName = "Category"
-					};
-					menuItem.RouteValues.Add("SeName", category.GetSeName());
-
-					// determine parent
-					if (prevCat != null)
-					{
-						if (category.ParentCategoryId != curParent.Value.EntityId)
-						{
-							if (category.ParentCategoryId == prevCat.Id)
-							{
-								// level +1
-								curParent = curParent.LastChild;
-							}
-							else
-							{
-								// level -x
-								while (!curParent.IsRoot)
-								{
-									if (curParent.Value.EntityId == category.ParentCategoryId)
-									{
-										break;
-									}
-									curParent = curParent.Parent;
-								}
-							}
-						}
-					}
-
-					// add to parent
-					curParent.Append(menuItem);
-
-					prevCat = category;
-				}
-
-				var root = curParent.Root;
-
-				// menu publisher
-				_menuPublisher.Value.RegisterMenus(root, "catalog");
-
-				// event
-				_services.EventPublisher.Publish(new NavigationModelBuiltEvent(root));
-
-				return root;
-			});
-
-			return model;
-		}
-
-		public void PreparePagingFilteringModel(PagingFilteringModel model, PagingFilteringModel command, PageSizeContext pageSizeContext)
-		{
-			//sorting
-			model.AllowProductSorting = _catalogSettings.AllowProductSorting;
-			if (model.AllowProductSorting)
-			{
-				model.OrderBy = command.OrderBy;
-
-				foreach (ProductSortingEnum enumValue in Enum.GetValues(typeof(ProductSortingEnum)))
-				{
-					if (enumValue == ProductSortingEnum.CreatedOnAsc)
-					{
-						// TODO: (MC) das von uns eingeführte "CreatedOnAsc" schmeiß ich
-						// jetzt deshalb aus der UI raus, weil wir diese Sortier-Option
-						// auch ins StoredProc (ProductsLoadAllpaged) reinpacken müssten.
-						// Ist eigentlich kein Problem, ABER: Wir müssten immer wenn SmartStore
-						// Änderungen an dieser Proc vornimmt und wir diese Änderungen
-						// übernehmen müssen auch ständig an unseren Mod denken. Lass ma'!
-						continue;
-					}
-
-					var currentPageUrl = _services.WebHelper.GetThisPageUrl(true);
-					var sortUrl = _services.WebHelper.ModifyQueryString(currentPageUrl, "orderby=" + ((int)enumValue).ToString(), null);
-
-					var sortValue = enumValue.GetLocalizedEnum(_localizationService, _services.WorkContext);
-					model.AvailableSortOptions.Add(new ListOptionItem()
-					{
-						Text = sortValue,
-						Url = sortUrl,
-						Selected = enumValue == (ProductSortingEnum)command.OrderBy
-					});
-				}
-			}
-
-			//view mode
-			model.AllowProductViewModeChanging = _catalogSettings.AllowProductViewModeChanging;
-			var viewMode = !string.IsNullOrEmpty(command.ViewMode)
-							? command.ViewMode
-							: _catalogSettings.DefaultViewMode;
-
-			model.ViewMode = viewMode;
-
-			if (model.AllowProductViewModeChanging)
-			{
-				var currentPageUrl = _services.WebHelper.GetThisPageUrl(true);
-				//grid
-				model.AvailableViewModes.Add(new ListOptionItem()
-				{
-					Text = T("Categories.ViewMode.Grid"),
-					Url = _services.WebHelper.ModifyQueryString(currentPageUrl, "viewmode=grid", null),
-					Selected = viewMode == "grid",
-					ExtraData = "grid"
-				});
-				//list
-				model.AvailableViewModes.Add(new ListOptionItem()
-				{
-					Text = T("Categories.ViewMode.List"),
-					Url = _services.WebHelper.ModifyQueryString(currentPageUrl, "viewmode=list", null),
-					Selected = viewMode == "list",
-					ExtraData = "list"
-				});
-			}
-
-			//page size
-			model.AllowCustomersToSelectPageSize = false;
-			if (pageSizeContext.AllowCustomersToSelectPageSize && pageSizeContext.PageSizeOptions.IsEmpty())
-			{
-				pageSizeContext.PageSizeOptions = _catalogSettings.DefaultPageSizeOptions; // "12, 18, 36, 72, 150";
-
-			}
-			if (pageSizeContext.AllowCustomersToSelectPageSize && pageSizeContext.PageSizeOptions.HasValue())
-			{
-				var pageSizes = pageSizeContext.PageSizeOptions.Split(new char[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-
-				if (pageSizes.Any())
-				{
-					// get the first page size entry to use as the default (category page load) or if customer enters invalid value via query string
-					if (command.PageSize <= 0 || !pageSizes.Contains(command.PageSize.ToString()))
-					{
-						int temp = 0;
-
-						if (int.TryParse(pageSizes.FirstOrDefault(), out temp))
-						{
-							if (temp > 0)
-							{
-								command.PageSize = temp;
-							}
-						}
-					}
-
-					var currentPageUrl = _services.WebHelper.GetThisPageUrl(true);
-					var sortUrl = _services.WebHelper.ModifyQueryString(currentPageUrl, "pagesize=__pagesize__", null);
-					sortUrl = _services.WebHelper.RemoveQueryString(sortUrl, "pagenumber");
-
-					foreach (var pageSize in pageSizes)
-					{
-						int temp = 0;
-						if (!int.TryParse(pageSize, out temp) || temp <= 0)
-						{
-							continue;
-						}
-
-						model.PageSizeOptions.Add(new ListOptionItem()
-						{
-							Text = pageSize,
-							Url = sortUrl.Replace("__pagesize__", pageSize),
-							Selected = pageSize.Equals(command.PageSize.ToString(), StringComparison.InvariantCultureIgnoreCase)
-						});
-					}
-
-					if (model.PageSizeOptions.Any())
-					{
-						model.PageSizeOptions = model.PageSizeOptions.OrderBy(x => int.Parse(x.Text)).ToList();
-						model.AllowCustomersToSelectPageSize = true;
-
-						if (command.PageSize <= 0)
-						{
-							command.PageSize = int.Parse(model.PageSizeOptions.FirstOrDefault().Text);
-						}
-					}
-				}
-			}
-			else
-			{
-				//customer is not allowed to select a page size
-				command.PageSize = pageSizeContext.PageSize;
-			}
-
-			if (command.PageSize <= 0)
-				command.PageSize = pageSizeContext.PageSize;
-		}
-
-		public List<ManufacturerOverviewModel> PrepareManufacturersOverviewModel(ICollection<ProductManufacturer> manufacturers)
-		{
-			//var manufacturers = _manufacturerService.GetProductManufacturersByProductId(productId);
-
 			var model = new List<ManufacturerOverviewModel>();
 
-			foreach (var manufacturer in manufacturers)
+			if (cachedModels == null)
 			{
-				var item = new ManufacturerOverviewModel
-				{
-					Id = manufacturer.Manufacturer.Id,
-					Name = manufacturer.Manufacturer.Name,
-					Description = manufacturer.Manufacturer.Description,
-					SeName = manufacturer.Manufacturer.GetSeName()
+				cachedModels = new Dictionary<int, ManufacturerOverviewModel>();
+			}
 
-				};
+			foreach (var pm in manufacturers)
+			{
+				var manufacturer = pm.Manufacturer;
 
-				var pic = _pictureService.GetPictureById(manufacturer.Manufacturer.PictureId.GetValueOrDefault());
-				if (pic != null)
-				{
-					item.PictureModel = new PictureModel()
-					{
-						PictureId = pic.Id,
-						Title = T("Media.Product.ImageLinkTitleFormat", manufacturer.Manufacturer.Name),
-						AlternateText = T("Media.Product.ImageAlternateTextFormat", manufacturer.Manufacturer.Name),
-						ImageUrl = _pictureService.GetPictureUrl(manufacturer.Manufacturer.PictureId.GetValueOrDefault()),
-					};
-				}
+                if (!cachedModels.TryGetValue(manufacturer.Id, out ManufacturerOverviewModel item))
+                {
+                    item = new ManufacturerOverviewModel
+                    {
+                        Id = manufacturer.Id,
+                        Name = manufacturer.GetLocalized(x => x.Name),
+                        Description = manufacturer.GetLocalized(x => x.Description, true),
+                        SeName = manufacturer.GetSeName()
 
-				model.Add(item);
+                    };
+
+                    if (withPicture)
+                    {
+                        item.Picture = PrepareManufacturerPictureModel(manufacturer, manufacturer.GetLocalized(x => x.Name));
+                    }
+
+                    cachedModels.Add(item.Id, item);
+                }
+
+                model.Add(item);
 			}
 
 			return model;
 		}
 
-	}
+        public PictureModel PrepareManufacturerPictureModel(Manufacturer manufacturer, string localizedName)
+        {
+            var model = new PictureModel();
+			var pictureSize = _mediaSettings.ManufacturerThumbPictureSize;
+			var pictureInfo = _pictureService.GetPictureInfo(manufacturer.PictureId);
 
-	#region Nested Classes
+			model = new PictureModel
+			{
+				PictureId = manufacturer.PictureId.GetValueOrDefault(),
+				Size = pictureSize,
+				//FullSizeImageUrl = _pictureService.GetPictureUrl(manufacturer.PictureId.GetValueOrDefault()),
+				ImageUrl = _pictureService.GetUrl(pictureInfo, pictureSize, !_catalogSettings.HideManufacturerDefaultPictures),
+				Title = string.Format(T("Media.Manufacturer.ImageLinkTitleFormat"), localizedName),
+				AlternateText = string.Format(T("Media.Manufacturer.ImageAlternateTextFormat"), localizedName)
+			};
 
-	public class PageSizeContext
-	{
-		public bool AllowCustomersToSelectPageSize { get; set; }
-		public string PageSizeOptions { get; set; }
-		public int PageSize { get; set; }
-	}
+            return model;
+        }
 
-	#endregion
+        public ManufacturerNavigationModel PrepareManufacturerNavigationModel(int manufacturerItemsToDisplay)
+        {
+			var cacheKey = string.Format(ModelCacheEventConsumer.MANUFACTURER_NAVIGATION_MODEL_KEY,
+                !_catalogSettings.HideManufacturerDefaultPictures,
+                _services.WorkContext.WorkingLanguage.Id,
+                _services.StoreContext.CurrentStore.Id,
+                manufacturerItemsToDisplay);
+
+            var cacheModel = _services.Cache.Get(cacheKey, () =>
+            {
+                var manufacturers = _manufacturerService.GetAllManufacturers(null, 0, manufacturerItemsToDisplay + 1, _services.StoreContext.CurrentStore.Id);
+
+                var model = new ManufacturerNavigationModel
+                {
+                    DisplayManufacturers = _catalogSettings.ShowManufacturersOnHomepage,
+                    DisplayImages = _catalogSettings.ShowManufacturerPictures,
+                    DisplayAllManufacturersLink = manufacturers.Count > manufacturerItemsToDisplay
+                };
+
+                foreach (var manufacturer in manufacturers.Take(manufacturerItemsToDisplay))
+                {
+                    var modelMan = new ManufacturerBriefInfoModel
+                    {
+                        Id = manufacturer.Id,
+                        Name = manufacturer.GetLocalized(x => x.Name),
+                        SeName = manufacturer.GetSeName(),
+                        DisplayOrder = manufacturer.DisplayOrder,
+						PictureId = manufacturer.PictureId,
+						PictureUrl = _pictureService.GetUrl(manufacturer.PictureId.GetValueOrDefault(), _mediaSettings.ManufacturerThumbPictureSize, !_catalogSettings.HideManufacturerDefaultPictures),
+						HasPicture = manufacturer.PictureId != null
+                    };
+                    model.Manufacturers.Add(modelMan);
+                }
+                
+                return model;
+            }, TimeSpan.FromHours(6));
+
+            return cacheModel;
+        }
+    }
 }

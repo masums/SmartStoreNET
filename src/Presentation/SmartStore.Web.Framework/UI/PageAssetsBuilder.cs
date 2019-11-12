@@ -13,6 +13,7 @@ using SmartStore.Core.Domain.Seo;
 using SmartStore.Core.Domain.Themes;
 using SmartStore.Utilities;
 using System.Web.Hosting;
+using System.Web.Routing;
 
 namespace SmartStore.Web.Framework.UI
 {
@@ -25,9 +26,12 @@ namespace SmartStore.Web.Framework.UI
         private readonly List<string> _metaDescriptionParts;
         private readonly List<string> _metaKeywordParts;
         private readonly List<string> _canonicalUrlParts;
+		private readonly List<string> _customHeadParts;
         private readonly List<string> _bodyCssClasses;
+        private string _htmlId;
         private readonly Dictionary<ResourceLocation, List<WebAssetDescriptor>> _scriptParts;
         private readonly Dictionary<ResourceLocation, List<WebAssetDescriptor>> _cssParts;
+		private readonly List<RouteValueDictionary> _linkParts;
 		private readonly IStoreContext _storeContext;
         private readonly IBundleBuilder _bundleBuilder;
 
@@ -40,18 +44,20 @@ namespace SmartStore.Web.Framework.UI
 			IStoreContext storeContext,
             IBundleBuilder bundleBuilder)
         {
-            this._httpContext = httpContext; // codehint: sm-add
-            this._seoSettings = seoSettings;
-            this._themeSettings = themeSettings;
-            this._titleParts = new List<string>();
-            this._metaDescriptionParts = new List<string>();
-            this._metaKeywordParts = new List<string>();
-            this._scriptParts = new Dictionary<ResourceLocation, List<WebAssetDescriptor>>();
-            this._cssParts = new Dictionary<ResourceLocation, List<WebAssetDescriptor>>();
-            this._canonicalUrlParts = new List<string>();
-            this._bodyCssClasses = new List<string>(); // codehint: sm-add (MC)
-			this._storeContext = storeContext;	// codehint: sm-add
-            this._bundleBuilder = bundleBuilder;
+            _httpContext = httpContext;
+            _seoSettings = seoSettings;
+            _themeSettings = themeSettings;
+            _titleParts = new List<string>();
+            _metaDescriptionParts = new List<string>();
+            _metaKeywordParts = new List<string>();
+            _scriptParts = new Dictionary<ResourceLocation, List<WebAssetDescriptor>>();
+            _cssParts = new Dictionary<ResourceLocation, List<WebAssetDescriptor>>();
+            _canonicalUrlParts = new List<string>();
+			_customHeadParts = new List<string>();
+            _bodyCssClasses = new List<string>();
+            _linkParts = new List<RouteValueDictionary>();
+			_storeContext = storeContext;
+            _bundleBuilder = bundleBuilder;
         }
 
         private bool IsValidPart<T>(T part)
@@ -65,14 +71,14 @@ namespace SmartStore.Web.Framework.UI
             return isValid;
         }
 
-        // codehint: sm-add (MC) > helper func; changes all following public funcs to remove code redundancy
+        // helper func: changes all following public funcs to remove code redundancy
         private void AddPartsCore<T>(List<T> list, IEnumerable<T> partsToAdd, bool prepend = false)
         {
             if (partsToAdd != null && partsToAdd.Any())
             {
                 if (prepend)
                 {
-                    // codehint: sm-edit (MC) > insertion of multiple parts at the beginning
+                    // insertion of multiple parts at the beginning
                     // should keep order (and not vice-versa as it was originally)
                     list.InsertRange(0, partsToAdd.Where(IsValidPart));
                 }
@@ -85,10 +91,22 @@ namespace SmartStore.Web.Framework.UI
 
         public void AddBodyCssClass(string className)
         {
-            if (className.HasValue())
-            {
-                _bodyCssClasses.Insert(0, className);
-            }
+			if (className.IsEmpty())
+				return;
+
+			var classes = className.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+			foreach (var clas in classes)
+			{
+				if (!_bodyCssClasses.Contains(clas))
+				{
+					_bodyCssClasses.Insert(0, clas);
+				}
+			}	
+        }
+
+        public void SetHtmlId(string htmlId)
+        {
+            _htmlId = htmlId;
         }
 
         public string GenerateBodyCssClasses()
@@ -98,14 +116,21 @@ namespace SmartStore.Web.Framework.UI
 
             return String.Join(" ", _bodyCssClasses);
         }
-        // codehint: sm-add (end)
+
+        public string GenerateHtmlId()
+        {
+            if (!_htmlId.HasValue())
+                return null;
+
+            return _htmlId;
+        }
 
         public void AddTitleParts(IEnumerable<string> parts, bool append = false)
         {
             AddPartsCore(_titleParts, parts, append);
         }
 
-        public string GenerateTitle(bool addDefaultTitle)
+        public virtual string GenerateTitle(bool addDefaultTitle)
         {
             string result = "";
             var specificTitle = string.Join(_seoSettings.PageTitleSeparator, _titleParts.AsEnumerable().Reverse().ToArray());
@@ -150,7 +175,7 @@ namespace SmartStore.Web.Framework.UI
             AddPartsCore(_metaDescriptionParts, parts, append);
         }
 
-        public string GenerateMetaDescription()
+        public virtual string GenerateMetaDescription()
         {
             var metaDescription = string.Join(", ", _metaDescriptionParts.AsEnumerable().Reverse().ToArray());
             var result = !String.IsNullOrEmpty(metaDescription) ? metaDescription : _seoSettings.DefaultMetaDescription;
@@ -163,7 +188,7 @@ namespace SmartStore.Web.Framework.UI
             AddPartsCore(_metaKeywordParts, parts, append);
         }
 
-        public string GenerateMetaKeywords()
+        public virtual string GenerateMetaKeywords()
         {
             var metaKeyword = string.Join(", ", _metaKeywordParts.AsEnumerable().Reverse().ToArray());
             var result = !String.IsNullOrEmpty(metaKeyword) ? metaKeyword : _seoSettings.DefaultMetaKeywords;
@@ -178,13 +203,30 @@ namespace SmartStore.Web.Framework.UI
         public string GenerateCanonicalUrls()
         {
             var result = new StringBuilder();
-            foreach (var canonicalUrl in _canonicalUrlParts)
+			var parts = _canonicalUrlParts.Distinct();
+			foreach (var part in parts)
             {
-                result.AppendFormat("<link rel=\"canonical\" href=\"{0}\" />", canonicalUrl);
-                result.Append(Environment.NewLine);
+                result.AppendFormat("<link rel=\"canonical\" href=\"{0}\" />", part);
+                result.AppendLine();
             }
             return result.ToString();
         }
+
+		public void AddCustomHeadParts(IEnumerable<string> parts, bool append = false)
+		{
+			AddPartsCore(_customHeadParts, parts, append);
+		}
+
+		public string GenerateCustomHead()
+		{
+			var result = new StringBuilder();
+			var parts = _customHeadParts.Distinct();
+			foreach (var part in parts)
+			{
+				result.AppendLine(part);
+			}
+			return result.ToString();
+		}
 
         public void AddScriptParts(ResourceLocation location, IEnumerable<string> parts, bool excludeFromBundling = false, bool append = false)
         {
@@ -354,11 +396,51 @@ namespace SmartStore.Web.Framework.UI
             }
         }
 
-        public class WebAssetDescriptor
+		public void AddLinkPart(string rel, string href, RouteValueDictionary htmlAttributes)
+		{
+			Guard.NotEmpty(rel, nameof(rel));
+			Guard.NotEmpty(href, nameof(href));
+
+			if (htmlAttributes == null)
+			{
+				htmlAttributes = new RouteValueDictionary();
+			}
+
+			htmlAttributes["rel"] = rel;
+			htmlAttributes["href"] = href;
+
+			_linkParts.Add(htmlAttributes);
+		}
+
+		public string GenerateLinkRels()
+		{
+			var sb = new StringBuilder();
+			
+			foreach (var part in _linkParts)
+			{
+				var tag = new TagBuilder("link");
+				tag.MergeAttributes(part, true);
+
+				sb.AppendLine(tag.ToString(TagRenderMode.SelfClosing));
+			}
+
+			return sb.ToString();
+		}
+
+		public string GenerateMetaRobots()
+		{
+			if (_seoSettings.MetaRobotsContent.HasValue())
+			{
+				return "<meta name=\"robots\" content=\"{0}\" />".FormatInvariant(_seoSettings.MetaRobotsContent);
+			}
+			return null;
+		}
+
+		public class WebAssetDescriptor
         {
             public bool ExcludeFromBundling { get; set; }
             public string Part { get; set; }
         }
 
-    }
+	}
 }

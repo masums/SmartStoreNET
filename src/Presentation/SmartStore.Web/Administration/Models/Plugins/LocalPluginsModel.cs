@@ -1,15 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using System.Web;
-using SmartStore.Web.Framework.Mvc;
-using SmartStore.Collections;
 using SmartStore.Admin.Models.Stores;
+using SmartStore.Collections;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Plugins
 {
 
-    public class LocalPluginsModel : ModelBase
+	public class LocalPluginsModel : ModelBase
     {
 
         public LocalPluginsModel()

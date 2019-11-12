@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using SmartStore.Core.Domain.Stores;
+﻿using SmartStore.Core.Domain.Stores;
 
 namespace SmartStore.Core
 {
@@ -39,12 +34,12 @@ namespace SmartStore.Core
 		/// <summary>
 		/// Gets or sets the current store
 		/// </summary>
-		Store CurrentStore { get; }
+		/// <remarks>Setter is for virtualization and testing purposes</remarks>
+		Store CurrentStore { get; set; }
 
 		/// <summary>
 		/// IsSingleStoreMode ? 0 : CurrentStore.Id
 		/// </summary>
-		/// <remarks>codehint: sm-add</remarks>
 		int CurrentStoreIdIfMultiStoreMode { get; }
 	}
 }

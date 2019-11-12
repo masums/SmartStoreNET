@@ -1,12 +1,11 @@
 ﻿using System.Linq;
-using SmartStore.Core.Domain.Directory;
-using SmartStore.Core.Domain.Shipping;
-using SmartStore.Tests;
 using NUnit.Framework;
+using SmartStore.Core.Domain.Directory;
+using SmartStore.Tests;
 
 namespace SmartStore.Data.Tests.Directory
 {
-    [TestFixture]
+	[TestFixture]
     public class CountryPersistenceTests : PersistenceTest
     {
         [Test]
@@ -22,7 +21,8 @@ namespace SmartStore.Data.Tests.Directory
                 NumericIsoCode = 1,
                 SubjectToVat = true,
                 Published = true,
-                DisplayOrder = 1
+                DisplayOrder = 1,
+				LimitedToStores = true
             };
 
             var fromDb = SaveAndLoadEntity(country);
@@ -36,6 +36,7 @@ namespace SmartStore.Data.Tests.Directory
             fromDb.SubjectToVat.ShouldEqual(true);
             fromDb.Published.ShouldEqual(true);
             fromDb.DisplayOrder.ShouldEqual(1);
+			fromDb.LimitedToStores.ShouldEqual(true);
         }
 
         [Test]
@@ -55,7 +56,7 @@ namespace SmartStore.Data.Tests.Directory
             };
             country.StateProvinces.Add
                 (
-                    new StateProvince()
+                    new StateProvince
                     {
                         Name = "California",
                         Abbreviation = "CA",
@@ -69,37 +70,6 @@ namespace SmartStore.Data.Tests.Directory
             fromDb.StateProvinces.ShouldNotBeNull();
             (fromDb.StateProvinces.Count == 1).ShouldBeTrue();
             fromDb.StateProvinces.First().Name.ShouldEqual("California");
-        }
-
-        [Test]
-        public void Can_save_and_load_country_with_restrictions()
-        {
-            var country = new Country
-            {
-                Name = "United States",
-                AllowsBilling = true,
-                AllowsShipping = true,
-                TwoLetterIsoCode = "US",
-                ThreeLetterIsoCode = "USA",
-                NumericIsoCode = 1,
-                SubjectToVat = true,
-                Published = true,
-                DisplayOrder = 1
-            };
-            country.RestrictedShippingMethods.Add
-                (
-                    new ShippingMethod()
-                    {
-                        Name = "By train",
-                    }
-                );
-            var fromDb = SaveAndLoadEntity(country);
-            fromDb.ShouldNotBeNull();
-            fromDb.Name.ShouldEqual("United States");
-
-            fromDb.RestrictedShippingMethods.ShouldNotBeNull();
-            (fromDb.RestrictedShippingMethods.Count == 1).ShouldBeTrue();
-            fromDb.RestrictedShippingMethods.First().Name.ShouldEqual("By train");
         }
     }
 }

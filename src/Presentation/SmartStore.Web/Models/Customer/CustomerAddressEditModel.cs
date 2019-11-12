@@ -1,4 +1,4 @@
-﻿using SmartStore.Web.Framework.Mvc;
+﻿using SmartStore.Web.Framework.Modelling;
 using SmartStore.Web.Models.Common;
 
 namespace SmartStore.Web.Models.Customer
@@ -10,6 +10,5 @@ namespace SmartStore.Web.Models.Customer
             this.Address = new AddressModel();
         }
         public AddressModel Address { get; set; }
-        public CustomerNavigationModel NavigationModel { get; set; }
     }
 }

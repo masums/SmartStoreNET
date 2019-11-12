@@ -1,13 +1,15 @@
-﻿using System.Collections.Generic;
-using System.Web.Mvc;
+﻿using System;
+using System.Collections.Generic;
+using FluentValidation;
 using FluentValidation.Attributes;
+using SmartStore.Services.Localization;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
-using SmartStore.Web.Validators.Catalog;
+using SmartStore.Web.Framework.Modelling;
+using SmartStore.Web.Framework.Security;
 
 namespace SmartStore.Web.Models.Catalog
 {
-    public partial class ProductReviewOverviewModel : ModelBase
+	public partial class ProductReviewOverviewModel : ModelBase
     {
         public int ProductId { get; set; }
 
@@ -24,17 +26,35 @@ namespace SmartStore.Web.Models.Catalog
         public ProductReviewsModel()
         {
             Items = new List<ProductReviewModel>();
-            AddProductReview = new AddProductReviewModel();
         }
+
         public int ProductId { get; set; }
-
-        public string ProductName { get; set; }
-
+        public LocalizedValue<string> ProductName { get; set; }
         public string ProductSeName { get; set; }
 
+		public int TotalReviewsCount { get; set; }
         public IList<ProductReviewModel> Items { get; set; }
-        public AddProductReviewModel AddProductReview { get; set; }
-    }
+
+		#region Add
+
+		[SmartResourceDisplayName("Reviews.Fields.Title")]
+		public string Title { get; set; }
+
+		[SanitizeHtml]
+		[SmartResourceDisplayName("Reviews.Fields.ReviewText")]
+		public string ReviewText { get; set; }
+
+		[SmartResourceDisplayName("Reviews.Fields.Rating")]
+		public int Rating { get; set; }
+
+		public bool DisplayCaptcha { get; set; }
+
+		public bool CanCurrentCustomerLeaveReview { get; set; }
+		public bool SuccessfullyAdded { get; set; }
+		public string Result { get; set; }
+
+		#endregion
+	}
 
     public partial class ProductReviewModel : EntityModelBase
     {
@@ -53,8 +73,9 @@ namespace SmartStore.Web.Models.Catalog
         public ProductReviewHelpfulnessModel Helpfulness { get; set; }
 
         public string WrittenOnStr { get; set; }
-    }
 
+        public DateTime WrittenOn { get; set; }
+    }
 
     public partial class ProductReviewHelpfulnessModel : ModelBase
     {
@@ -65,23 +86,13 @@ namespace SmartStore.Web.Models.Catalog
         public int HelpfulNoTotal { get; set; }
     }
 
-    public partial class AddProductReviewModel : ModelBase
+    public class ProductReviewsValidator : AbstractValidator<ProductReviewsModel>
     {
-        [AllowHtml]
-        [SmartResourceDisplayName("Reviews.Fields.Title")]
-        public string Title { get; set; }
-
-        [AllowHtml]
-        [SmartResourceDisplayName("Reviews.Fields.ReviewText")]
-        public string ReviewText { get; set; }
-
-        [SmartResourceDisplayName("Reviews.Fields.Rating")]
-        public int Rating { get; set; }
-
-        public bool DisplayCaptcha { get; set; }
-
-        public bool CanCurrentCustomerLeaveReview { get; set; }
-        public bool SuccessfullyAdded { get; set; }
-        public string Result { get; set; }
+        public ProductReviewsValidator()
+        {
+            RuleFor(x => x.Title).NotEmpty();
+            RuleFor(x => x.Title).Length(1, 200).When(x => !string.IsNullOrEmpty(x.Title));
+            RuleFor(x => x.ReviewText).NotEmpty();
+        }
     }
 }

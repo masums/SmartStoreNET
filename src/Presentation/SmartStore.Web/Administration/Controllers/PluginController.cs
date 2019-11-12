@@ -4,27 +4,27 @@ using System.Linq;
 using System.Web.Mvc;
 using System.Web.Routing;
 using SmartStore.Admin.Models.Plugins;
-using SmartStore.Core;
 using SmartStore.Core.Domain.Cms;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Payments;
 using SmartStore.Core.Domain.Security;
 using SmartStore.Core.Domain.Shipping;
 using SmartStore.Core.Domain.Tax;
-using SmartStore.Core.Localization;
+using SmartStore.Core.Html;
+using SmartStore.Core.Logging;
 using SmartStore.Core.Plugins;
+using SmartStore.Licensing;
+using SmartStore.Services;
 using SmartStore.Services.Authentication.External;
 using SmartStore.Services.Cms;
-using SmartStore.Services.Configuration;
 using SmartStore.Services.Localization;
 using SmartStore.Services.Payments;
 using SmartStore.Services.Security;
 using SmartStore.Services.Shipping;
-using SmartStore.Services.Stores;
 using SmartStore.Services.Tax;
 using SmartStore.Web.Framework.Controllers;
-using SmartStore.Web.Framework.Mvc;
 using SmartStore.Web.Framework.Plugins;
+using SmartStore.Web.Framework.Security;
 
 namespace SmartStore.Admin.Controllers
 {
@@ -34,12 +34,8 @@ namespace SmartStore.Admin.Controllers
 		#region Fields
 
         private readonly IPluginFinder _pluginFinder;
-        private readonly ILocalizationService _localizationService;
-        private readonly IWebHelper _webHelper;
         private readonly IPermissionService _permissionService;
         private readonly ILanguageService _languageService;
-	    private readonly ISettingService _settingService;
-		private readonly IStoreService _storeService;
         private readonly PaymentSettings _paymentSettings;
         private readonly ShippingSettings _shippingSettings;
         private readonly TaxSettings _taxSettings;
@@ -47,33 +43,27 @@ namespace SmartStore.Admin.Controllers
         private readonly WidgetSettings _widgetSettings;
 		private readonly IProviderManager _providerManager;
 		private readonly PluginMediator _pluginMediator;
+		private readonly ICommonServices _services;
 
 	    #endregion
 
 		#region Constructors
 
         public PluginController(IPluginFinder pluginFinder,
-            ILocalizationService localizationService,
-			IWebHelper webHelper,
             IPermissionService permissionService,
 			ILanguageService languageService,
-            ISettingService settingService,
-			IStoreService storeService,
             PaymentSettings paymentSettings,
 			ShippingSettings shippingSettings,
             TaxSettings taxSettings, 
 			ExternalAuthenticationSettings externalAuthenticationSettings, 
             WidgetSettings widgetSettings,
 			IProviderManager providerManager,
-			PluginMediator pluginMediator)
+			PluginMediator pluginMediator,
+			ICommonServices services)
 		{
             this._pluginFinder = pluginFinder;
-            this._localizationService = localizationService;
-            this._webHelper = webHelper;
             this._permissionService = permissionService;
             this._languageService = languageService;
-            this._settingService = settingService;
-			this._storeService = storeService;
             this._paymentSettings = paymentSettings;
             this._shippingSettings = shippingSettings;
             this._taxSettings = taxSettings;
@@ -81,37 +71,89 @@ namespace SmartStore.Admin.Controllers
             this._widgetSettings = widgetSettings;
 			this._providerManager = providerManager;
 			this._pluginMediator = pluginMediator;
-			T = NullLocalizer.Instance;
+			this._services = services;
 		}
 
-		#endregion 
+        #endregion
 
         #region Utilities
 
-		public Localizer T { get; set; }
+        private bool IsLicensable(PluginDescriptor pluginDescriptor)
+        {
+            var result = false;
 
-        [NonAction]
+            try
+            {
+                result = LicenseChecker.IsLicensablePlugin(pluginDescriptor);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+            }
+
+            return result;
+        }
+
+        private LicensingData PrepareLicenseLabelModel(LicenseLabelModel model, PluginDescriptor pluginDescriptor, string url = null)
+		{
+            if (IsLicensable(pluginDescriptor))
+			{
+				// We always show license button to serve ability to delete a key.
+				model.IsLicensable = true;
+				model.LicenseUrl = Url.Action("LicensePlugin", new { systemName = pluginDescriptor.SystemName });
+
+				var cachedLicense = LicenseChecker.GetLicense(pluginDescriptor.SystemName, url);
+				if (cachedLicense == null)
+				{
+                    // Licensed plugin has not been used yet -> Check state.
+                    model.LicenseState = LicenseChecker.CheckState(pluginDescriptor.SystemName, url);
+
+					// And try to get license data again.
+					cachedLicense = LicenseChecker.GetLicense(pluginDescriptor.SystemName, url);
+				}
+
+				if (cachedLicense != null)
+				{
+					// Licensed plugin has been used.
+					model.LicenseState = cachedLicense.State;
+					model.TruncatedLicenseKey = cachedLicense.TruncatedLicenseKey;
+					model.RemainingDemoUsageDays = cachedLicense.RemainingDemoDays;
+				}
+				else
+				{
+					// It's confusing to display a license state when there is no license data yet.
+					model.HideLabel = true;
+				}
+
+				return cachedLicense;
+			}
+
+			return null;
+		}
+
+		[NonAction]
         protected PluginModel PreparePluginModel(PluginDescriptor pluginDescriptor, bool forList = true)
         {
             var model = pluginDescriptor.ToModel();
 
-            model.Group = _localizationService.GetResource("Admin.Plugins.KnownGroup." + pluginDescriptor.Group);
+			// Using GetResource because T could fallback to NullLocalizer here.
+			model.Group = _services.Localization.GetResource("Admin.Plugins.KnownGroup." + pluginDescriptor.Group);
 
 			if (forList)
 			{
-				model.FriendlyName = pluginDescriptor.GetLocalizedValue(_localizationService, "FriendlyName");
-				model.Description = pluginDescriptor.GetLocalizedValue(_localizationService, "Description");
+				model.FriendlyName = pluginDescriptor.GetLocalizedValue(_services.Localization, "FriendlyName");
+				model.Description = pluginDescriptor.GetLocalizedValue(_services.Localization, "Description");
 			}
 
-            //locales
+            // Locales
             AddLocales(_languageService, model.Locales, (locale, languageId) =>
             {
-				locale.FriendlyName = pluginDescriptor.GetLocalizedValue(_localizationService, "FriendlyName", languageId, false);
-				locale.Description = pluginDescriptor.GetLocalizedValue(_localizationService, "Description", languageId, false);
+				locale.FriendlyName = pluginDescriptor.GetLocalizedValue(_services.Localization, "FriendlyName", languageId, false);
+				locale.Description = pluginDescriptor.GetLocalizedValue(_services.Localization, "Description", languageId, false);
             });
 
 			// Stores
-			model.SelectedStoreIds = _settingService.GetSettingByKey<string>(pluginDescriptor.GetSettingKey("LimitedToStores")).ToIntArray();
+			model.SelectedStoreIds = _services.Settings.GetSettingByKey<string>(pluginDescriptor.GetSettingKey("LimitedToStores")).ToIntArray();
 
 			// Icon
 			model.IconUrl = _pluginMediator.GetIconUrl(pluginDescriptor);
@@ -138,7 +180,11 @@ namespace SmartStore.Admin.Controllers
 						}
 					}
 				}
+
+				// License label
+				PrepareLicenseLabelModel(model.LicenseLabel, pluginDescriptor);
             }
+
             return model;
         }
 
@@ -150,9 +196,9 @@ namespace SmartStore.Admin.Controllers
                 .ThenBy(p => p.DisplayOrder)
                 .Select(x => PreparePluginModel(x));
 
-            var model = new LocalPluginsModel();
+			var model = new LocalPluginsModel();
 
-			model.AvailableStores = _storeService
+			model.AvailableStores = _services.StoreService
 				.GetAllStores()
 				.Select(s => s.ToModel())
 				.ToList();
@@ -232,7 +278,7 @@ namespace SmartStore.Admin.Controllers
                 // restart application
                 if (tasksCount > 0)
                 {
-                    _webHelper.RestartAppDomain();
+					_services.WebHelper.RestartAppDomain(aggressive: true);
                 }
             }
             catch (Exception exc)
@@ -248,8 +294,9 @@ namespace SmartStore.Admin.Controllers
             if (!_permissionService.Authorize(StandardPermissionProvider.ManagePlugins))
                 return AccessDeniedView();
 
-            //restart application
-            _webHelper.RestartAppDomain();
+            // restart application
+			_services.WebHelper.RestartAppDomain(aggressive: true);
+
             return RedirectToAction("List");
         }
         
@@ -263,7 +310,7 @@ namespace SmartStore.Admin.Controllers
 				return HttpNotFound();
 
 			var model = PreparePluginModel(descriptor, false);
-			model.FriendlyName = descriptor.GetLocalizedValue(_localizationService, "FriendlyName");
+			model.FriendlyName = descriptor.GetLocalizedValue(_services.Localization, "FriendlyName");
             
             return View(model);
         }
@@ -276,9 +323,8 @@ namespace SmartStore.Admin.Controllers
 				return HttpNotFound();
 			}
 
-			PermissionRecord requiredPermission = StandardPermissionProvider.AccessAdminPanel;
+			var requiredPermission = StandardPermissionProvider.AccessAdminPanel;
 			var listUrl2 = Url.Action("List");
-
 			var metadata = provider.Metadata;
 
 			if (metadata.ProviderType == typeof(IPaymentMethod))
@@ -286,7 +332,7 @@ namespace SmartStore.Admin.Controllers
 				requiredPermission = StandardPermissionProvider.ManagePaymentMethods;
 				listUrl2 = Url.Action("Providers", "Payment");
 			}
-			if (metadata.ProviderType == typeof(ITaxProvider))
+			else if (metadata.ProviderType == typeof(ITaxProvider))
 			{
 				requiredPermission = StandardPermissionProvider.ManageTaxSettings;
 				listUrl2 = Url.Action("Providers", "Tax");
@@ -319,6 +365,178 @@ namespace SmartStore.Admin.Controllers
 			return View(model);
 		}
 
+		public ActionResult LicensePlugin(string systemName, string licenseKey)
+		{
+			if (!_permissionService.Authorize(StandardPermissionProvider.ManagePlugins))
+				return AccessDeniedPartialView();
+
+			var descriptor = _pluginFinder.GetPluginDescriptorBySystemName(systemName);
+
+			if (descriptor == null || !descriptor.Installed)
+				return Content(T("Admin.Common.ResourceNotFound"));
+
+			bool singleLicenseForAllStores = false;
+			bool isLicensable = LicenseChecker.IsLicensablePlugin(descriptor, out singleLicenseForAllStores);
+
+			if (!isLicensable)
+				return Content(T("Admin.Common.ResourceNotFound"));
+
+			var stores = _services.StoreService.GetAllStores();
+			var model = new LicensePluginModel
+			{
+				SystemName = systemName,
+				StoreLicenses = new List<LicensePluginModel.StoreLicenseModel>()
+			};
+
+			// Validate store url
+			foreach (var store in stores)
+			{
+				if (!_services.StoreService.IsStoreDataValid(store))
+				{
+					model.InvalidDataStoreId = store.Id;
+					return View(model);
+				}
+			}
+
+			if (singleLicenseForAllStores)
+			{
+				var licenseModel = new LicensePluginModel.StoreLicenseModel();
+
+				// License label
+				var license = PrepareLicenseLabelModel(licenseModel.LicenseLabel, descriptor);
+
+				if (license != null)
+					licenseModel.LicenseKey = license.TruncatedLicenseKey;
+
+				model.StoreLicenses.Add(licenseModel);
+			}
+			else
+			{
+				foreach (var store in stores)
+				{
+					var licenseModel = new LicensePluginModel.StoreLicenseModel
+					{
+						StoreId = store.Id,
+						StoreName = store.Name,
+						StoreUrl = store.Url
+					};
+
+					// License label
+					var license = PrepareLicenseLabelModel(licenseModel.LicenseLabel, descriptor, store.Url);
+
+					if (license != null)
+						licenseModel.LicenseKey = license.TruncatedLicenseKey;
+
+					model.StoreLicenses.Add(licenseModel);
+				}
+			}
+
+			return View(model);
+		}
+
+		[HttpPost]
+		public ActionResult LicensePlugin(string systemName, LicensePluginModel model)
+		{
+            if (!_permissionService.Authorize(StandardPermissionProvider.ManagePlugins))
+            {
+                return AccessDeniedView();
+            }
+
+			var descriptor = _pluginFinder.GetPluginDescriptorBySystemName(systemName);
+            if (descriptor == null || !descriptor.Installed)
+            {
+                return HttpNotFound();
+            }
+
+			var isLicensable = IsLicensable(descriptor);
+            if (!isLicensable)
+            {
+                return HttpNotFound();
+            }
+
+			if (model.StoreLicenses != null)
+			{
+				foreach (var item in model.StoreLicenses)
+				{
+					var result = LicenseChecker.Activate(item.LicenseKey, descriptor.SystemName, item.StoreUrl);
+
+					if (result == null)
+					{
+						// do nothing, skiped
+					}
+					else if (result.Success)
+					{
+						NotifySuccess(T("Admin.Configuration.Plugins.LicenseActivated"));
+					}
+					else
+					{
+						if (result.IsFailureWarning)
+							NotifyWarning(result.ToString());
+						else
+							NotifyError(result.ToString());
+
+						return RedirectToAction("List");
+					}
+				}
+			}
+
+			return RedirectToAction("List");
+		}
+
+		[HttpPost]
+		public ActionResult LicenseResetStatusCheck(string systemName)
+		{
+			// Reset state for current store.
+			var result = LicenseChecker.ResetState(systemName);
+			LicenseCheckerResult subShopResult = null;
+
+			var model = new LicenseLabelModel
+			{
+				IsLicensable = true,
+				LicenseUrl = Url.Action("LicensePlugin", new { systemName = systemName }),
+				LicenseState = result.State,
+				TruncatedLicenseKey = result.TruncatedLicenseKey,
+				RemainingDemoUsageDays = result.RemainingDemoDays
+			};
+
+			// Reset state for all other stores.
+			if (result.Success)
+			{
+				var currentStoreId = Services.StoreContext.CurrentStore.Id;
+				var allStores = Services.StoreService.GetAllStores();
+
+				foreach (var store in allStores.Where(x => x.Id != currentStoreId && x.Url.HasValue()))
+				{
+					subShopResult = LicenseChecker.ResetState(systemName, store.Url);
+					if (!subShopResult.Success)
+					{
+						result = subShopResult;
+						break;
+					}
+				}
+			}
+
+			// Notify about result.
+			if (result.Success)
+			{
+				NotifySuccess(T("Admin.Common.TaskSuccessfullyProcessed"));
+			}
+			else
+			{
+				var message = HtmlUtils.ConvertPlainTextToHtml(result.ToString());
+				if (result.IsFailureWarning)
+				{
+					NotifyWarning(message);
+				}
+				else
+				{
+					NotifyError(message);
+				}
+			}
+
+			return PartialView("Partials/LicenseLabel", model);
+		}
+
 		public ActionResult EditProviderPopup(string systemName)
 		{
 			if (!_permissionService.Authorize(StandardPermissionProvider.ManagePlugins))
@@ -329,12 +547,20 @@ namespace SmartStore.Admin.Controllers
 				return HttpNotFound();
 
 			var model = _pluginMediator.ToProviderModel(provider, true);
+			var pageTitle = model.FriendlyName;
 
 			AddLocales(_languageService, model.Locales, (locale, languageId) =>
 			{
 				locale.FriendlyName = _pluginMediator.GetLocalizedFriendlyName(provider.Metadata, languageId, false);
 				locale.Description = _pluginMediator.GetLocalizedDescription(provider.Metadata, languageId, false);
+
+				if (pageTitle.IsEmpty() && languageId == _services.WorkContext.WorkingLanguage.Id)
+				{
+					pageTitle = locale.FriendlyName;
+				}
 			});
+
+			ViewBag.Title = pageTitle;
 
 			return View(model);
 		}
@@ -362,6 +588,7 @@ namespace SmartStore.Admin.Controllers
 
 			ViewBag.RefreshPage = true;
 			ViewBag.btnId = btnId;
+
 			return View(model);
 		}
 
@@ -381,11 +608,11 @@ namespace SmartStore.Admin.Controllers
 				var storeIds = (form["value[]"] ?? "0").Split(',').Select(x => x.ToInt()).Where(x => x > 0).ToList();
 				if (storeIds.Count > 0)
 				{
-					_settingService.SetSetting<string>(settingKey, string.Join(",", storeIds));
+					_services.Settings.SetSetting<string>(settingKey, string.Join(",", storeIds));
 				}
 				else
 				{
-					_settingService.DeleteSetting(settingKey);
+					_services.Settings.DeleteSetting(settingKey);
 				}
 			}
 			catch (Exception ex)
@@ -431,25 +658,20 @@ namespace SmartStore.Admin.Controllers
 				return AccessDeniedView();
 
 			var pluginDescriptor = _pluginFinder.GetPluginDescriptors()
-				.Where(x => x.SystemName.Equals(systemName, StringComparison.InvariantCultureIgnoreCase))
-				.FirstOrDefault();
+				.FirstOrDefault(x => x.SystemName.Equals(systemName, StringComparison.InvariantCultureIgnoreCase));
 
 			if (pluginDescriptor == null)
 			{
-				NotifyError(_localizationService.GetResource("Admin.Configuration.Plugins.Resources.UpdateFailure"));
+				NotifyError(T("Admin.Configuration.Plugins.Resources.UpdateFailure"));
 			}
 			else
 			{
-				_localizationService.ImportPluginResourcesFromXml(pluginDescriptor, null, false);
-				NotifySuccess(_localizationService.GetResource("Admin.Configuration.Plugins.Resources.UpdateSuccess"));
+				_services.Localization.ImportPluginResourcesFromXml(pluginDescriptor, null, false);
+
+				NotifySuccess(T("Admin.Configuration.Plugins.Resources.UpdateSuccess"));
 			}
 
-			if (returnUrl.IsEmpty())
-			{
-				return RedirectToAction("List");
-			}
-
-			return Redirect(returnUrl);
+			return RedirectToReferrer(returnUrl, () => RedirectToAction("List"));
 		}
 
 		public ActionResult UpdateAllStringResources()
@@ -463,15 +685,16 @@ namespace SmartStore.Admin.Controllers
 			{
 				if (plugin.Installed)
 				{
-					_localizationService.ImportPluginResourcesFromXml(plugin, null, false);
+					_services.Localization.ImportPluginResourcesFromXml(plugin, null, false);
 				}
 				else
 				{
-					_localizationService.DeleteLocaleStringResources(plugin.ResourceRootKey);
+					_services.Localization.DeleteLocaleStringResources(plugin.ResourceRootKey);
 				}
 			}
 
-			NotifySuccess(_localizationService.GetResource("Admin.Configuration.Plugins.Resources.UpdateSuccess"));
+			NotifySuccess(T("Admin.Configuration.Plugins.Resources.UpdateSuccess"));
+
 			return RedirectToAction("List");
 		}
 

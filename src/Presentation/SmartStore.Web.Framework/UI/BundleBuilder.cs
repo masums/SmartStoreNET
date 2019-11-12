@@ -8,12 +8,13 @@ using System.Web.Optimization;
 using BundleTransformer.Core.Orderers;
 using BundleTransformer.Core.Bundles;
 using SmartStore.Core;
-using SmartStore.Web.Framework.Themes;
 using SmartStore.Services.Seo;
+using SmartStore.Web.Framework.Theming.Assets;
+using SmartStore.Core.Themes;
+using SmartStore.Utilities.Threading;
 
 namespace SmartStore.Web.Framework.UI
 {
-
     public enum BundleType
     {
         Script,
@@ -31,13 +32,11 @@ namespace SmartStore.Web.Framework.UI
         private readonly IWorkContext _workContext;
 		private readonly IThemeContext _themeContext;
 
-        private static readonly object s_lock = new object();
-
         public BundleBuilder(IStoreContext storeContext, IWorkContext workContext, IThemeContext themeContext)
         {
-            this._storeContext = storeContext;
-            this._workContext = workContext;
-			this._themeContext = themeContext;
+            _storeContext = storeContext;
+            _workContext = workContext;
+			_themeContext = themeContext;
         }
 
         public string Build(BundleType type, IEnumerable<string> files)
@@ -45,23 +44,23 @@ namespace SmartStore.Web.Framework.UI
             if (files == null || !files.Any())
                 return string.Empty;
 
-            string bundleVirtualPath = this.GetBundleVirtualPath(type, files);
+            var bundleVirtualPath = this.GetBundleVirtualPath(type, files);
             var bundleFor = BundleTable.Bundles.GetBundleFor(bundleVirtualPath);
             if (bundleFor == null)
             {
-                lock (s_lock)
+                using (KeyedLock.Lock("BundleBuilder.Build." + bundleVirtualPath))
                 {
                     bundleFor = BundleTable.Bundles.GetBundleFor(bundleVirtualPath);
                     if (bundleFor == null)
                     {
-                        var nullOrderer = new NullOrderer();
+						var nullOrderer = new NullOrderer();
 
-                        Bundle bundle = (type == BundleType.Script) ?
+						Bundle bundle = (type == BundleType.Script) ?
                             new CustomScriptBundle(bundleVirtualPath) as Bundle :
                             new SmartStyleBundle(bundleVirtualPath) as Bundle;
-                        bundle.Orderer = nullOrderer;
+						bundle.Orderer = nullOrderer;
 
-                        bundle.Include(files.ToArray());
+						bundle.Include(files.ToArray());
 
                         BundleTable.Bundles.Add(bundle);
                     }
@@ -69,7 +68,13 @@ namespace SmartStore.Web.Framework.UI
             }
 
             if (type == BundleType.Script)
-                return Scripts.Render(bundleVirtualPath).ToString();
+			{
+				return Scripts.Render(bundleVirtualPath).ToString();
+
+				//// Uncomment this if you want to bypass asset caching on mobile browsers
+				//return Scripts.RenderFormat("<script src='{0}?" + CommonHelper.GenerateRandomDigitCode(5) + "'></script>", 
+				//	files.Select(x => VirtualPathUtility.ToAppRelative(x)).ToArray()).ToString();
+			}   
 
             return Styles.Render(bundleVirtualPath).ToString();
         }
@@ -87,12 +92,15 @@ namespace SmartStore.Web.Framework.UI
                 postfix = ".css";
             }
 
+			// TBD: routing fix
+			postfix = "";
+
             // compute hash
             var hash = "";
             using (SHA256 sha = new SHA256Managed())
             {
                 var hashInput = "";
-                foreach (var file in files.OrderBy(x => x))
+                foreach (var file in files)
                 {
                     hashInput += file;
                     hashInput += ",";
@@ -102,7 +110,7 @@ namespace SmartStore.Web.Framework.UI
                 hash = HttpServerUtility.UrlTokenEncode(input);
 
                 // append StoreId & ThemeName to hash in order to vary cache by store/theme combination
-                if (type == BundleType.Stylesheet && !_workContext.IsAdmin && files.Any(x => x.EndsWith(".less", StringComparison.OrdinalIgnoreCase)))
+                if (type == BundleType.Stylesheet && !_workContext.IsAdmin && files.Any(x => x.EndsWith(".scss", StringComparison.OrdinalIgnoreCase)))
                 {
                     hash += "-s" + _storeContext.CurrentStore.Id;
 					hash += "-t" + _themeContext.CurrentTheme.ThemeName;
@@ -114,10 +122,8 @@ namespace SmartStore.Web.Framework.UI
 
             var sb = new StringBuilder(prefix);
             sb.Append(hash);
-            sb.Append(postfix);
+			sb.Append(postfix); 
             return sb.ToString();
         }
-
     }
-
 }

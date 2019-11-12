@@ -2,6 +2,7 @@
 using System.Collections.Specialized;
 using System.Web;
 using System.Web.Mvc;
+using System.Web.Routing;
 
 namespace SmartStore.Core.Fakes
 {
@@ -15,6 +16,7 @@ namespace SmartStore.Core.Fakes
         private readonly Uri _url;
         private readonly Uri _urlReferrer;
         private readonly string _httpMethod;
+		private RequestContext _requestContext;
 
 		public FakeHttpRequest(string relativeUrl, Uri url, Uri urlReferrer)
 			: this(relativeUrl, HttpVerbs.Get.ToString("g"), url, urlReferrer, null, null, null, null)
@@ -113,8 +115,8 @@ namespace SmartStore.Core.Fakes
         {
             get
             {
-                //we know that relative paths always start with ~/
-                //ApplicationPath should start with /
+                // We know that relative paths always start with ~/
+                // ApplicationPath should start with /
                 if (_relativeUrl != null && _relativeUrl.StartsWith("~/"))
                     return _relativeUrl.Remove(0, 1);
                 return null;
@@ -134,30 +136,24 @@ namespace SmartStore.Core.Fakes
             get { return null; }
         }
 
-        public override string RawUrl
-        {
-            get { return this.ApplicationPath; }
-        }
+		public override string RawUrl => this.ApplicationPath;
+		public override bool IsSecureConnection => _url?.Scheme?.EmptyNull().StartsWith("https", StringComparison.OrdinalIgnoreCase) == true;
+		public override bool IsAuthenticated => false;
+		public override string[] UserLanguages => new string[] { };
+		public override string UserAgent => "SmartStore.NET";
+		public override bool IsLocal => false;
 
-        public override bool IsSecureConnection
-        {
-            get { return false; }
-        }
-
-        public override bool IsAuthenticated
-        {
-            get
-            {
-                return false;
-            }
-        }
-
-		public override string[] UserLanguages 
+		public override RequestContext RequestContext
 		{
-			get 
+			get
 			{
-				return new string[] { };
+				return _requestContext ?? new RequestContext();
+			}
+
+			set
+			{
+				_requestContext = value;
 			}
 		}
-    }
+	}
 }

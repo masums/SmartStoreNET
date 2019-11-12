@@ -13,10 +13,10 @@ using SmartStore.Services.Tax;
 
 namespace SmartStore.Services.Catalog
 {
-    /// <summary>
-    /// Product attribute formatter
-    /// </summary>
-    public partial class ProductAttributeFormatter : IProductAttributeFormatter
+	/// <summary>
+	/// Product attribute formatter
+	/// </summary>
+	public partial class ProductAttributeFormatter : IProductAttributeFormatter
     {
         private readonly IWorkContext _workContext;
         private readonly IProductAttributeService _productAttributeService;
@@ -29,8 +29,9 @@ namespace SmartStore.Services.Catalog
         private readonly IDownloadService _downloadService;
         private readonly IWebHelper _webHelper;
 		private readonly ShoppingCartSettings _shoppingCartSettings;
+		private readonly CatalogSettings _catalogSettings;
 
-        public ProductAttributeFormatter(IWorkContext workContext,
+		public ProductAttributeFormatter(IWorkContext workContext,
             IProductAttributeService productAttributeService,
             IProductAttributeParser productAttributeParser,
 			IPriceCalculationService priceCalculationService,
@@ -40,19 +41,21 @@ namespace SmartStore.Services.Catalog
             IPriceFormatter priceFormatter,
             IDownloadService downloadService,
             IWebHelper webHelper,
-			ShoppingCartSettings shoppingCartSettings)
+			ShoppingCartSettings shoppingCartSettings,
+			CatalogSettings catalogSettings)
         {
-            this._workContext = workContext;
-            this._productAttributeService = productAttributeService;
-            this._productAttributeParser = productAttributeParser;
-			this._priceCalculationService = priceCalculationService;
-            this._currencyService = currencyService;
-            this._localizationService = localizationService;
-            this._taxService = taxService;
-            this._priceFormatter = priceFormatter;
-            this._downloadService = downloadService;
-            this._webHelper = webHelper;
-			this._shoppingCartSettings = shoppingCartSettings;
+            _workContext = workContext;
+            _productAttributeService = productAttributeService;
+            _productAttributeParser = productAttributeParser;
+			_priceCalculationService = priceCalculationService;
+            _currencyService = currencyService;
+            _localizationService = localizationService;
+            _taxService = taxService;
+            _priceFormatter = priceFormatter;
+            _downloadService = downloadService;
+            _webHelper = webHelper;
+			_shoppingCartSettings = shoppingCartSettings;
+			_catalogSettings = catalogSettings;
         }
 
         /// <summary>
@@ -86,8 +89,9 @@ namespace SmartStore.Services.Catalog
             bool allowHyperlinks = true)
         {
             var result = new StringBuilder();
+			var languageId = _workContext.WorkingLanguage.Id;
 
-            //attributes
+            // Attributes
             if (renderProductAttributes)
             {
                 var pvaCollection = _productAttributeParser.ParseProductVariantAttributes(attributes);
@@ -105,11 +109,11 @@ namespace SmartStore.Services.Catalog
                             if (pva.AttributeControlType == AttributeControlType.MultilineTextbox)
                             {
                                 //multiline textbox
-                                var attributeName = pva.ProductAttribute.GetLocalized(a => a.Name, _workContext.WorkingLanguage.Id);
+                                string attributeName = pva.ProductAttribute.GetLocalized(a => a.Name, languageId);
                                 //encode (if required)
                                 if (htmlEncode)
                                     attributeName = HttpUtility.HtmlEncode(attributeName);
-                                pvaAttribute = string.Format("{0}: {1}", attributeName, HtmlUtils.FormatText(valueStr, false, true, false, false, false, false));
+                                pvaAttribute = string.Format("{0}: {1}", attributeName, HtmlUtils.ConvertPlainTextToHtml(valueStr.HtmlEncode()));
                                 //we never encode multiline textbox input
                             }
                             else if (pva.AttributeControlType == AttributeControlType.FileUpload)
@@ -139,7 +143,7 @@ namespace SmartStore.Services.Catalog
                                         //hyperlinks aren't allowed
                                         attributeText = fileName;
                                     }
-                                    var attributeName = pva.ProductAttribute.GetLocalized(a => a.Name, _workContext.WorkingLanguage.Id);
+                                    string attributeName = pva.ProductAttribute.GetLocalized(a => a.Name, languageId);
                                     //encode (if required)
                                     if (htmlEncode)
                                         attributeName = HttpUtility.HtmlEncode(attributeName);
@@ -149,7 +153,7 @@ namespace SmartStore.Services.Catalog
                             else
                             {
                                 //other attributes (textbox, datepicker)
-                                pvaAttribute = string.Format("{0}: {1}", pva.ProductAttribute.GetLocalized(a => a.Name, _workContext.WorkingLanguage.Id), valueStr);
+                                pvaAttribute = string.Format("{0}: {1}", pva.ProductAttribute.GetLocalized(a => a.Name, languageId), valueStr);
                                 //encode (if required)
                                 if (htmlEncode)
                                     pvaAttribute = HttpUtility.HtmlEncode(pvaAttribute);
@@ -157,20 +161,21 @@ namespace SmartStore.Services.Catalog
                         }
                         else
                         {
-                            //attributes with values
+                            // Attributes with values.
                             int pvaId = 0;
                             if (int.TryParse(valueStr, out pvaId))
                             {
                                 var pvaValue = _productAttributeService.GetProductVariantAttributeValueById(pvaId);
                                 if (pvaValue != null)
                                 {
-                                    pvaAttribute = string.Format("{0}: {1}", pva.ProductAttribute.GetLocalized(a => a.Name, _workContext.WorkingLanguage.Id),
-										pvaValue.GetLocalized(a => a.Name, _workContext.WorkingLanguage.Id));
+                                    pvaAttribute = "{0}: {1}".FormatInvariant(
+										pva.ProductAttribute.GetLocalized(a => a.Name, languageId),
+										pvaValue.GetLocalized(a => a.Name, languageId));
 
                                     if (renderPrices)
                                     {
                                         decimal taxRate = decimal.Zero;
-										decimal attributeValuePriceAdjustment = _priceCalculationService.GetProductVariantAttributeValuePriceAdjustment(pvaValue);
+										decimal attributeValuePriceAdjustment = _priceCalculationService.GetProductVariantAttributeValuePriceAdjustment(pvaValue, product, customer, null, 1);
 										decimal priceAdjustmentBase = _taxService.GetProductPrice(product, attributeValuePriceAdjustment, customer, out taxRate);
                                         decimal priceAdjustment = _currencyService.ConvertFromPrimaryStoreCurrency(priceAdjustmentBase, _workContext.WorkingCurrency);
 
@@ -180,21 +185,25 @@ namespace SmartStore.Services.Catalog
 											pvaAttribute += string.Format(" × {0}", pvaValue.Quantity);
 										}
 
-                                        if (priceAdjustmentBase > 0)
-                                        {
-                                            string priceAdjustmentStr = _priceFormatter.FormatPrice(priceAdjustment, true, false);
-                                            pvaAttribute += string.Format(" [+{0}]", priceAdjustmentStr);
-                                        }
-                                        else if (priceAdjustmentBase < decimal.Zero)
-                                        {
-                                            string priceAdjustmentStr = _priceFormatter.FormatPrice(-priceAdjustment, true, false);
-                                            pvaAttribute += string.Format(" [-{0}]", priceAdjustmentStr);
-                                        }
+										if (_catalogSettings.ShowVariantCombinationPriceAdjustment)
+										{
+											if (priceAdjustmentBase > 0)
+											{
+												pvaAttribute += " (+{0})".FormatInvariant(_priceFormatter.FormatPrice(priceAdjustment, true, false));
+											}
+											else if (priceAdjustmentBase < decimal.Zero)
+											{
+												pvaAttribute += " (-{0})".FormatInvariant(_priceFormatter.FormatPrice(-priceAdjustment, true, false));
+											}
+										}
                                     }
                                 }
-                                //encode (if required)
-                                if (htmlEncode)
-                                    pvaAttribute = HttpUtility.HtmlEncode(pvaAttribute);
+
+								// Encode (if required)
+								if (htmlEncode)
+								{
+									pvaAttribute = HttpUtility.HtmlEncode(pvaAttribute);
+								}
                             }
                         }
 

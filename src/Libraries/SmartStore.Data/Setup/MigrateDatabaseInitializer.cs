@@ -3,19 +3,14 @@ using System.Collections.Generic;
 using System.Data.Entity;
 using System.Data.Entity.Infrastructure;
 using System.Data.Entity.Migrations;
-using System.Data.Entity.Migrations.Infrastructure;
-using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 using SmartStore.Core.Data;
+using SmartStore.Data.Caching;
+using SmartStore.Data.Migrations;
 using SmartStore.Utilities;
 
 namespace SmartStore.Data.Setup
 {
-
 	/// <summary>
 	///     An implementation of <see cref="IDatabaseInitializer{TContext}" /> that will use Code First Migrations
 	///     to update the database to the latest version.
@@ -24,7 +19,6 @@ namespace SmartStore.Data.Setup
 		where TContext : DbContext, new()
 		where TConfig : DbMigrationsConfiguration<TContext>, new()
 	{
-
 		#region Ctor
 
 		public MigrateDatabaseInitializer()
@@ -66,15 +60,15 @@ namespace SmartStore.Data.Setup
 		/// Initializes the database.
 		/// </summary>
 		/// <param name="context">The context.</param>
-		/// <inheritdoc />
 		public virtual void InitializeDatabase(TContext context)
 		{
 			if (!context.Database.Exists())
 			{
-				throw Error.InvalidOperation("Database migration failed becuase the target database does not exist. Ensure the database was initialized and seeded with the 'InstallDatabaseInitializer'.");
+				throw Error.InvalidOperation("Database migration failed because the target database does not exist. Ensure the database was initialized and seeded with the 'InstallDatabaseInitializer'.");
 			}
 
 			var config = CreateConfiguration();
+			
 			var migrator = new DbSeedingMigrator<TContext>(config);
 			var tablesExist = CheckTables(context);
 
@@ -89,21 +83,36 @@ namespace SmartStore.Data.Setup
 					// prior integrating EF Migrations.
 					// Running the Migrator with initial DDL would crash in this case as
 					// the db objects exist already. Therefore we set a suppression flag
-					// which we read in the corresposnding InitialMigration to exit early.
+					// which we read in the corresponding InitialMigration to exit early.
 					DbMigrationContext.Current.SetSuppressInitialCreate<TContext>(true);
 				}
 			}
 
-			// run all pending migrations
-			var appliedCount = migrator.RunPendingMigrations(context);
-
-			if (appliedCount > 0)
+			using (new DbContextScope(context as IDbContext, hooksEnabled: false))
 			{
-				Seed(context);
-			}
+				// run all pending migrations
+				var appliedCount = migrator.RunPendingMigrations(context);
 
-			// not needed anymore
-			this.DataSeeders = null;
+				if (appliedCount > 0)
+				{
+					Seed(context);
+				}
+				else
+				{
+					// DB is up-to-date and no migration ran.
+					EfMappingViewCacheFactory.SetContext(context);
+
+					if (config is MigrationsConfiguration coreConfig && context is SmartObjectContext ctx)
+					{
+						// Call the main Seed method anyway (on every startup),
+						// we could have locale resources or settings to add/update.
+						coreConfig.SeedDatabase(ctx);
+					}
+				}
+
+				// not needed anymore
+				this.DataSeeders = null;
+			}
 		}
 
 		#endregion
@@ -131,6 +140,15 @@ namespace SmartStore.Data.Setup
 				config.TargetDatabase = new DbConnectionInfo(this.ConnectionString, dbContextInfo.ConnectionProviderName);
 			}
 
+			if (config.CommandTimeout == null && DataSettings.Current.IsSqlServer)
+			{
+				var commandTimeout = CommonHelper.GetAppSetting<int?>("sm:EfMigrationsCommandTimeout");
+				if (commandTimeout.HasValue)
+				{
+					config.CommandTimeout = commandTimeout.Value;
+				}
+			}
+
 			return config;
 		}
 
@@ -151,8 +169,6 @@ namespace SmartStore.Data.Setup
 		}
 
 		#endregion
-
-
 	}
 
 }

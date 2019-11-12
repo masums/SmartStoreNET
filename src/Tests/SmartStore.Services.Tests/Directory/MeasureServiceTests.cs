@@ -38,7 +38,7 @@ namespace SmartStore.Services.Tests.Directory
             {
                 Id = 2,
                 Name = "feet",
-                SystemKeyword = "feet",
+                SystemKeyword = "ft",
                 Ratio = 0.08333333M,
                 DisplayOrder = 2,
             };
@@ -46,7 +46,7 @@ namespace SmartStore.Services.Tests.Directory
             {
                 Id = 3,
                 Name = "meter(s)",
-                SystemKeyword = "meters",
+                SystemKeyword = "m",
                 Ratio = 0.0254M,
                 DisplayOrder = 3,
             };
@@ -54,7 +54,7 @@ namespace SmartStore.Services.Tests.Directory
             {
                 Id = 4,
                 Name = "millimetre(s)",
-                SystemKeyword = "millimetres",
+                SystemKeyword = "mm",
                 Ratio = 25.4M,
                 DisplayOrder = 4,
             };
@@ -89,7 +89,7 @@ namespace SmartStore.Services.Tests.Directory
             {
                 Id = 4,
                 Name = "gram(s)",
-                SystemKeyword = "grams",
+                SystemKeyword = "g",
                 Ratio = 453.59237M,
                 DisplayOrder = 4,
             };
@@ -109,8 +109,6 @@ namespace SmartStore.Services.Tests.Directory
             _measureWeightRepository.Expect(x => x.GetById(measureWeight4.Id)).Return(measureWeight4);
 
 
-            var cacheManager = new NullCache();
-
             _measureSettings = new MeasureSettings();
             _measureSettings.BaseDimensionId = measureDimension1.Id; //inch(es)
             _measureSettings.BaseWeightId = measureWeight2.Id; //lb(s)
@@ -118,7 +116,7 @@ namespace SmartStore.Services.Tests.Directory
             _eventPublisher = MockRepository.GenerateMock<IEventPublisher>();
             _eventPublisher.Expect(x => x.Publish(Arg<object>.Is.Anything));
 
-            _measureService = new MeasureService(cacheManager,
+            _measureService = new MeasureService(
                 _measureDimensionRepository,
                 _measureWeightRepository,
                 _measureSettings, _eventPublisher);

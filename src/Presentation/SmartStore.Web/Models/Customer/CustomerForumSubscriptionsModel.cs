@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using SmartStore.Core;
-using SmartStore.Web.Models.Common;
 
 namespace SmartStore.Web.Models.Customer
 {
@@ -12,6 +11,5 @@ namespace SmartStore.Web.Models.Customer
         }
 
         public IList<ForumSubscriptionModel> ForumSubscriptions { get; set; }
-        public CustomerNavigationModel NavigationModel { get; set; }
     }
 }

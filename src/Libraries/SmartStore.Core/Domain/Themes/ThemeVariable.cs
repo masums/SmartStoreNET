@@ -6,13 +6,11 @@ using System.Text;
 // codehint: sm-add (whole file)
 
 namespace SmartStore.Core.Domain.Themes
-{
-    
+{  
     public class ThemeVariable : BaseEntity
     {
-
         /// <summary>
-        /// Gets or sets the theme the attribute belongs to
+        /// Gets or sets the theme the variable belongs to
         /// </summary>
         public string Theme { get; set; }
 
@@ -31,7 +29,7 @@ namespace SmartStore.Core.Domain.Themes
 		/// </summary>
 		public int StoreId { get; set; }
 
-        public override bool Equals(BaseEntity other)
+        protected override bool Equals(BaseEntity other)
         {
             var equals = base.Equals(other);
             if (!equals)

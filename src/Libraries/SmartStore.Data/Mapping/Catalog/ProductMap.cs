@@ -31,17 +31,29 @@ namespace SmartStore.Data.Mapping.Catalog
 			this.Property(p => p.LowestAttributeCombinationPrice).HasPrecision(18, 4);
 			this.Property(p => p.RequiredProductIds).HasMaxLength(1000);
 			this.Property(p => p.AllowedQuantities).HasMaxLength(1000);
+			this.Property(p => p.CustomsTariffNumber).HasMaxLength(30);
+			this.Property(p => p.SystemName).HasMaxLength(400);
 
 			this.HasOptional(p => p.DeliveryTime)
 				.WithMany()
 				.HasForeignKey(p => p.DeliveryTimeId)
 				.WillCascadeOnDelete(false);
 
+            this.HasOptional(p => p.QuantityUnit)
+                .WithMany()
+                .HasForeignKey(p => p.QuantityUnitId)
+                .WillCascadeOnDelete(false);
+
 			this.HasOptional(p => p.SampleDownload)
 				.WithMany()
 				.HasForeignKey(p => p.SampleDownloadId)
 				.WillCascadeOnDelete(false);
-			
+
+			this.HasOptional(p => p.CountryOfOrigin)
+				.WithMany()
+				.HasForeignKey(p => p.CountryOfOriginId)
+				.WillCascadeOnDelete(false);
+
 			this.Ignore(p => p.ProductType);
 			this.Ignore(p => p.ProductTypeLabelHint);
 			this.Ignore(p => p.BackorderMode);

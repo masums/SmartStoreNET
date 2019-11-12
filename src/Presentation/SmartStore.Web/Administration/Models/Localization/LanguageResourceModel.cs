@@ -1,8 +1,8 @@
-﻿using System.Web.Mvc;
+﻿using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Validators.Localization;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
+using System.Web.Mvc;
 
 namespace SmartStore.Admin.Models.Localization
 {
@@ -11,16 +11,25 @@ namespace SmartStore.Admin.Models.Localization
     {
         [SmartResourceDisplayName("Admin.Configuration.Languages.Resources.Fields.Name")]
         [AllowHtml]
-        public string Name { get; set; }
+        public string ResourceName { get; set; }
 
         [SmartResourceDisplayName("Admin.Configuration.Languages.Resources.Fields.Value")]
         [AllowHtml]
-        public string Value { get; set; }
+        public string ResourceValue { get; set; }
 
         [SmartResourceDisplayName("Admin.Configuration.Languages.Resources.Fields.LanguageName")]
         [AllowHtml]
         public string LanguageName { get; set; }
 
         public int LanguageId { get; set; }
+    }
+
+    public partial class LanguageResourceValidator : AbstractValidator<LanguageResourceModel>
+    {
+        public LanguageResourceValidator()
+        {
+            RuleFor(x => x.ResourceName).NotEmpty();
+            RuleFor(x => x.ResourceValue).NotEmpty();
+        }
     }
 }

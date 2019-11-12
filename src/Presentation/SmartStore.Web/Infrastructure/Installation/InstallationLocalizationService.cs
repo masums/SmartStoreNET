@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Web;
 using System.Xml;
 using SmartStore.Core;
@@ -37,7 +38,7 @@ namespace SmartStore.Web.Infrastructure.Installation
                 .Select(r => r.Value)
                 .FirstOrDefault();
             if (String.IsNullOrEmpty(resourceValue))
-                //return name
+                // return name
                 return resourceName;
 
             return resourceValue;
@@ -52,35 +53,55 @@ namespace SmartStore.Web.Infrastructure.Installation
             if (cookie != null && !String.IsNullOrEmpty(cookie.Value))
                 cookieLanguageCode = cookie.Value;
 
-            //ensure it's available (it could be delete since the previous installation)
+            // ensure it's available (it could be deleted since the previous installation)
             var availableLanguages = GetAvailableLanguages();
 
             var language = availableLanguages
                 .Where(l => l.Code.Equals(cookieLanguageCode, StringComparison.InvariantCultureIgnoreCase))
-                //.Where(l => l.Code.Equals("en", StringComparison.InvariantCultureIgnoreCase))
                 .FirstOrDefault();
             if (language != null)
                 return language;
 
-            //if we got here, the language code is not found. let's return the default one
-            language = availableLanguages
-                .Where(l => l.IsDefault)
-                .FirstOrDefault();
+			// try to resolve install language from CurrentCulture
+			language = availableLanguages.Where(MatchLanguageByCurrentCulture).FirstOrDefault();
+			if (language != null)
+				return language;
+
+            // if we got here, the language code is not found. let's return the default one
+            language = availableLanguages.Where(l => l.IsDefault).FirstOrDefault();
             if (language != null)
                 return language;
 
-            //return any available language
+            // return any available language
             language = availableLanguages.FirstOrDefault();
             return language;
         }
+
+		private bool MatchLanguageByCurrentCulture(InstallationLanguage language)
+		{
+			var curCulture = Thread.CurrentThread.CurrentUICulture;
+
+			if (language.Code.IsCaseInsensitiveEqual(curCulture.IetfLanguageTag))
+				return true;
+
+			curCulture = curCulture.Parent;
+			if (curCulture != null)
+			{
+				return language.Code.IsCaseInsensitiveEqual(curCulture.IetfLanguageTag);
+			}
+
+			return false;
+		}
 
         public virtual void SaveCurrentLanguage(string languageCode)
         {
             var httpContext = EngineContext.Current.Resolve<HttpContextBase>();
 
             var cookie = new HttpCookie(LanguageCookieName);
+			cookie.HttpOnly = true;
             cookie.Value = languageCode;
             cookie.Expires = DateTime.Now.AddHours(24);
+
             httpContext.Response.Cookies.Remove(LanguageCookieName);
             httpContext.Response.Cookies.Add(cookie);
         }
@@ -95,7 +116,7 @@ namespace SmartStore.Web.Infrastructure.Installation
 
         public Lazy<InvariantSeedData, InstallationAppLanguageMetadata> GetAppLanguage(string culture)
         {
-            Guard.ArgumentNotEmpty(culture, "culture");
+            Guard.NotEmpty(culture, "culture");
             return _seedDatas.FirstOrDefault(x => x.Metadata.Culture == culture);
         }
 
@@ -131,7 +152,7 @@ namespace SmartStore.Web.Infrastructure.Installation
                     var isRightToLeft = isRightToLeftAttribute != null ? Convert.ToBoolean(isRightToLeftAttribute.InnerText.Trim()) : false;
 
                     //create language
-                    var language = new InstallationLanguage()
+                    var language = new InstallationLanguage
                     {
                         Code = languageCode,
                         Name = languageName,

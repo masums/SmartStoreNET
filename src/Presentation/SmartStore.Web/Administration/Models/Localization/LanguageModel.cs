@@ -1,19 +1,22 @@
-﻿using System.Collections.Generic;
-using System.Web.Mvc;
+﻿using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Models.Stores;
-using SmartStore.Admin.Validators.Localization;
+using SmartStore.Core.Localization;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Web.Mvc;
 
 namespace SmartStore.Admin.Models.Localization
 {
     [Validator(typeof(LanguageValidator))]
-    public class LanguageModel : EntityModelBase
+    public class LanguageModel : EntityModelBase, IStoreSelector
     {
         public LanguageModel()
         {
             FlagFileNames = new List<string>();
+            AvailableDownloadLanguages = new List<AvailableLanguageModel>();
         }
 
         [SmartResourceDisplayName("Admin.Configuration.Languages.Fields.Name")]
@@ -23,31 +26,68 @@ namespace SmartStore.Admin.Models.Localization
         [SmartResourceDisplayName("Admin.Configuration.Languages.Fields.LanguageCulture")]
         [AllowHtml]
         public string LanguageCulture { get; set; }
+		public List<SelectListItem> AvailableCultures { get; set; }
 
-        [SmartResourceDisplayName("Admin.Configuration.Languages.Fields.UniqueSeoCode")]
+		[SmartResourceDisplayName("Admin.Configuration.Languages.Fields.UniqueSeoCode")]
         [AllowHtml]
         public string UniqueSeoCode { get; set; }
+		public List<SelectListItem> AvailableTwoLetterLanguageCodes { get; set; }
 
-        //flags
-        [SmartResourceDisplayName("Admin.Configuration.Languages.Fields.FlagImageFileName")]
+		[SmartResourceDisplayName("Admin.Configuration.Languages.Fields.FlagImageFileName")]
         [AllowHtml]
         public string FlagImageFileName { get; set; }
         public IList<string> FlagFileNames { get; set; }
+		public List<SelectListItem> AvailableFlags { get; set; }
 
-        [SmartResourceDisplayName("Admin.Configuration.Languages.Fields.Rtl")]
+		[SmartResourceDisplayName("Admin.Configuration.Languages.Fields.Rtl")]
         public bool Rtl { get; set; }
 
         [SmartResourceDisplayName("Admin.Configuration.Languages.Fields.Published")]
         public bool Published { get; set; }
 
-        [SmartResourceDisplayName("Admin.Configuration.Languages.Fields.DisplayOrder")]
+        [SmartResourceDisplayName("Common.DisplayOrder")]
         public int DisplayOrder { get; set; }
 
-		//Store mapping
 		[SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
 		public bool LimitedToStores { get; set; }
-		[SmartResourceDisplayName("Admin.Common.Store.AvailableFor")]
-		public List<StoreModel> AvailableStores { get; set; }
+		public IEnumerable<SelectListItem> AvailableStores { get; set; }
 		public int[] SelectedStoreIds { get; set; }
+
+        [SmartResourceDisplayName("Admin.Configuration.Languages.Fields.AvailableLanguageSetId")]
+        public int AvailableLanguageSetId { get; set; }
+        public List<AvailableLanguageModel> AvailableDownloadLanguages { get; set; }
+
+		[SmartResourceDisplayName("Admin.Configuration.Languages.Fields.LastResourcesImportOn")]
+		public DateTime? LastResourcesImportOn { get; set; }
+		[SmartResourceDisplayName("Admin.Configuration.Languages.Fields.LastResourcesImportOn")]
+		public string LastResourcesImportOnString { get; set; }
+	}
+
+    public partial class LanguageValidator : AbstractValidator<LanguageModel>
+    {
+        public LanguageValidator(Localizer T)
+        {
+            RuleFor(x => x.Name).NotEmpty();
+
+            RuleFor(x => x.LanguageCulture)
+                .Must(x =>
+                {
+                    try
+                    {
+                        var culture = new CultureInfo(x);
+                        return culture != null;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                })
+                .WithMessage(T("Admin.Configuration.Languages.Fields.LanguageCulture.Validation"));
+
+            RuleFor(x => x.UniqueSeoCode).NotEmpty();
+            RuleFor(x => x.UniqueSeoCode)
+                //.Length(2)	// Never validates.
+                .Length(x => 2);
+        }
     }
 }

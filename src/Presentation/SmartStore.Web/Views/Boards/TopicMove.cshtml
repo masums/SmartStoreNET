@@ -1,48 +1,31 @@
-﻿@model TopicMoveModel
-@using SmartStore.Web.Models.Boards;
-@using SmartStore.Services.Seo;
+﻿@using SmartStore.Web.Models.Boards;
+@model TopicMoveModel
 @{    
-    Layout = "~/Views/Shared/_ColumnsOne.cshtml";
-
+    Layout = "_Layout";
     Html.AddTitleParts(T("Forum.PageTitle.MoveTopic").Text);
 }
 @using (Html.BeginForm())
 {
     @Html.HiddenFor(model => model.Id)
     <div class="page move-forum-topic">
-        @Html.Action("ForumBreadcrumb", new { forumTopicId = Model.Id })
-        <div class="title">
-            <h2>
-                @T("Forum.MoveTopic")
-            </h2>
+        <div class="page-title">
+            <h2>@T("Forum.MoveTopic")</h2>
         </div>
         <div class="page-body">
-            <table class="move-topic">
-                <tr>
-                    <td class="fieldname">
-                        @T("Forum.SelectTheForumToMoveTopic")
-                    </td>
-                    <td>
-                        @Html.DropDownList("ForumSelected", new SelectList(Model.ForumList, "Value", "Text"))
-                    </td>
-                </tr>
-                <tr>
-                    <td></td>
-                    <td class="options">
-                        @*<input type="submit" value="@T("Forum.Submit")" class="button-1 submit-forum-topic-button" />
-                        <input type="button" class="button-2 cancel-forum-topic-button" value="@T("Forum.Cancel")" onclick="setLocation('@Url.RouteUrl("TopicSlug", new { id = @Model.Id, slug = @Model.TopicSeName })')" />*@
-
-                        <button type="submit" class="btn btn-primary">
-                            @T("Forum.Submit")
-                        </button>
-
-                        <button class="btn btn-danger" onclick="setLocation('@Url.RouteUrl("TopicSlug", new { id = @Model.Id, slug = @Model.TopicSeName })')">
-                            @T("Forum.Cancel")
-                        </button>
-
-                    </td>
-                </tr>
-            </table>
+            <div class="form-group">
+                <label for="@Html.IdFor(x => x.ForumSelected)">@T("Forum.SelectTheForumToMoveTopic")</label>
+                @Html.DropDownListFor(x => x.ForumSelected, Model.Forums, new { @class = "form-control" })
+            </div>
+            <div class="options my-3">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fa fa-reply"></i>
+					<span>@T("Forum.Submit")</span>
+				</button>
+                <a class="btn btn-secondary" href="@Url.RouteUrl("TopicSlug", new { id = Model.Id, slug = Model.TopicSeName })">
+                    <i class="fa fa-times"></i>
+                    <span>@T("Forum.Cancel")</span>
+                </a>
+            </div>
         </div>
     </div>
 }

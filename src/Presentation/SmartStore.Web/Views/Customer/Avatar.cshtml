@@ -1,58 +1,52 @@
-﻿@model CustomerAvatarModel
-@using SmartStore.Web.Models.Customer;
+﻿@using SmartStore.Web.Models.Customer;
+@using SmartStore.Web.Framework.UI;
+@model CustomerAvatarEditModel
 @{
-    Layout = "~/Views/Shared/_ColumnsTwo.cshtml";
+	Layout = "_MyAccount";
+	ViewBag.PageClassToken = "avatar";
+	ViewBag.PageTitle = T("Account.Avatar").Text;
 
-    //title
-    Html.AddTitleParts(T("PageTitle.Account").Text);
+	Html.AddTitleParts(T("PageTitle.Account").Text);
 }
-@section left
+
+@if (!ViewData.ModelState.IsValid)
 {
-    @Html.Partial("MyAccountNavigation", Model.NavigationModel, new ViewDataDictionary())
+	@Html.ValidationSummary(true)
 }
-@using (Html.BeginForm("Avatar", "Customer", FormMethod.Post, new { enctype = "multipart/form-data" }))
-{
-    <div class="page account-page avatar-page">
-        <h4 class="muted">@T("Account.MyAccount")</h4>
-        <div class="page-title">
-            <h1>@T("Account.Avatar")</h1>
-        </div>
 
-        <div class="page-body">
-            @if (!ViewData.ModelState.IsValid) {
-                @Html.ValidationSummary(true)
-            }
-			
-			@if (!Model.AvatarUrl.HasValue())
-			{
-				<div class="alert alert-info">@T("Account.Avatar.UploadRules", Model.MaxFileSize)</div>
-			}
+<div id="AvatarUploadContainer">
+	<div class="mb-2">
+        @{ Html.RenderPartial("Customer.Avatar", Model.Avatar); }
+	</div>
 
-            <div class="section-body clearfix">
-                @if (!String.IsNullOrEmpty(Model.AvatarUrl))
-                {
-                    <div class="image pull-left" style="margin-right:12px;">
-                        <img src="@(Model.AvatarUrl)" class="img-polaroid" alt="avatar" />
-                    </div>
-                }
+	@(Html.SmartStore().FileUploader()
+		.Name("uploadedFile")
+		.UploadUrl(Url.Action("UploadAvatar", "Customer"))
+		.AcceptedFileTypes("gif|jpe?g|png")
+		.ShowRemoveButton(Model.Avatar.PictureUrl.HasValue())
+		.ShowRemoveButtonAfterUpload(true)
+		.UploadText(T("Common.FileUploader.Upload"))
+		.OnUploadCompletedHandlerName("onAvatarUploaded")
+		.OnFileRemoveHandlerName("onAvatarRemoved")
+	)
 
-                <input name="uploadedFile" id="uploadedFile" type="file" class="pull-left"/>
-            </div>
+	@if (!Model.Avatar.PictureUrl.HasValue())
+	{
+		<div class="alert alert-info mt-2">@T("Account.Avatar.UploadRules", Model.MaxFileSize)</div>
+	}
+</div>
 
+<script>
+	window['onAvatarUploaded'] = function (e, el, data) {
+		var result = data.result;
+		if (result.success) {
+            window.location = '@Url.Action("Avatar", "Customer", new { area = "" })';
+		}
+	};
 
-            <div class="well" style="margin-top: 20px">
-                <button type="submit" name="upload-avatar" value="upload-avatar" class="btn btn-primary upload-avatar-button">
-                    <i class="fa fa-upload"></i>
-                    @T("Common.Upload")
-                </button>
-                @if (!String.IsNullOrEmpty(Model.AvatarUrl))
-                {
-                    <button type="submit" name="remove-avatar" value="remove-avatar" class="btn btn-danger upload-avatar-button">
-                        @T("Account.Avatar.RemoveAvatar")
-                    </button>
-                }
-            </div>
-
-        </div>
-    </div>
-}
+    window['onAvatarRemoved'] = function (e, el) {
+		$(this).doPostData({
+			url: '@Url.Action("RemoveAvatar", "Customer", new { area = "" })'
+		});
+	}
+</script>

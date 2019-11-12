@@ -8,6 +8,7 @@ using SmartStore.ShippingByWeight.Models;
 using SmartStore.Services.Directory;
 using SmartStore.Services.Shipping;
 using SmartStore.Services.Stores;
+using SmartStore.Utilities;
 
 namespace SmartStore.ShippingByWeight.Services
 {
@@ -82,7 +83,7 @@ namespace SmartStore.ShippingByWeight.Services
 				var shippingMethod = _shippingService.GetShippingMethodById(x.ShippingMethodId);
 				var country = _countryService.GetCountryById(x.CountryId);
 
-				var model = new ShippingByWeightModel()
+				var model = new ShippingByWeightModel
 				{
 					Id = x.Id,
 					StoreId = x.StoreId,
@@ -90,6 +91,7 @@ namespace SmartStore.ShippingByWeight.Services
 					CountryId = x.CountryId,
 					From = x.From,
 					To = x.To,
+                    Zip = (x.Zip.HasValue() ? x.Zip : "*"),
 					UsePercentage = x.UsePercentage,
 					ShippingChargePercentage = x.ShippingChargePercentage,
 					ShippingChargeAmount = x.ShippingChargeAmount,
@@ -107,47 +109,22 @@ namespace SmartStore.ShippingByWeight.Services
 			return result;
 		}
 
-		public virtual ShippingByWeightRecord FindRecord(int shippingMethodId, int storeId, int countryId, decimal weight)
+        public virtual ShippingByWeightRecord FindRecord(int shippingMethodId, int storeId, int countryId, decimal weight, string zip)
         {
             var existingRecords = GetShippingByWeightRecords()
 				.Where(x => x.ShippingMethodId == shippingMethodId && weight >= x.From && weight <= x.To)
 				.ToList();
 
-			//filter by store
-			var matchedByStore = new List<ShippingByWeightRecord>();
-			foreach (var sbw in existingRecords)
-			{
-				if (storeId == sbw.StoreId)
-					matchedByStore.Add(sbw);
-			}
+            //filter by store
+            var matchedByStore = existingRecords.Where(x => x.StoreId == storeId || x.StoreId == 0).ToList();
 
-			if (matchedByStore.Count == 0)
-			{
-				foreach (var sbw in existingRecords)
-				{
-					if (sbw.StoreId == 0)
-						matchedByStore.Add(sbw);
-				}
-			}
+            //filter by country
+            var matchedByCountry = matchedByStore.Where(x => x.CountryId == countryId || x.CountryId == 0).ToList();
 
-			//filter by country
-			var matchedByCountry = new List<ShippingByWeightRecord>();
-			foreach (var sbw in matchedByStore)
-			{
-				if (countryId == sbw.CountryId)
-					matchedByCountry.Add(sbw);
-			}
+            //filter by zip
+            var matchedByZip = matchedByCountry.Where(x => (zip.IsEmpty() && x.Zip.IsEmpty()) || ZipMatches(zip, x.Zip)).ToList();
 
-			if (matchedByCountry.Count == 0)
-			{
-				foreach (var sbw in matchedByStore)
-				{
-					if (sbw.CountryId == 0)
-						matchedByCountry.Add(sbw);
-				}
-			}
-
-			return matchedByCountry.FirstOrDefault();
+            return matchedByZip.LastOrDefault();
         }
 
         public virtual ShippingByWeightRecord GetById(int shippingByWeightRecordId)
@@ -181,6 +158,34 @@ namespace SmartStore.ShippingByWeight.Services
                 throw new ArgumentNullException("shippingByWeightRecord");
 
             _sbwRepository.Update(shippingByWeightRecord);
+        }
+
+        private bool ZipMatches(string zip, string pattern)
+        {
+            if (pattern.IsEmpty() || pattern == "*")
+            {
+                return true; // catch all
+            }
+            
+            var patterns = pattern.Contains(",")
+                ? pattern.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim())
+                : new string[] { pattern };
+
+            try
+            {
+                foreach (var entry in patterns)
+                {
+                    var wildcard = new Wildcard(entry, true);
+                    if (wildcard.IsMatch(zip))
+                        return true;
+                }
+            }
+            catch
+            {
+                return zip.IsCaseInsensitiveEqual(pattern);
+            }
+
+            return false;
         }
 
         #endregion

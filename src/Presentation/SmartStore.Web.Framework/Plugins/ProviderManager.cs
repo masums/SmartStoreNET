@@ -7,7 +7,6 @@ using SmartStore.Services;
 
 namespace SmartStore.Web.Framework.Plugins
 {
-	
 	public partial class ProviderManager : IProviderManager
 	{
 		private readonly IComponentContext _ctx;
@@ -16,9 +15,9 @@ namespace SmartStore.Web.Framework.Plugins
 
 		public ProviderManager(IComponentContext ctx, ICommonServices services, PluginMediator pluginMediator)
 		{
-			this._ctx = ctx;
-			this._services = services;
-			this._pluginMediator = pluginMediator;
+			_ctx = ctx;
+			_services = services;
+			_pluginMediator = pluginMediator;
 		}
 
 		public Provider<TProvider> GetProvider<TProvider>(string systemName, int storeId = 0) where TProvider : IProvider
@@ -32,7 +31,7 @@ namespace SmartStore.Web.Framework.Plugins
 				if (storeId > 0)
 				{
 					var d = provider.Metadata.PluginDescriptor;
-					if (d != null && _services.Settings.GetSettingByKey<string>(d.GetSettingKey("LimitedToStores")).ToIntArrayContains(storeId, false))
+					if (d != null && !IsActiveForStore(d, storeId))
 					{
 						return null;
 					}
@@ -40,12 +39,13 @@ namespace SmartStore.Web.Framework.Plugins
 				SetUserData(provider.Metadata);
 				return new Provider<TProvider>(provider);
 			}
+
 			return null;
 		}
 
 		public Provider<IProvider> GetProvider(string systemName, int storeId = 0)
 		{
-			Guard.ArgumentNotEmpty(() => systemName);
+			Guard.NotEmpty(systemName, nameof(systemName));
 
 			var provider = _ctx.ResolveOptionalNamed<Lazy<IProvider, ProviderMetadata>>(systemName);
 			if (provider != null)
@@ -53,7 +53,7 @@ namespace SmartStore.Web.Framework.Plugins
 				if (storeId > 0)
 				{
 					var d = provider.Metadata.PluginDescriptor;
-					if (d != null && _services.Settings.GetSettingByKey<string>(d.GetSettingKey("LimitedToStores")).ToIntArrayContains(storeId, false))
+					if (d != null && !IsActiveForStore(d, storeId))
 					{
 						return null;
 					}
@@ -71,7 +71,7 @@ namespace SmartStore.Web.Framework.Plugins
 			{
 				providers = from p in providers
 							let d = p.Metadata.PluginDescriptor
-							where d == null || !_services.Settings.GetSettingByKey<string>(d.GetSettingKey("LimitedToStores")).ToIntArrayContains(storeId, false)
+							where d == null || IsActiveForStore(d, storeId)
 							select p;
 			}
 			return SortProviders(providers.Select(x => new Provider<TProvider>(x)));
@@ -84,7 +84,7 @@ namespace SmartStore.Web.Framework.Plugins
 			{
 				providers = from p in providers
 							let d = p.Metadata.PluginDescriptor
-							where d == null || !_services.Settings.GetSettingByKey<string>(d.GetSettingKey("LimitedToStores")).ToIntArrayContains(storeId, false)
+							where d == null || IsActiveForStore(d, storeId)
 							select p;
 			}
 			return SortProviders(providers.Select(x => new Provider<IProvider>(x)));
@@ -108,21 +108,36 @@ namespace SmartStore.Web.Framework.Plugins
 			var displayOrder = _pluginMediator.GetUserDisplayOrder(metadata);
 			var name = _pluginMediator.GetSetting<string>(metadata, "FriendlyName");
 			var description = _pluginMediator.GetSetting<string>(metadata, "Description");
+			metadata.FriendlyName = name;
+			metadata.Description = description;
 
 			if (displayOrder.HasValue)
 			{
 				metadata.DisplayOrder = displayOrder.Value;
 			}
+		}
 
-			if (name != null)
+		private bool IsActiveForStore(PluginDescriptor plugin, int storeId)
+		{
+			if (storeId == 0)
 			{
-				metadata.FriendlyName = name;
+				return true;
 			}
 
-			if (description != null)
+			var limitedToStoresSetting = _services.Settings.GetSettingByKey<string>(plugin.GetSettingKey("LimitedToStores"));
+			if (limitedToStoresSetting.IsEmpty())
 			{
-				metadata.Description = description;
+				return true;
 			}
+
+			var limitedToStores = limitedToStoresSetting.ToIntArray();
+			if (limitedToStores.Length > 0)
+			{
+				var flag = limitedToStores.Contains(storeId);
+				return flag;
+			}
+
+			return true;
 		}
 
 	}

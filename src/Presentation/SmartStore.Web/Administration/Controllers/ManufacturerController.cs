@@ -3,27 +3,33 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Web.Mvc;
 using SmartStore.Admin.Models.Catalog;
-using SmartStore.Admin.Models.Stores;
+using SmartStore.Collections;
 using SmartStore.Core;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Common;
+using SmartStore.Core.Domain.Customers;
+using SmartStore.Core.Domain.Discounts;
+using SmartStore.Core.Logging;
 using SmartStore.Services.Catalog;
-using SmartStore.Services.ExportImport;
+using SmartStore.Services.Common;
+using SmartStore.Services.Discounts;
 using SmartStore.Services.Helpers;
 using SmartStore.Services.Localization;
-using SmartStore.Core.Logging;
 using SmartStore.Services.Media;
 using SmartStore.Services.Security;
 using SmartStore.Services.Seo;
 using SmartStore.Services.Stores;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Controllers;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Filters;
+using SmartStore.Web.Framework.Security;
 using Telerik.Web.Mvc;
+using SmartStore.Web.Framework.Modelling;
+using SmartStore.Core.Events;
 
 namespace SmartStore.Admin.Controllers
 {
-    [AdminAuthorize]
+	[AdminAuthorize]
     public partial class ManufacturerController : AdminControllerBase
     {
         #region Fields
@@ -39,47 +45,57 @@ namespace SmartStore.Admin.Controllers
         private readonly ILanguageService _languageService;
         private readonly ILocalizationService _localizationService;
         private readonly ILocalizedEntityService _localizedEntityService;
-        private readonly IExportManager _exportManager;
         private readonly IWorkContext _workContext;
         private readonly ICustomerActivityService _customerActivityService;
         private readonly IPermissionService _permissionService;
+		private readonly IDiscountService _discountService;
 		private readonly IDateTimeHelper _dateTimeHelper;
         private readonly AdminAreaSettings _adminAreaSettings;
         private readonly CatalogSettings _catalogSettings;
 
-        #endregion
-        
-        #region Constructors
+		#endregion
 
-        public ManufacturerController(ICategoryService categoryService, IManufacturerService manufacturerService,
-            IManufacturerTemplateService manufacturerTemplateService, IProductService productService,
-			IStoreService storeService,	IStoreMappingService storeMappingService,
-            IUrlRecordService urlRecordService, IPictureService pictureService,
-            ILanguageService languageService, ILocalizationService localizationService, ILocalizedEntityService localizedEntityService,
-            IExportManager exportManager, IWorkContext workContext,
-            ICustomerActivityService customerActivityService, IPermissionService permissionService,
+		#region Constructors
+
+		public ManufacturerController(
+			ICategoryService categoryService, 
+			IManufacturerService manufacturerService,
+            IManufacturerTemplateService manufacturerTemplateService, 
+			IProductService productService,
+			IStoreService storeService,	
+			IStoreMappingService storeMappingService,
+            IUrlRecordService urlRecordService, 
+			IPictureService pictureService,
+            ILanguageService languageService, 
+			ILocalizationService localizationService, 
+			ILocalizedEntityService localizedEntityService,
+            IWorkContext workContext,
+            ICustomerActivityService customerActivityService,
+			IPermissionService permissionService,
+			IDiscountService discountService,
 			IDateTimeHelper dateTimeHelper,
-            AdminAreaSettings adminAreaSettings, CatalogSettings catalogSettings)
+            AdminAreaSettings adminAreaSettings,
+			CatalogSettings catalogSettings)
         {
-            this._categoryService = categoryService;
-            this._manufacturerTemplateService = manufacturerTemplateService;
-            this._manufacturerService = manufacturerService;
-            this._productService = productService;
-			this._storeService = storeService;
-			this._storeMappingService = storeMappingService;
-            this._urlRecordService = urlRecordService;
-            this._pictureService = pictureService;
-            this._languageService = languageService;
-            this._localizationService = localizationService;
-            this._localizedEntityService = localizedEntityService;
-            this._exportManager = exportManager;
-            this._workContext = workContext;
-            this._customerActivityService = customerActivityService;
-            this._permissionService = permissionService;
-			this._dateTimeHelper = dateTimeHelper;
-            this._adminAreaSettings = adminAreaSettings;
-            this._catalogSettings = catalogSettings;
-        }
+            _categoryService = categoryService;
+            _manufacturerTemplateService = manufacturerTemplateService;
+            _manufacturerService = manufacturerService;
+            _productService = productService;
+			_storeService = storeService;
+			_storeMappingService = storeMappingService;
+            _urlRecordService = urlRecordService;
+            _pictureService = pictureService;
+            _languageService = languageService;
+            _localizationService = localizationService;
+            _localizedEntityService = localizedEntityService;
+            _workContext = workContext;
+            _customerActivityService = customerActivityService;
+            _permissionService = permissionService;
+			_discountService = discountService;
+			_dateTimeHelper = dateTimeHelper;
+            _adminAreaSettings = adminAreaSettings;
+            _catalogSettings = catalogSettings;
+		}
 
         #endregion
         
@@ -116,7 +132,6 @@ namespace SmartStore.Admin.Controllers
                                                            localized.LanguageId);
 
                 //search engine name
-				// codehint: sm-edit
                 var seName = manufacturer.ValidateSeName(localized.SeName, localized.Name, false, localized.LanguageId);
                 _urlRecordService.SaveSlug(manufacturer, seName, localized.LanguageId);
             }
@@ -125,9 +140,7 @@ namespace SmartStore.Admin.Controllers
         [NonAction]
         protected void UpdatePictureSeoNames(Manufacturer manufacturer)
         {
-			var picture = _pictureService.GetPictureById(manufacturer.PictureId.GetValueOrDefault());
-            if (picture != null)
-                _pictureService.SetSeoFilename(picture.Id, _pictureService.GetPictureSeName(manufacturer.Name));
+			_pictureService.SetSeoFilename(manufacturer.PictureId.GetValueOrDefault(), _pictureService.GetPictureSeName(manufacturer.Name));
         }
 
         [NonAction]
@@ -153,21 +166,10 @@ namespace SmartStore.Admin.Controllers
 			if (model == null)
 				throw new ArgumentNullException("model");
 
-			model.AvailableStores = _storeService
-				.GetAllStores()
-				.Select(s => s.ToModel())
-				.ToList();
-
 			if (!excludeProperties)
 			{
-				if (manufacturer != null)
-				{
-					model.SelectedStoreIds = _storeMappingService.GetStoresIdsWithAccess(manufacturer);
-				}
-				else
-				{
-					model.SelectedStoreIds = new int[0];
-				}
+				model.SelectedStoreIds = _storeMappingService.GetStoresIdsWithAccess(manufacturer);
+				model.SelectedDiscountIds = (manufacturer != null ? manufacturer.AppliedDiscounts.Select(d => d.Id).ToArray() : new int[0]);
 			}
 
 			if (manufacturer != null)
@@ -175,40 +177,21 @@ namespace SmartStore.Admin.Controllers
 				model.CreatedOn = _dateTimeHelper.ConvertToUserTime(manufacturer.CreatedOnUtc, DateTimeKind.Utc);
 				model.UpdatedOn = _dateTimeHelper.ConvertToUserTime(manufacturer.UpdatedOnUtc, DateTimeKind.Utc);
 			}
+
+			model.GridPageSize = _adminAreaSettings.GridPageSize;
+			model.AvailableStores = _storeService.GetAllStores().ToSelectListItems(model.SelectedStoreIds);
+			model.AvailableDiscounts = _discountService.GetAllDiscounts(DiscountType.AssignedToManufacturers, null, true).ToList();
 		}
 
-		[NonAction]
-		protected void SaveStoreMappings(Manufacturer manufacturer, ManufacturerModel model)
-		{
-			var existingStoreMappings = _storeMappingService.GetStoreMappings(manufacturer);
-			var allStores = _storeService.GetAllStores();
-			foreach (var store in allStores)
-			{
-				if (model.SelectedStoreIds != null && model.SelectedStoreIds.Contains(store.Id))
-				{
-					//new role
-					if (existingStoreMappings.Where(sm => sm.StoreId == store.Id).Count() == 0)
-						_storeMappingService.InsertStoreMapping(manufacturer, store.Id);
-				}
-				else
-				{
-					//removed role
-					var storeMappingToDelete = existingStoreMappings.Where(sm => sm.StoreId == store.Id).FirstOrDefault();
-					if (storeMappingToDelete != null)
-						_storeMappingService.DeleteStoreMapping(storeMappingToDelete);
-				}
-			}
-		}
+		#endregion
 
-        #endregion
-        
-        #region List
+		#region List
 
-        //ajax
-        // codehint: sm-add
-        public ActionResult AllManufacturers(string label, int selectedId)
+		// AJAX
+		public ActionResult AllManufacturers(string label, int selectedId)
         {
             var manufacturers = _manufacturerService.GetAllManufacturers(true);
+
             if (label.HasValue())
             {
                 manufacturers.Insert(0, new Manufacturer { Name = label, Id = 0 });
@@ -222,7 +205,41 @@ namespace SmartStore.Admin.Controllers
                            selected = m.Id == selectedId
                        };
 
-            return new JsonResult { Data = list.ToList(), JsonRequestBehavior = JsonRequestBehavior.AllowGet };
+			var mainList = list.ToList();
+
+			var mruList = new TrimmedBuffer<string>(
+				_workContext.CurrentCustomer.GetAttribute<string>(SystemCustomerAttributeNames.MostRecentlyUsedManufacturers),
+				_catalogSettings.MostRecentlyUsedManufacturersMaxSize)
+				.Reverse()
+				.Select(x => 
+				{
+					var item = manufacturers.FirstOrDefault(m => m.Id.ToString() == x);
+					if (item != null)
+					{
+						return new
+						{
+							id = x,
+							text = item.Name,
+							selected = false
+						};
+					}
+
+					return null;
+				})
+				.Where(x => x != null)
+				.ToList();
+
+			object data = mainList;
+			if (mruList.Count > 0)
+			{
+				data = new List<object>
+				{
+					new Dictionary<string, object> { ["text"] = T("Common.Mru").Text, ["children"] = mruList },
+					new Dictionary<string, object> { ["text"] = T("Admin.Catalog.Manufacturers").Text, ["children"] = mainList, ["main"] = true }
+				};
+			}
+
+			return new JsonResult { Data = data, JsonRequestBehavior = JsonRequestBehavior.AllowGet };
         }
 
         public ActionResult Index()
@@ -235,29 +252,38 @@ namespace SmartStore.Admin.Controllers
             if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
                 return AccessDeniedView();
 
-            var model = new ManufacturerListModel();
-            var manufacturers = _manufacturerService.GetAllManufacturers(null, 0, _adminAreaSettings.GridPageSize, true);
-            model.Manufacturers = new GridModel<ManufacturerModel>
-            {
-                Data = manufacturers.Select(x => x.ToModel()),
-                Total = manufacturers.TotalCount
-            };
-            return View(model);
+			var model = new ManufacturerListModel
+			{
+				GridPageSize = _adminAreaSettings.GridPageSize
+			};
+
+			model.AvailableStores = _storeService.GetAllStores().ToSelectListItems();
+
+			return View(model);
         }
 
         [HttpPost, GridAction(EnableCustomBinding = true)]
         public ActionResult List(GridCommand command, ManufacturerListModel model)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
+			var gridModel = new GridModel<ManufacturerModel>();
 
-            var manufacturers = _manufacturerService.GetAllManufacturers(model.SearchManufacturerName,
-                command.Page - 1, command.PageSize, true);
-            var gridModel = new GridModel<ManufacturerModel>
-            {
-                Data = manufacturers.Select(x => x.ToModel()),
-                Total = manufacturers.TotalCount
-            };
+			model.AvailableStores = _storeService.GetAllStores().ToSelectListItems();
+
+			if (_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
+			{
+				var manufacturers = _manufacturerService.GetAllManufacturers(model.SearchManufacturerName, command.Page - 1, command.PageSize,
+					model.SearchStoreId, true);
+
+				gridModel.Data = manufacturers.Select(x => x.ToModel());
+				gridModel.Total = manufacturers.TotalCount;
+			}
+			else
+			{
+				gridModel.Data = Enumerable.Empty<ManufacturerModel>();
+
+				NotifyAccessDenied();
+			}
+
             return new JsonResult
             {
                 Data = gridModel
@@ -274,22 +300,20 @@ namespace SmartStore.Admin.Controllers
                 return AccessDeniedView();
 
             var model = new ManufacturerModel();
-            //locales
+            
+			//locales
             AddLocales(_languageService, model.Locales);
-            //templates
+            
+			//templates
             PrepareTemplatesModel(model);
 			PrepareManufacturerModel(model, null, false);
-            //default values
-            model.PageSize = 12; // codehint: sm-edit > 4;
+            
             model.Published = true;
-
-            model.AllowCustomersToSelectPageSize = true;
-            //model.PageSizeOptions = _catalogSettings.DefaultPageSizeOptions; // codehint: sm-edit > _catalogSettings.DefaultManufacturerPageSizeOptions;
             
             return View(model);
         }
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
         public ActionResult Create(ManufacturerModel model, bool continueEditing)
         {
             if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
@@ -298,20 +322,40 @@ namespace SmartStore.Admin.Controllers
             if (ModelState.IsValid)
             {
                 var manufacturer = model.ToEntity();
-                manufacturer.CreatedOnUtc = DateTime.UtcNow;
-                manufacturer.UpdatedOnUtc = DateTime.UtcNow;
-                _manufacturerService.InsertManufacturer(manufacturer);
-                //search engine name
+
+				MediaHelper.UpdatePictureTransientStateFor(manufacturer, m => m.PictureId);
+                
+				_manufacturerService.InsertManufacturer(manufacturer);
+                
+				// search engine name
                 model.SeName = manufacturer.ValidateSeName(model.SeName, manufacturer.Name, true);
                 _urlRecordService.SaveSlug(manufacturer, model.SeName, 0);
-                //locales
+                
+				// locales
                 UpdateLocales(manufacturer, model);
-                //update picture seo file name
-                UpdatePictureSeoNames(manufacturer);
-				//Stores
+
+				// discounts
+				var allDiscounts = _discountService.GetAllDiscounts(DiscountType.AssignedToManufacturers, null, true);
+				foreach (var discount in allDiscounts)
+				{
+					if (model.SelectedDiscountIds != null && model.SelectedDiscountIds.Contains(discount.Id))
+						manufacturer.AppliedDiscounts.Add(discount);
+				}
+
+				var hasDiscountsApplied = manufacturer.AppliedDiscounts.Count > 0;
+				if (hasDiscountsApplied)
+				{
+					manufacturer.HasDiscountsApplied = manufacturer.AppliedDiscounts.Count > 0;
+					_manufacturerService.UpdateManufacturer(manufacturer);
+				}
+
+				// update picture seo file name
+				UpdatePictureSeoNames(manufacturer);
+				
+				// Stores
 				SaveStoreMappings(manufacturer, model);
 
-                //activity log
+                // activity log
                 _customerActivityService.InsertActivity("AddNewManufacturer", _localizationService.GetResource("ActivityLog.AddNewManufacturer"), manufacturer.Name);
 
                 NotifySuccess(_localizationService.GetResource("Admin.Catalog.Manufacturers.Added"));
@@ -333,7 +377,6 @@ namespace SmartStore.Admin.Controllers
 
             var manufacturer = _manufacturerService.GetManufacturerById(id);
             if (manufacturer == null || manufacturer.Deleted)
-                //No manufacturer found with the specified id
                 return RedirectToAction("List");
 
             var model = manufacturer.ToModel();
@@ -354,48 +397,66 @@ namespace SmartStore.Admin.Controllers
             return View(model);
         }
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
-        public ActionResult Edit(ManufacturerModel model, bool continueEditing)
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
+		[ValidateInput(false)]
+		public ActionResult Edit(ManufacturerModel model, bool continueEditing, FormCollection form)
         {
             if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
                 return AccessDeniedView();
 
             var manufacturer = _manufacturerService.GetManufacturerById(model.Id);
             if (manufacturer == null || manufacturer.Deleted)
-                //No manufacturer found with the specified id
                 return RedirectToAction("List");
 
             if (ModelState.IsValid)
             {
-				int prevPictureId = manufacturer.PictureId.GetValueOrDefault();
                 manufacturer = model.ToEntity(manufacturer);
-                manufacturer.UpdatedOnUtc = DateTime.UtcNow;
-                _manufacturerService.UpdateManufacturer(manufacturer);
-                //search engine name
-                model.SeName = manufacturer.ValidateSeName(model.SeName, manufacturer.Name, true);
-                _urlRecordService.SaveSlug(manufacturer, model.SeName, 0);
-                //locales
+				MediaHelper.UpdatePictureTransientStateFor(manufacturer, m => m.PictureId);
+				
+				// search engine name
+				model.SeName = manufacturer.ValidateSeName(model.SeName, manufacturer.Name, true);
+				_urlRecordService.SaveSlug(manufacturer, model.SeName, 0);
+                
+				// locales
                 UpdateLocales(manufacturer, model);
-                //delete an old picture (if deleted or updated)
-				if (prevPictureId > 0 && prevPictureId != manufacturer.PictureId.GetValueOrDefault())
-                {
-                    var prevPicture = _pictureService.GetPictureById(prevPictureId);
-                    if (prevPicture != null)
-                        _pictureService.DeletePicture(prevPicture);
-                }
-                //update picture seo file name
-                UpdatePictureSeoNames(manufacturer);
-				//Stores
+
+				// discounts
+				var allDiscounts = _discountService.GetAllDiscounts(DiscountType.AssignedToManufacturers, null, true);
+				foreach (var discount in allDiscounts)
+				{
+					if (model.SelectedDiscountIds != null && model.SelectedDiscountIds.Contains(discount.Id))
+					{
+						if (manufacturer.AppliedDiscounts.Where(d => d.Id == discount.Id).Count() == 0)
+							manufacturer.AppliedDiscounts.Add(discount);
+					}
+					else
+					{
+						if (manufacturer.AppliedDiscounts.Where(d => d.Id == discount.Id).Count() > 0)
+							manufacturer.AppliedDiscounts.Remove(discount);
+					}
+				}
+
+				manufacturer.HasDiscountsApplied = manufacturer.AppliedDiscounts.Count > 0;
+				manufacturer.UpdatedOnUtc = DateTime.UtcNow;
+
+				// Commit now
+				_manufacturerService.UpdateManufacturer(manufacturer);
+				
+				Services.EventPublisher.Publish(new ModelBoundEvent(model, manufacturer, form));
+
+				// update picture seo file name
+				UpdatePictureSeoNames(manufacturer);
+				
+				// Stores
 				SaveStoreMappings(manufacturer, model);
 
-                //activity log
+                // activity log
                 _customerActivityService.InsertActivity("EditManufacturer", _localizationService.GetResource("ActivityLog.EditManufacturer"), manufacturer.Name);
 
                 NotifySuccess(_localizationService.GetResource("Admin.Catalog.Manufacturers.Updated"));
                 return continueEditing ? RedirectToAction("Edit", manufacturer.Id) : RedirectToAction("List");
             }
-
-
+			
             //If we got this far, something failed, redisplay form
             //templates
             PrepareTemplatesModel(model);
@@ -412,7 +473,6 @@ namespace SmartStore.Admin.Controllers
 
             var manufacturer = _manufacturerService.GetManufacturerById(id);
             if (manufacturer == null)
-                //No manufacturer found with the specified id
                 return RedirectToAction("List");
 
             _manufacturerService.DeleteManufacturer(manufacturer);
@@ -426,62 +486,48 @@ namespace SmartStore.Admin.Controllers
         
         #endregion
 
-        #region Export / Import
-
-        public ActionResult ExportXml()
-        {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
-            try
-            {
-                var manufacturers = _manufacturerService.GetAllManufacturers(true);
-                var xml = _exportManager.ExportManufacturersToXml(manufacturers);
-                return new XmlDownloadResult(xml, "manufacturers.xml");
-            }
-            catch (Exception exc)
-            {
-                NotifyError(exc);
-                return RedirectToAction("List");
-            }
-        }
-
-        #endregion
-
         #region Products
 
         [HttpPost, GridAction(EnableCustomBinding = true)]
         public ActionResult ProductList(GridCommand command, int manufacturerId)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
+			var model = new GridModel<ManufacturerModel.ManufacturerProductModel>();
 
-            var productManufacturers = _manufacturerService.GetProductManufacturersByManufacturerId(manufacturerId,
-                command.Page - 1, command.PageSize, true);
+			if (_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
+			{
+				var productManufacturers = _manufacturerService.GetProductManufacturersByManufacturerId(manufacturerId,	command.Page - 1, command.PageSize, true);
 
-            var model = new GridModel<ManufacturerModel.ManufacturerProductModel>
-            {
-                Data = productManufacturers
-                .Select(x =>
-                {
-					var product = _productService.GetProductById(x.ProductId);
+				var productIds = productManufacturers.Select(x => x.ProductId).ToArray();
+				var products = _productService.GetProductsByIds(productIds);
 
-                    return new ManufacturerModel.ManufacturerProductModel()
-                    {
-                        Id = x.Id,
-                        ManufacturerId = x.ManufacturerId,
-                        ProductId = x.ProductId,
-                        ProductName = product.Name,
-						Sku = product.Sku,
-						ProductTypeName = product.GetProductTypeLabel(_localizationService),
-						ProductTypeLabelHint = product.ProductTypeLabelHint,
-						Published = product.Published,
-                        IsFeaturedProduct = x.IsFeaturedProduct,
-                        DisplayOrder1 = x.DisplayOrder
-                    };
-                }),
-                Total = productManufacturers.TotalCount
-            };
+				model.Data = productManufacturers
+					.Select(x =>
+					{
+						var product = products.FirstOrDefault(y => y.Id == x.ProductId);
+
+						return new ManufacturerModel.ManufacturerProductModel
+						{
+							Id = x.Id,
+							ManufacturerId = x.ManufacturerId,
+							ProductId = x.ProductId,
+							ProductName = product.Name,
+							Sku = product.Sku,
+							ProductTypeName = product.GetProductTypeLabel(_localizationService),
+							ProductTypeLabelHint = product.ProductTypeLabelHint,
+							Published = product.Published,
+							IsFeaturedProduct = x.IsFeaturedProduct,
+							DisplayOrder1 = x.DisplayOrder
+						};
+					});
+
+				model.Total = productManufacturers.TotalCount;
+			}
+			else
+			{
+				model.Data = Enumerable.Empty<ManufacturerModel.ManufacturerProductModel>();
+
+				NotifyAccessDenied();
+			}
 
             return new JsonResult
             {
@@ -492,16 +538,15 @@ namespace SmartStore.Admin.Controllers
         [GridAction(EnableCustomBinding = true)]
         public ActionResult ProductUpdate(GridCommand command, ManufacturerModel.ManufacturerProductModel model)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
+			var productManufacturer = _manufacturerService.GetProductManufacturerById(model.Id);
 
-            var productManufacturer = _manufacturerService.GetProductManufacturerById(model.Id);
-            if (productManufacturer == null)
-                throw new ArgumentException("No product manufacturer mapping found with the specified id");
+			if (_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
+			{
+				productManufacturer.IsFeaturedProduct = model.IsFeaturedProduct;
+				productManufacturer.DisplayOrder = model.DisplayOrder1;
 
-            productManufacturer.IsFeaturedProduct = model.IsFeaturedProduct;
-            productManufacturer.DisplayOrder = model.DisplayOrder1;
-            _manufacturerService.UpdateProductManufacturer(productManufacturer);
+				_manufacturerService.UpdateProductManufacturer(productManufacturer);
+			}
 
             return ProductList(command, productManufacturer.ManufacturerId);
         }
@@ -509,142 +554,55 @@ namespace SmartStore.Admin.Controllers
         [GridAction(EnableCustomBinding = true)]
         public ActionResult ProductDelete(int id, GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
+			var productManufacturer = _manufacturerService.GetProductManufacturerById(id);
+			var manufacturerId = productManufacturer.ManufacturerId;
 
-            var productManufacturer = _manufacturerService.GetProductManufacturerById(id);
-            if (productManufacturer == null)
-                throw new ArgumentException("No product manufacturer mapping found with the specified id");
-
-            var manufacturerId = productManufacturer.ManufacturerId;
-            _manufacturerService.DeleteProductManufacturer(productManufacturer);
+			if (_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
+			{
+				_manufacturerService.DeleteProductManufacturer(productManufacturer);
+			}
 
             return ProductList(command, manufacturerId);
-        }
+        }       
 
-        public ActionResult ProductAddPopup(int manufacturerId)
-        {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
-            // codehint: sm-edit
-            var ctx = new ProductSearchContext();
-            ctx.LanguageId = _workContext.WorkingLanguage.Id;
-            ctx.OrderBy = ProductSortingEnum.Position;
-            ctx.PageSize = _adminAreaSettings.GridPageSize;
-            ctx.ShowHidden = true;
-
-            var products = _productService.SearchProducts(ctx);
-
-            var model = new ManufacturerModel.AddManufacturerProductModel();
-			model.Products = new GridModel<ProductModel>
+		[HttpPost]
+		public ActionResult ProductAdd(int manufacturerId, int[] selectedProductIds)
+		{
+			if (_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
 			{
-				Data = products.Select(x =>
+				var products = _productService.GetProductsByIds(selectedProductIds);
+				ProductManufacturer productManu = null;
+				var maxDisplayOrder = -1;
+
+				foreach (var product in products)
 				{
-					var productModel = x.ToModel();
-					productModel.ProductTypeName = x.GetProductTypeLabel(_localizationService);
+					var existingProductManus = _manufacturerService.GetProductManufacturersByManufacturerId(manufacturerId, 0, int.MaxValue, true);
 
-					return productModel;
-				}),
-				Total = products.TotalCount
-			};
+					if (!existingProductManus.Any(x => x.ProductId == product.Id && x.ManufacturerId == manufacturerId))
+					{
+						if (maxDisplayOrder == -1 && (productManu = existingProductManus.OrderByDescending(x => x.DisplayOrder).FirstOrDefault()) != null)
+						{
+							maxDisplayOrder = productManu.DisplayOrder;
+						}
 
-            //categories
-            var allCategories = _categoryService.GetAllCategories(showHidden: true);
-            var mappedCategories = allCategories.ToDictionary(x => x.Id);
-            foreach (var c in allCategories)
-            {
-                model.AvailableCategories.Add(new SelectListItem() { Text = c.GetCategoryNameWithPrefix(_categoryService, mappedCategories), Value = c.Id.ToString() });
-            }
-
-            //manufacturers
-            foreach (var m in _manufacturerService.GetAllManufacturers(true))
-            {
-                model.AvailableManufacturers.Add(new SelectListItem() { Text = m.Name, Value = m.Id.ToString() });
-            }
-
-			//product types
-			model.AvailableProductTypes = ProductType.SimpleProduct.ToSelectList(false).ToList();
-			model.AvailableProductTypes.Insert(0, new SelectListItem() { Text = _localizationService.GetResource("Admin.Common.All"), Value = "0" });
-
-            return View(model);
-        }
-
-        [HttpPost, GridAction(EnableCustomBinding = true)]
-        public ActionResult ProductAddPopupList(GridCommand command, ManufacturerModel.AddManufacturerProductModel model)
-        {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
-            var gridModel = new GridModel();
-
-            var ctx = new ProductSearchContext();
-
-            if (model.SearchCategoryId > 0)
-                ctx.CategoryIds.Add(model.SearchCategoryId);
-
-            ctx.ManufacturerId = model.SearchManufacturerId;
-            ctx.Keywords = model.SearchProductName;
-            ctx.LanguageId = _workContext.WorkingLanguage.Id;
-            ctx.OrderBy = ProductSortingEnum.Position;
-            ctx.PageIndex = command.Page - 1;
-            ctx.PageSize = command.PageSize;
-            ctx.ShowHidden = true;
-			ctx.ProductType = model.SearchProductTypeId > 0 ? (ProductType?)model.SearchProductTypeId : null;
-
-            var products = _productService.SearchProducts(ctx);
-
-            gridModel.Data = products.Select(x =>
+						_manufacturerService.InsertProductManufacturer(new ProductManufacturer
+						{
+							ManufacturerId = manufacturerId,
+							ProductId = product.Id,
+							IsFeaturedProduct = false,
+							DisplayOrder = ++maxDisplayOrder
+						});
+					}
+				}
+			}
+			else
 			{
-				var productModel = x.ToModel();
-				productModel.ProductTypeName = x.GetProductTypeLabel(_localizationService);
+				NotifyAccessDenied();
+			}
 
-				return productModel;
-			});
-            gridModel.Total = products.TotalCount;
-            return new JsonResult
-            {
-                Data = gridModel
-            };
-        }
-        
-        [HttpPost]
-        [FormValueRequired("save")]
-        public ActionResult ProductAddPopup(string btnId, string formId, ManufacturerModel.AddManufacturerProductModel model)
-        {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
+			return new EmptyResult();
+		}
 
-            if (model.SelectedProductIds != null)
-            {
-                foreach (int id in model.SelectedProductIds)
-                {
-                    var product = _productService.GetProductById(id);
-                    if (product != null)
-                    {
-                        var existingProductmanufacturers = _manufacturerService.GetProductManufacturersByManufacturerId(model.ManufacturerId, 0, int.MaxValue, true);
-                        if (existingProductmanufacturers.FindProductManufacturer(id, model.ManufacturerId) == null)
-                        {
-                            _manufacturerService.InsertProductManufacturer(
-                                new ProductManufacturer()
-                                {
-                                    ManufacturerId = model.ManufacturerId,
-                                    ProductId = id,
-                                    IsFeaturedProduct = false,
-                                    DisplayOrder = 1
-                                });
-                        }
-                    }
-                }
-            }
-
-            ViewBag.RefreshPage = true;
-            ViewBag.btnId = btnId;
-            ViewBag.formId = formId;
-            model.Products = new GridModel<ProductModel>();
-            return View(model);
-        }
-
-        #endregion
-    }
+		#endregion
+	}
 }

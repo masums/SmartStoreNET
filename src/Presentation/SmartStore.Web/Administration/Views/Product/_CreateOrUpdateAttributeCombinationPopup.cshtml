@@ -3,38 +3,28 @@
 @Html.ValidationSummary(false)
 @Html.HiddenFor(model => model.Id)@*otherwise we get a model state error*@
 
-@if (ViewBag.RefreshPage == true)
-{
-    <script type="text/javascript">
-    try {window.opener.document.forms['@(ViewBag.formId)'].@(ViewBag.btnId).click();}
-    catch (e){} 
-    window.close();
-    </script>
-}
-
-<div class="well" style="margin-bottom:8px;">
+<div class="well">
 	@if (ViewBag.IsEdit)
-	{
-		<div>
-			@Html.Raw(Html.TableFormattedVariantAttributes(Model.AttributesXml))
-		</div>
-	}
-	else
-	{
+    {
+		@Html.Raw(Html.TableFormattedVariantAttributes(Model.AttributesXml))
+    }
+    else
+    {
 		<div id="ProductVariantAttributeContainer">
-			@Html.Partial("_ProductAttributes", Model.ProductVariantAttributes)
+			@{ Html.RenderPartial("_ProductAttributes", Model); }
 		</div>
 	}
 </div>
 
 @if (!ViewBag.IsEdit)
 {
-	<div id="CombinationExistenceNote" style="margin:0; height:50px;">
+	<div id="CombinationExistenceNote">
 		@if (Model.Warnings.Count > 0)
 		{
-			<div class="alert alert-warning fade in" style="margin:0;">
-				@foreach (var warning in Model.Warnings) {
-				<p><i class="fa fa-exclamation-triangle"></i>&nbsp;@warning</p>
+			<div class="alert alert-warning">
+				@foreach (var warning in Model.Warnings)
+				{
+					<p><i class="fa fa-exclamation-triangle"></i>&nbsp;@warning</p>
 				}
 			</div>
 		}
@@ -60,15 +50,19 @@
                 @Html.SmartLabelFor(model => model.AssignedPictureIds)
             </td>
             <td class="adminData">
-                @foreach (var x in Model.AssignablePictures)
-                {
-                    <div class="pull-left" style="min-width:80px; min-height:65px; margin:1px 25px 1px 0;">
-                        <label class="x-checkbox">
-                            <input type="checkbox" name="AssignedPictureIds" value="@x.Id" @Html.Attr("checked", "checked", x.IsAssigned) />
-                            <img src="@x.PictureUrl" style="max-width:50px; max-height:50px; vertical-align:middle;" />
-                        </label>
-                    </div>
-                }
+				<ul class="choice-box-group choice-box-group-xl mb-1" id="assigned-pictures">
+					@foreach (var x in Model.AssignablePictures)
+					{
+						<li class="choice-box">
+							<label class="choice-box-label">
+								<input type="checkbox" class="choice-box-control-native" name="AssignedPictureIds" value="@x.Id" @Html.Attr("checked", "checked", x.IsAssigned)>
+								<span class="choice-box-content">
+									<span class="choice-box-element" style="background-image:url('@x.PictureUrl')"></span>
+								</span>
+							</label>
+						</li>
+					}
+				</ul>
             </td>
         </tr>
         <tr>
@@ -103,7 +97,7 @@
                 @Html.SmartLabelFor(model => model.Price)
             </td>
             <td class="adminData">
-                @Html.EditorFor(model => model.Price)
+                @Html.EditorFor(model => model.Price, new { postfix = Model.PrimaryStoreCurrencyCode })
                 @Html.ValidationMessageFor(model => model.Price)
             </td>
         </tr>
@@ -142,7 +136,7 @@
                 @Html.SmartLabelFor(model => model.Length)
             </td>
             <td class="adminData">
-                @Html.EditorFor(model => model.Length)
+                @Html.EditorFor(model => model.Length, new { postfix = Model.BaseDimensionIn })
                 @Html.ValidationMessageFor(model => model.Length)
             </td>
         </tr>
@@ -151,7 +145,7 @@
                 @Html.SmartLabelFor(model => model.Width)
             </td>
             <td class="adminData">
-                @Html.EditorFor(model => model.Width)
+                @Html.EditorFor(model => model.Width, new { postfix = Model.BaseDimensionIn })
                 @Html.ValidationMessageFor(model => model.Width)
             </td>
         </tr>
@@ -160,7 +154,7 @@
                 @Html.SmartLabelFor(model => model.Height)
             </td>
             <td class="adminData">
-                @Html.EditorFor(model => model.Height)
+                @Html.EditorFor(model => model.Height, new { postfix = Model.BaseDimensionIn })
                 @Html.ValidationMessageFor(model => model.Height)
             </td>
         </tr>
@@ -189,7 +183,7 @@
 </div>
 
 <script type="text/javascript">
-	$(document).ready(function () {
+    $(function () {
 		var container = $('#ProductVariantAttributeContainer'),
 			note = $('#CombinationExistenceNote');
 

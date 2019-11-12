@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Web.Mvc;
+using System.Web.Mvc.Html;
 using System.Web.Routing;
 using System.Web.WebPages;
 using SmartStore.Core;
@@ -10,7 +11,6 @@ using SmartStore.Utilities;
 
 namespace SmartStore.Web.Framework.UI
 {
-
     public abstract class NavigationItemBuilder<TItem, TBuilder> : IHideObjectMembers
         where TItem : NavigationItem
         where TBuilder : NavigationItemBuilder<TItem, TBuilder>
@@ -18,7 +18,7 @@ namespace SmartStore.Web.Framework.UI
 
         protected NavigationItemBuilder(TItem item)
         {
-            Guard.ArgumentNotNull(() => item);
+            Guard.NotNull(item, nameof(item));
 
             this.Item = item;
         }
@@ -99,7 +99,7 @@ namespace SmartStore.Web.Framework.UI
 
         public TBuilder HtmlAttributes(object attributes)
         {
-            return this.HtmlAttributes(CollectionHelper.ObjectToDictionary(attributes));
+            return this.HtmlAttributes(CommonHelper.ObjectToDictionary(attributes));
         }
 
         public TBuilder HtmlAttributes(IDictionary<string, object> attributes)
@@ -111,7 +111,7 @@ namespace SmartStore.Web.Framework.UI
 
         public TBuilder LinkHtmlAttributes(object attributes)
         {
-            return this.LinkHtmlAttributes(CollectionHelper.ObjectToDictionary(attributes));
+            return this.LinkHtmlAttributes(CommonHelper.ObjectToDictionary(attributes));
         }
 
         public TBuilder LinkHtmlAttributes(IDictionary<string, object> attributes)
@@ -127,7 +127,13 @@ namespace SmartStore.Web.Framework.UI
             return (this as TBuilder);
         }
 
-        public TBuilder Icon(string value)
+		public TBuilder ImageId(int? value)
+		{
+			this.Item.ImageId = value;
+			return (this as TBuilder);
+		}
+
+		public TBuilder Icon(string value)
         {
             this.Item.Icon = value;
             return (this as TBuilder);
@@ -139,7 +145,13 @@ namespace SmartStore.Web.Framework.UI
             return (this as TBuilder);
         }
 
-        public TBuilder Badge(string value, BadgeStyle style = BadgeStyle.Default, bool condition = true)
+		public TBuilder Summary(string value)
+		{
+			this.Item.Summary = value;
+			return (this as TBuilder);
+		}
+
+		public TBuilder Badge(string value, BadgeStyle style = BadgeStyle.Secondary, bool condition = true)
         {
             if (condition)
             {
@@ -177,7 +189,6 @@ namespace SmartStore.Web.Framework.UI
         {
             return this.Item;
         }
-
     }
 
     public abstract class NavigationItemtWithContentBuilder<TItem, TBuilder> : NavigationItemBuilder<TItem, TBuilder>
@@ -185,9 +196,18 @@ namespace SmartStore.Web.Framework.UI
         where TBuilder : NavigationItemtWithContentBuilder<TItem, TBuilder>
     {
 
-        public NavigationItemtWithContentBuilder(TItem item)
+        public NavigationItemtWithContentBuilder(TItem item, HtmlHelper htmlHelper)
             : base(item)
         {
+            Guard.NotNull(htmlHelper, nameof(htmlHelper));
+
+            HtmlHelper = htmlHelper;
+        }
+
+        protected HtmlHelper HtmlHelper
+        {
+            get;
+            private set;
         }
 
 		/// <summary>
@@ -226,9 +246,37 @@ namespace SmartStore.Web.Framework.UI
             return (this as TBuilder);
         }
 
+        /// <summary>
+        /// Renders child action as content
+        /// </summary>
+        /// <param name="action">Action name</param>
+        /// <param name="controller">Controller name</param>
+        /// <param name="routeValues">Route values</param>
+        /// <returns>builder instance</returns>
+        public TBuilder Content(string action, string controller, object routeValues)
+        {
+            return Content(action, controller, new RouteValueDictionary(routeValues));       
+        }
+
+        /// <summary>
+        /// Renders child action as content
+        /// </summary>
+        /// <param name="action">Action name</param>
+        /// <param name="controller">Controller name</param>
+        /// <param name="routeValues">Route values</param>
+        /// <returns>builder instance</returns>
+        public TBuilder Content(string action, string controller, RouteValueDictionary routeValues)
+        {
+            return this.Content(x => new HelperResult(writer => 
+            {
+                var value = this.HtmlHelper.Action(action, controller, routeValues);
+                writer.Write(value);
+            }));
+        }
+
         public TBuilder ContentHtmlAttributes(object attributes)
         {
-            return this.ContentHtmlAttributes(CollectionHelper.ObjectToDictionary(attributes));
+            return this.ContentHtmlAttributes(CommonHelper.ObjectToDictionary(attributes));
         }
 
         public TBuilder ContentHtmlAttributes(IDictionary<string, object> attributes)
@@ -237,7 +285,5 @@ namespace SmartStore.Web.Framework.UI
             this.Item.ContentHtmlAttributes.Merge(attributes);
             return (this as TBuilder);
         }
-
     }
-
 }

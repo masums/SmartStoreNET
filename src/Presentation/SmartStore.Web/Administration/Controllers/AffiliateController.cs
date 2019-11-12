@@ -18,11 +18,14 @@ using SmartStore.Services.Orders;
 using SmartStore.Services.Security;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Controllers;
+using SmartStore.Web.Framework.Filters;
+using SmartStore.Web.Framework.Security;
 using Telerik.Web.Mvc;
+using SmartStore.Services.Common;
 
 namespace SmartStore.Admin.Controllers
 {
-    [AdminAuthorize]
+	[AdminAuthorize]
     public partial class AffiliateController : AdminControllerBase
     {
         #region Fields
@@ -40,19 +43,19 @@ namespace SmartStore.Admin.Controllers
         private readonly IPermissionService _permissionService;
 		private readonly AdminAreaSettings _adminAreaSettings;
 		private readonly CustomerSettings _customerSettings;
+		private readonly IAddressService _addressService;
 
-        #endregion
+		#endregion
 
-        #region Constructors
+		#region Constructors
 
-        public AffiliateController(ILocalizationService localizationService,
+		public AffiliateController(ILocalizationService localizationService,
             IWorkContext workContext, IDateTimeHelper dateTimeHelper, IWebHelper webHelper,
             ICountryService countryService, IStateProvinceService stateProvinceService,
             IPriceFormatter priceFormatter, IAffiliateService affiliateService,
             ICustomerService customerService, IOrderService orderService,
-            IPermissionService permissionService,
-			AdminAreaSettings adminAreaSettings,
-			CustomerSettings customerSettings)
+            IPermissionService permissionService, AdminAreaSettings adminAreaSettings,
+			CustomerSettings customerSettings, IAddressService addressService)
         {
             this._localizationService = localizationService;
             this._workContext = workContext;
@@ -67,7 +70,8 @@ namespace SmartStore.Admin.Controllers
             this._permissionService = permissionService;
 			this._adminAreaSettings = adminAreaSettings;
 			this._customerSettings = customerSettings;
-        }
+			this._addressService = addressService;
+		}
 
         #endregion
 
@@ -86,7 +90,7 @@ namespace SmartStore.Admin.Controllers
                 if (!excludeProperties)
                 {
                     model.Active = affiliate.Active;
-                    model.Address = affiliate.Address.ToModel();
+                    model.Address = affiliate.Address.ToModel(_addressService);
                 }
             }
 
@@ -111,10 +115,9 @@ namespace SmartStore.Admin.Controllers
             model.Address.FaxEnabled = true;
 
 			model.GridPageSize = _adminAreaSettings.GridPageSize;
-			model.UsernamesEnabled = _customerSettings.UsernamesEnabled;
+			model.UsernamesEnabled = _customerSettings.CustomerLoginType != CustomerLoginType.Email;
 
             //address
-            //model.Address.AvailableCountries.Add(new SelectListItem() { Text = _localizationService.GetResource("Admin.Address.SelectCountry"), Value = "0" });
 			foreach (var c in _countryService.GetAllCountries(true))
 			{
 				model.Address.AvailableCountries.Add(new SelectListItem() { Text = c.Name, Value = c.Id.ToString(), Selected = (affiliate != null && c.Id == affiliate.Address.CountryId) });
@@ -128,7 +131,7 @@ namespace SmartStore.Admin.Controllers
 			}
 			else
 			{
-				model.Address.AvailableStates.Add(new SelectListItem() { Text = _localizationService.GetResource("Admin.Address.OtherNonUS"), Value = "0" });
+				model.Address.AvailableStates.Add(new SelectListItem() { Text = T("Admin.Address.OtherNonUS"), Value = "0" });
 			}
         }
 
@@ -154,23 +157,31 @@ namespace SmartStore.Admin.Controllers
         [HttpPost, GridAction(EnableCustomBinding = true)]
         public ActionResult List(GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageAffiliates))
-                return AccessDeniedView();
+			var model = new GridModel<AffiliateModel>();
 
-            var affiliates = _affiliateService.GetAllAffiliates(true);
-            var gridModel = new GridModel<AffiliateModel>
+			if (_permissionService.Authorize(StandardPermissionProvider.ManageAffiliates))
+			{
+				var affiliates = _affiliateService.GetAllAffiliates(true);
+
+				model.Data = affiliates.PagedForCommand(command).Select(x =>
+				{
+					var m = new AffiliateModel();
+					PrepareAffiliateModel(m, x, false);
+					return m;
+				});
+
+				model.Total = affiliates.Count;
+			}
+			else
+			{
+				model.Data = Enumerable.Empty<AffiliateModel>();
+
+				NotifyAccessDenied();
+			}
+
+			return new JsonResult
             {
-                Data = affiliates.PagedForCommand(command).Select(x =>
-                {
-                    var m = new AffiliateModel();
-                    PrepareAffiliateModel(m, x, false);
-                    return m;
-                }),
-                Total = affiliates.Count,
-            };
-            return new JsonResult
-            {
-                Data = gridModel
+                Data = model
             };
         }
 
@@ -186,7 +197,7 @@ namespace SmartStore.Admin.Controllers
             return View(model);
         }
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
         [FormValueRequired("save", "save-continue")]
         public ActionResult Create(AffiliateModel model, bool continueEditing)
         {
@@ -207,7 +218,7 @@ namespace SmartStore.Admin.Controllers
                     affiliate.Address.StateProvinceId = null;
                 _affiliateService.InsertAffiliate(affiliate);
 
-                NotifySuccess(_localizationService.GetResource("Admin.Affiliates.Added"));
+                NotifySuccess(T("Admin.Affiliates.Added"));
                 return continueEditing ? RedirectToAction("Edit", new { id = affiliate.Id }) : RedirectToAction("List");
             }
 
@@ -234,7 +245,7 @@ namespace SmartStore.Admin.Controllers
             return View(model);
         }
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
         public ActionResult Edit(AffiliateModel model, bool continueEditing)
         {
             if (!_permissionService.Authorize(StandardPermissionProvider.ManageAffiliates))
@@ -256,7 +267,7 @@ namespace SmartStore.Admin.Controllers
                     affiliate.Address.StateProvinceId = null;
                 _affiliateService.UpdateAffiliate(affiliate);
 
-                NotifySuccess(_localizationService.GetResource("Admin.Affiliates.Updated"));
+                NotifySuccess(T("Admin.Affiliates.Updated"));
                 return continueEditing ? RedirectToAction("Edit", affiliate.Id) : RedirectToAction("List");
             }
 
@@ -278,38 +289,41 @@ namespace SmartStore.Admin.Controllers
                 return RedirectToAction("List");
 
             _affiliateService.DeleteAffiliate(affiliate);
-            NotifySuccess(_localizationService.GetResource("Admin.Affiliates.Deleted"));
+            NotifySuccess(T("Admin.Affiliates.Deleted"));
             return RedirectToAction("List");
         }
 
         [HttpPost, GridAction(EnableCustomBinding = true)]
         public ActionResult AffiliatedOrderList(int affiliateId, GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageAffiliates))
-                return AccessDeniedView();
+			var model = new GridModel<AffiliateModel.AffiliatedOrderModel>();
 
-            var affiliate = _affiliateService.GetAffiliateById(affiliateId);
-            if (affiliate == null)
-                throw new ArgumentException("No affiliate found with the specified id");
+			if (_permissionService.Authorize(StandardPermissionProvider.ManageAffiliates))
+			{
+				var affiliate = _affiliateService.GetAffiliateById(affiliateId);
+				var orders = _orderService.GetAllOrders(affiliate.Id, command.Page - 1, command.PageSize);
 
-            var orders = _orderService.GetAllOrders(affiliate.Id, command.Page - 1, command.PageSize);
-            var model = new GridModel<AffiliateModel.AffiliatedOrderModel>
-            {
-                Data = orders.Select(order =>
-                {
-                    var orderModel = new AffiliateModel.AffiliatedOrderModel();
-                    orderModel.Id = order.Id;
-                    orderModel.OrderStatus = order.OrderStatus.GetLocalizedEnum(_localizationService, _workContext);
-                    orderModel.PaymentStatus = order.PaymentStatus.GetLocalizedEnum(_localizationService, _workContext);
-                    orderModel.ShippingStatus = order.ShippingStatus.GetLocalizedEnum(_localizationService, _workContext);
-                    orderModel.OrderTotal = _priceFormatter.FormatPrice(order.OrderTotal, true, false);
-                    orderModel.CreatedOn = _dateTimeHelper.ConvertToUserTime(order.CreatedOnUtc, DateTimeKind.Utc);
-                    return orderModel;
-                }),
-                Total = orders.TotalCount
-            };
+				model.Data = orders.Select(order =>
+				{
+					var orderModel = new AffiliateModel.AffiliatedOrderModel();
+					orderModel.Id = order.Id;
+					orderModel.OrderStatus = order.OrderStatus.GetLocalizedEnum(_localizationService, _workContext);
+					orderModel.PaymentStatus = order.PaymentStatus.GetLocalizedEnum(_localizationService, _workContext);
+					orderModel.ShippingStatus = order.ShippingStatus.GetLocalizedEnum(_localizationService, _workContext);
+					orderModel.OrderTotal = _priceFormatter.FormatPrice(order.OrderTotal, true, false);
+					orderModel.CreatedOn = _dateTimeHelper.ConvertToUserTime(order.CreatedOnUtc, DateTimeKind.Utc);
+					return orderModel;
+				});
+				model.Total = orders.TotalCount;
+			}
+			else
+			{
+				model.Data = Enumerable.Empty<AffiliateModel.AffiliatedOrderModel>();
 
-            return new JsonResult
+				NotifyAccessDenied();
+			}
+
+			return new JsonResult
             {
                 Data = model
             };
@@ -318,19 +332,22 @@ namespace SmartStore.Admin.Controllers
         [HttpPost, GridAction(EnableCustomBinding = true)]
         public ActionResult AffiliatedCustomerList(int affiliateId, GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageAffiliates))
-                return AccessDeniedView();
+			var model = new GridModel<AffiliateModel.AffiliatedCustomerModel>();
 
-            var affiliate = _affiliateService.GetAffiliateById(affiliateId);
-            if (affiliate == null)
-                throw new ArgumentException("No affiliate found with the specified id");
+			if (_permissionService.Authorize(StandardPermissionProvider.ManageAffiliates))
+			{
+				var q = new CustomerSearchQuery
+				{
+					AffiliateId = affiliateId,
+					PageIndex = command.Page - 1,
+					PageSize = command.PageSize
+				};
 
-            var customers = _customerService.GetAllCustomers(affiliate.Id, command.Page - 1, command.PageSize);
-            var model = new GridModel<AffiliateModel.AffiliatedCustomerModel>
-            {
-                Data = customers.Select(customer =>
-                {
-                    var customerModel = new AffiliateModel.AffiliatedCustomerModel()
+				var customers = _customerService.SearchCustomers(q);
+
+				model.Data = customers.Select(customer =>
+				{
+					var customerModel = new AffiliateModel.AffiliatedCustomerModel
 					{
 						Id = customer.Id,
 						Email = customer.Email,
@@ -338,16 +355,23 @@ namespace SmartStore.Admin.Controllers
 						FullName = customer.GetFullName()
 					};
 
-                    return customerModel;
-                }),
-                Total = customers.TotalCount
-            };
+					return customerModel;
+				});
+				model.Total = customers.TotalCount;
+			}
+			else
+			{
+				model.Data = Enumerable.Empty<AffiliateModel.AffiliatedCustomerModel>();
+
+				NotifyAccessDenied();
+			}
 
             return new JsonResult
             {
                 Data = model
             };
         }
+
         #endregion
     }
 }

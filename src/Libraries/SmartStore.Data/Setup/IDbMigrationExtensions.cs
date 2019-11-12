@@ -16,9 +16,9 @@ namespace SmartStore.Data.Setup
 	public static class IDbMigrationExtensions
 	{
 
-		public static void SqlFile(this IDbMigration migration, string fileName, Assembly assembly = null, string location = null)
+		public static void SqlFileOrResource(this IDbMigration migration, string fileName, Assembly assembly = null, string location = null)
 		{
-			Guard.ArgumentNotEmpty(() => fileName);
+			Guard.NotEmpty(fileName, nameof(fileName));
 
 			var tokenizer = new SqlFileTokenizer(fileName, assembly ?? Assembly.GetExecutingAssembly(), location);
 			foreach (var cmd in tokenizer.Tokenize())

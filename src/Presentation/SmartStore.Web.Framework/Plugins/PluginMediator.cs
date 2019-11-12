@@ -13,7 +13,6 @@ using SmartStore.Services;
 using SmartStore.Services.Cms;
 using SmartStore.Services.Localization;
 using SmartStore.Utilities;
-using SmartStore.Web.Framework.Mvc;
 
 namespace SmartStore.Web.Framework.Plugins
 {
@@ -25,33 +24,30 @@ namespace SmartStore.Web.Framework.Plugins
 
 		public PluginMediator(ICommonServices services, IComponentContext ctx)
 		{
-			this._services = services;
-			this._ctx = ctx;
-
-			T = NullLocalizer.Instance;
+			_services = services;
+			_ctx = ctx;
 		}
 
-		public Localizer T { get; set; }
-
-		public string GetLocalizedFriendlyName(ProviderMetadata metadata, int languageId = 0, bool returnDefaultValue = true)
+		public string GetLocalizedFriendlyName(IProviderMetadata metadata, int languageId = 0, bool returnDefaultValue = true)
 		{
 			return GetLocalizedValue(metadata, "FriendlyName", x => x.FriendlyName, languageId, returnDefaultValue);
 		}
 
-		public string GetLocalizedDescription(ProviderMetadata metadata, int languageId = 0, bool returnDefaultValue = true)
+		public string GetLocalizedDescription(IProviderMetadata metadata, int languageId = 0, bool returnDefaultValue = true)
 		{
 			return GetLocalizedValue(metadata, "Description", x => x.Description, languageId, returnDefaultValue);
 		}
 
-		public string GetLocalizedValue(ProviderMetadata metadata,
+		public string GetLocalizedValue<TMetadata>(TMetadata metadata,
 			string propertyName,
-			Expression<Func<ProviderMetadata, string>> fallback,
+			Expression<Func<TMetadata, string>> fallback,
 			int languageId = 0,
-			bool returnDefaultValue = true)
+			bool returnDefaultValue = true) 
+			where TMetadata : IProviderMetadata
 		{
-			Guard.ArgumentNotNull(() => metadata);
+			Guard.NotNull(metadata, nameof(metadata));
 
-			string systemName = metadata.SystemName;
+			var systemName = metadata.SystemName;
 			var resourceName = metadata.ResourceKeyPattern.FormatInvariant(metadata.SystemName, propertyName);
 			string result = _services.Localization.GetResource(resourceName, languageId, false, "", true);
 
@@ -61,11 +57,11 @@ namespace SmartStore.Web.Framework.Plugins
 			return result;
 		}
 
-		public void SaveLocalizedValue(ProviderMetadata metadata, int languageId, string propertyName, string value)
+		public void SaveLocalizedValue(IProviderMetadata metadata, int languageId, string propertyName, string value)
 		{
-			Guard.ArgumentNotNull(() => metadata);
-			Guard.ArgumentIsPositive(languageId, "languageId");
-			Guard.ArgumentNotEmpty(() => propertyName);
+			Guard.NotNull(metadata, nameof(metadata));
+			Guard.IsPositive(languageId, nameof(languageId));
+			Guard.NotEmpty(propertyName, nameof(propertyName));
 
 			var resourceName = metadata.ResourceKeyPattern.FormatInvariant(metadata.SystemName, propertyName);
 			var resource = _services.Localization.GetLocaleStringResourceByName(resourceName, languageId, false);
@@ -83,21 +79,19 @@ namespace SmartStore.Web.Framework.Plugins
 					resource.ResourceValue = value;
 					_services.Localization.UpdateLocaleStringResource(resource);
 				}
-				_services.Localization.ClearCache();
 			}
 			else
 			{
 				if (value.HasValue())
 				{
 					// insert
-					resource = new LocaleStringResource()
+					resource = new LocaleStringResource
 					{
 						LanguageId = languageId,
 						ResourceName = resourceName,
 						ResourceValue = value,
 					};
 					_services.Localization.InsertLocaleStringResource(resource);
-					_services.Localization.ClearCache();
 				}
 			}
 		}
@@ -115,7 +109,7 @@ namespace SmartStore.Web.Framework.Plugins
 
 		public void SetUserDisplayOrder(ProviderMetadata metadata, int displayOrder)
 		{
-			Guard.ArgumentNotNull(() => metadata);
+			Guard.NotNull(metadata, nameof(metadata));
 
 			metadata.DisplayOrder = displayOrder;
 			SetSetting(metadata, "DisplayOrder", displayOrder);
@@ -123,21 +117,22 @@ namespace SmartStore.Web.Framework.Plugins
 
 		public void SetSetting<T>(ProviderMetadata metadata, string propertyName, T value)
 		{
-			Guard.ArgumentNotNull(() => metadata);
-			Guard.ArgumentNotEmpty(() => propertyName);
+			Guard.NotNull(metadata, nameof(metadata));
+			Guard.NotEmpty(propertyName, nameof(propertyName));
 
 			var settingKey = metadata.SettingKeyPattern.FormatInvariant(metadata.SystemName, propertyName);
 
-			if (value != null)
+			using (_services.Settings.BeginScope())
 			{
-				_services.Settings.SetSetting<T>(settingKey, value, 0, false);
+				if (value != null)
+				{
+					_services.Settings.SetSetting<T>(settingKey, value, 0, false);
+				}
+				else
+				{
+					_services.Settings.DeleteSetting(settingKey);
+				}
 			}
-			else
-			{
-				_services.Settings.DeleteSetting(settingKey);
-			}
-			
-			_services.Settings.ClearCache();
 		}
 
 		public ProviderModel ToProviderModel(Provider<IProvider> provider, bool forEdit = false, Action<Provider<IProvider>, ProviderModel> enhancer = null)
@@ -149,10 +144,11 @@ namespace SmartStore.Web.Framework.Plugins
 			where TModel : ProviderModel, new()
 			where TProvider : IProvider
 		{
-			Guard.ArgumentNotNull(() => provider);
+			Guard.NotNull(provider, nameof(provider));
 
 			var metadata = provider.Metadata;
 			var model = new TModel();
+			model.ProviderType = typeof(TProvider);
 			model.SystemName = metadata.SystemName;
 			model.FriendlyName = forEdit ? metadata.FriendlyName : GetLocalizedFriendlyName(metadata);
 			model.Description = forEdit ? metadata.Description : GetLocalizedDescription(metadata);
@@ -169,10 +165,8 @@ namespace SmartStore.Web.Framework.Plugins
 			{
 				var routeInfo = _routesCache.GetOrAdd(model.SystemName, (key) =>
 				{
-					string actionName, controllerName;
-					RouteValueDictionary routeValues;
 					var configurable = (IConfigurable)provider.Value;
-					configurable.GetConfigurationRoute(out actionName, out controllerName, out routeValues);
+					configurable.GetConfigurationRoute(out var actionName, out var controllerName, out var routeValues);
 
 					if (actionName.IsEmpty())
 					{
@@ -283,7 +277,7 @@ namespace SmartStore.Web.Framework.Plugins
 
 		public void ActivateDependentWidgets(ProviderMetadata parent, bool activate)
 		{
-			Guard.ArgumentNotNull(() => parent);
+			Guard.NotNull(parent, nameof(parent));
 
 			if (parent.DependentWidgets == null || parent.DependentWidgets.Length == 0)
 				return;

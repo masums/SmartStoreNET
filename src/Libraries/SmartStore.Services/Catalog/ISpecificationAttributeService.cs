@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using SmartStore.Collections;
 using SmartStore.Core.Domain.Catalog;
 
 namespace SmartStore.Services.Catalog
@@ -21,8 +22,15 @@ namespace SmartStore.Services.Catalog
         /// <summary>
         /// Gets specification attributes
         /// </summary>
-        /// <returns>Specification attributes</returns>
+		/// <returns>Specification attribute query</returns>
         IQueryable<SpecificationAttribute> GetSpecificationAttributes();
+
+		/// <summary>
+		/// Gets specification attributes by identifier
+		/// </summary>
+		/// <param name="ids">Identifiers</param>
+		/// <returns>Specification attribute query</returns>
+		IQueryable<SpecificationAttribute> GetSpecificationAttributesByIds(int[] ids);
 
         /// <summary>
         /// Deletes a specification attribute
@@ -59,6 +67,13 @@ namespace SmartStore.Services.Catalog
         /// <param name="specificationAttributeId">The specification attribute identifier</param>
         /// <returns>Specification attribute option</returns>
         IList<SpecificationAttributeOption> GetSpecificationAttributeOptionsBySpecificationAttribute(int specificationAttributeId);
+
+        /// <summary>
+        /// Gets specification attribute options by specification attribute id
+        /// </summary>
+        /// <param name="specificationAttributeIds">Specification attribute identifiers</param>
+        /// <returns>Map of specification attribute options</returns>
+        Multimap<int, SpecificationAttributeOption> GetSpecificationAttributeOptionsBySpecificationAttributeIds(int[] specificationAttributeIds);
 
         /// <summary>
         /// Deletes a specification attribute option
@@ -113,6 +128,13 @@ namespace SmartStore.Services.Catalog
         ProductSpecificationAttribute GetProductSpecificationAttributeById(int productSpecificationAttributeId);
 
         /// <summary>
+        /// Get product specification attributes by product identifiers
+        /// </summary>
+        /// <param name="productIds">Product identifiers</param>
+        /// <returns>Map of product specification attributes</returns>
+        Multimap<int, ProductSpecificationAttribute> GetProductSpecificationAttributesByProductIds(int[] productIds);
+
+        /// <summary>
         /// Inserts a product specification attribute mapping
         /// </summary>
         /// <param name="productSpecificationAttribute">Product specification attribute mapping</param>
@@ -123,9 +145,6 @@ namespace SmartStore.Services.Catalog
         /// </summary>
         /// <param name="productSpecificationAttribute">Product specification attribute mapping</param>
         void UpdateProductSpecificationAttribute(ProductSpecificationAttribute productSpecificationAttribute);
-
-		/// <remarks>codehint: sm-add</remarks>
-		void UpdateProductSpecificationMapping(int specificationAttributeId, string field, bool value);
 
         #endregion
     }

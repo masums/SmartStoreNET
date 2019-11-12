@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.Serialization;
@@ -17,10 +18,10 @@ namespace SmartStore.Core.Domain.Orders
     /// Represents an order
     /// </summary>
     [DataContract]
-	public partial class Order : BaseEntity, ISoftDeletable
+	public partial class Order : BaseEntity, IAuditable, ISoftDeletable
     {
-
-        private ICollection<DiscountUsageHistory> _discountUsageHistory;
+		private ICollection<WalletHistory> _walletHistory;
+		private ICollection<DiscountUsageHistory> _discountUsageHistory;
         private ICollection<GiftCardUsageHistory> _giftCardUsageHistory;
         private ICollection<OrderNote> _orderNotes;
         private ICollection<OrderItem> _orderItems;
@@ -187,6 +188,12 @@ namespace SmartStore.Core.Domain.Orders
         [DataMember]
         public decimal OrderShippingExclTax { get; set; }
 
+		/// <summary>
+		/// Gets or sets the tax rate for order shipping
+		/// </summary>
+		[DataMember]
+		public decimal OrderShippingTaxRate { get; set; }
+
         /// <summary>
         /// Gets or sets the payment method additional fee (incl tax)
         /// </summary>
@@ -198,6 +205,12 @@ namespace SmartStore.Core.Domain.Orders
         /// </summary>
         [DataMember]
         public decimal PaymentMethodAdditionalFeeExclTax { get; set; }
+
+		/// <summary>
+		/// Gets or sets the tax rate for payment method additional fee
+		/// </summary>
+		[DataMember]
+		public decimal PaymentMethodAdditionalFeeTaxRate { get; set; }
 
         /// <summary>
         /// Gets or sets the tax rates
@@ -217,6 +230,18 @@ namespace SmartStore.Core.Domain.Orders
         [DataMember]
         public decimal OrderDiscount { get; set; }
 
+		/// <summary>
+		/// Gets or sets the wallet credit amount used to (partially) pay this order.
+		/// </summary>
+		[DataMember]
+		public decimal CreditBalance { get; set; }
+
+		/// <summary>
+		/// Gets or sets the order total rounding amount
+		/// </summary>
+		[DataMember]
+        public decimal OrderTotalRounding { get; set; }
+
         /// <summary>
         /// Gets or sets the order total
         /// </summary>
@@ -229,10 +254,10 @@ namespace SmartStore.Core.Domain.Orders
         [DataMember]
         public decimal RefundedAmount { get; set; }
 
-        /// <summary>
-        /// Gets or sets the value indicating whether reward points were earned for this order
-        /// </summary>
-        [DataMember]
+		/// <summary>
+		/// Gets or sets the value indicating whether reward points were earned for this order
+		/// </summary>
+		[DataMember]
         public bool RewardPointsWereAdded { get; set; }
         
         /// <summary>
@@ -307,7 +332,6 @@ namespace SmartStore.Core.Domain.Orders
         /// </summary>
         public string CardExpirationYear { get; set; }
 
-        /// codehint:sm-add begin
         /// <summary>
         /// Gets or sets a value indicating whether storing of credit card number is allowed
         /// </summary>
@@ -351,6 +375,7 @@ namespace SmartStore.Core.Domain.Orders
         /// <summary>
         /// Gets or sets the customer order comment
         /// </summary>
+        [DataMember]
         public string CustomerOrderComment { get; set; }
 
         /// <summary>
@@ -416,6 +441,7 @@ namespace SmartStore.Core.Domain.Orders
         /// <summary>
         /// Gets or sets a value indicating whether the entity has been deleted
         /// </summary>
+		[Index]
         public bool Deleted { get; set; }
 
         /// <summary>
@@ -436,14 +462,26 @@ namespace SmartStore.Core.Domain.Orders
 		[DataMember]
 		public int? RewardPointsRemaining { get; set; }
 
-        #endregion
+		/// <summary>
+		/// Gets or sets a value indicating whether a new payment notification arrived (IPN, webhook, callback etc.)
+		/// </summary>
+		[DataMember]
+		public bool HasNewPaymentNotification { get; set; }
 
-        #region Navigation properties
+		/// <summary>
+		/// Gets or sets a value indicating whether the customer accepted to hand over email address to third party
+		/// </summary>
+		[DataMember]
+		public bool AcceptThirdPartyEmailHandOver { get; set; }
 
-        /// <summary>
-        /// Gets or sets the customer
-        /// </summary>
-        [DataMember]
+		#endregion
+
+		#region Navigation properties
+
+		/// <summary>
+		/// Gets or sets the customer
+		/// </summary>
+		[DataMember]
         public virtual Customer Customer { get; set; }
 
         /// <summary>
@@ -463,12 +501,21 @@ namespace SmartStore.Core.Domain.Orders
         /// </summary>
         public virtual RewardPointsHistory RedeemedRewardPointsEntry { get; set; }
 
-        /// <summary>
-        /// Gets or sets discount usage history
-        /// </summary>
-        public virtual ICollection<DiscountUsageHistory> DiscountUsageHistory
+		/// <summary>
+		/// Gets or sets the wallet history.
+		/// </summary>
+		public virtual ICollection<WalletHistory> WalletHistory
+		{
+			get { return _walletHistory ?? (_walletHistory = new HashSet<WalletHistory>()); }
+			protected set { _walletHistory = value; }
+		}
+
+		/// <summary>
+		/// Gets or sets discount usage history
+		/// </summary>
+		public virtual ICollection<DiscountUsageHistory> DiscountUsageHistory
         {
-            get { return _discountUsageHistory ?? (_discountUsageHistory = new List<DiscountUsageHistory>()); }
+			get { return _discountUsageHistory ?? (_discountUsageHistory = new HashSet<DiscountUsageHistory>()); }
             protected set { _discountUsageHistory = value; }
         }
 
@@ -477,7 +524,7 @@ namespace SmartStore.Core.Domain.Orders
         /// </summary>
         public virtual ICollection<GiftCardUsageHistory> GiftCardUsageHistory
         {
-            get { return _giftCardUsageHistory ?? (_giftCardUsageHistory = new List<GiftCardUsageHistory>()); }
+			get { return _giftCardUsageHistory ?? (_giftCardUsageHistory = new HashSet<GiftCardUsageHistory>()); }
             protected set { _giftCardUsageHistory = value; }
         }
 
@@ -487,7 +534,7 @@ namespace SmartStore.Core.Domain.Orders
 		[DataMember]
 		public virtual ICollection<OrderNote> OrderNotes
         {
-            get { return _orderNotes ?? (_orderNotes = new List<OrderNote>()); }
+			get { return _orderNotes ?? (_orderNotes = new HashSet<OrderNote>()); }
             protected set { _orderNotes = value; }
         }
 
@@ -497,7 +544,7 @@ namespace SmartStore.Core.Domain.Orders
 		[DataMember]
 		public virtual ICollection<OrderItem> OrderItems
         {
-            get { return _orderItems ?? (_orderItems = new List<OrderItem>()); }
+			get { return _orderItems ?? (_orderItems = new HashSet<OrderItem>()); }
             protected set { _orderItems = value; }
         }
 
@@ -507,7 +554,7 @@ namespace SmartStore.Core.Domain.Orders
 		[DataMember]
 		public virtual ICollection<Shipment> Shipments
         {
-            get { return _shipments ?? (_shipments = new List<Shipment>()); }
+			get { return _shipments ?? (_shipments = new HashSet<Shipment>()); }
             protected set { _shipments = value; }
         }
 

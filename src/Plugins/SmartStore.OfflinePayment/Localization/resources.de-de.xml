@@ -13,19 +13,13 @@
   <LocaleResource Name="DescriptionText.Hint">
     <Value>Geben Sie hier die Beschreibung an, die dem Kunden im Bestellprozess angezeigt wird.</Value>
   </LocaleResource>
-  <LocaleResource Name="AdditionalFee">
-    <Value>Zusätzliche Gebühr</Value>
+  <LocaleResource Name="PaymentMethodLogo">
+	<Value>Logo</Value>
   </LocaleResource>
-  <LocaleResource Name="AdditionalFee.Hint">
-    <Value>Bestimmt die Gebühr, die dem Kunden für die Nutzung dieser Zahlart berechnet wird.</Value>
+  <LocaleResource Name="PaymentMethodLogo.Hint">
+	<Value>Laden Sie hier eine Grafik hoch, welche auf der Zahlartauswahlseite als Thumbnail der Zahlart angezeigt wird.</Value>
   </LocaleResource>
-  <LocaleResource Name="AdditionalFeePercentage">
-    <Value>Zusätzliche Gebühren (prozentual)</Value>
-  </LocaleResource>
-  <LocaleResource Name="AdditionalFeePercentage.Hint">
-    <Value>Zusätzliche prozentuale Gebühr zum Gesamtbetrag. Ein fester Wert wird verwendet, falls diese Option nicht aktiviert ist.</Value>
-  </LocaleResource>
-  
+
   <!-- CashOnDelivery -->
   <LocaleResource Name="Plugins.FriendlyName.Payments.CashOnDelivery" AppendRootKey="false">
     <Value>Nachnahme</Value>
@@ -40,7 +34,7 @@
       <LocaleResource Name="PaymentInfoDescription">
         <Value>
           <![CDATA[
-            Sobald Ihre Bestellung abgeschloßen ist, werden Sie persönlich von einem unserer Mitarbeiter kontaktiert, um die Bestellung zu bestätigen.
+            Sobald Ihre Bestellung abgeschlossen ist, werden Sie persönlich von einem unserer Mitarbeiter kontaktiert, um die Bestellung zu bestätigen.
           ]]>
         </Value>
       </LocaleResource>   
@@ -61,7 +55,7 @@
       <LocaleResource Name="PaymentInfoDescription">
         <Value>
           <![CDATA[
-            Sobald Ihre Bestellung abgeschloßen ist, werden Sie persönlich von einem unserer Mitarbeiter kontaktiert, um die Bestellung zu bestätigen.
+            Sobald Ihre Bestellung abgeschlossen ist, werden Sie persönlich von einem unserer Mitarbeiter kontaktiert, um die Bestellung zu bestätigen.
           ]]>
         </Value>
       </LocaleResource>
@@ -103,7 +97,7 @@
       <LocaleResource Name="PaymentInfoDescription">
         <Value>
           <![CDATA[
-            Sobald Ihre Bestellung abgeschloßen ist, werden Sie persönlich von einem unserer Mitarbeiter kontaktiert, um die Bestellung zu bestätigen.
+            Sobald Ihre Bestellung abgeschlossen ist, werden Sie persönlich von einem unserer Mitarbeiter kontaktiert, um die Bestellung zu bestätigen.
           ]]>
         </Value>
       </LocaleResource>
@@ -121,11 +115,24 @@
           <![CDATA[ ]]>
         </Value>
       </LocaleResource>
+      <LocaleResource Name="PaymentInfoDescription">
+	    <Value>
+			<![CDATA[
+				Sobald Ihre Bestellung abgeschlossen ist, werden Sie persönlich von einem unserer Mitarbeiter kontaktiert, um die Bestellung zu bestätigen.
+			]]>
+	    </Value>
+	  </LocaleResource>
       <LocaleResource Name="Fields.TransactMode">
-        <Value>Markiere die Zahlung nach dem Abschluß der Bestellung als</Value>
+        <Value>Zahlungsstatus nach Bestellabschluss</Value>
       </LocaleResource>
       <LocaleResource Name="Fields.TransactMode.Hint">
-        <Value>Bestimmen Sie den Transaktionsmodus.</Value>
+        <Value>Legt den Zahlungsstatus nach Bestellabschluss fest.</Value>
+      </LocaleResource>
+      <LocaleResource Name="ExcludedCreditCards">
+        <Value>Auszuschließende Kreditkarten</Value>
+      </LocaleResource>
+      <LocaleResource Name="ExcludedCreditCards.Hint">
+        <Value>Kreditkarten mit denen Kunden nicht zahlen dürfen.</Value>
       </LocaleResource>
     </Children>
   </LocaleResource>
@@ -144,7 +151,7 @@
       <LocaleResource Name="PaymentInfoDescription">
         <Value>
           <![CDATA[
-            Sobald Ihre Bestellung abgeschloßen ist, werden Sie persönlich von einem unserer Mitarbeiter kontaktiert, um die Bestellung zu bestätigen.
+            Sobald Ihre Bestellung abgeschlossen ist, werden Sie persönlich von einem unserer Mitarbeiter kontaktiert, um die Bestellung zu bestätigen.
           ]]>
         </Value>
       </LocaleResource>
@@ -193,23 +200,24 @@
     <LocaleResource Name="YesEnterIBAN">
       <Value>Ja</Value>
     </LocaleResource>
-    <LocaleResource Name="DirectDebitAccountHolderRequired">
-      <Value>Geben Sie bitte den Namen des Kontoinhabers ein.</Value>
-    </LocaleResource>
-    <LocaleResource Name="DirectDebitAccountNumberRequired">
-      <Value>Geben Sie bitte Ihre Kontonummer ein.</Value>
-    </LocaleResource>
-    <LocaleResource Name="DirectDebitBankCodeRequired">
-      <Value>Geben Sie bitte die Bankleitzahl (BLZ) ein.</Value>
-    </LocaleResource>
-    <LocaleResource Name="DirectDebitIbanRequired">
-      <Value>Geben Sie bitte die IBAN (International Bank Account Number) ein.</Value>
-    </LocaleResource>
-    <LocaleResource Name="DirectDebitBicRequired">
-      <Value>Geben Sie bitte die BIC (Bank Interchange Code) ein.</Value>
-    </LocaleResource>
     </Children>
   </LocaleResource>
 
+  <!-- PuchaseOrderNumber -->
+  <LocaleResource Name="Plugins.FriendlyName.SmartStore.PurchaseOrderNumber" AppendRootKey="false">
+    <Value>Bestellnummer</Value>
+  </LocaleResource>
+  <LocaleResource Name="Plugins.Payments.PuchaseOrder" AppendRootKey="false">
+    <Children>
+      <LocaleResource Name="AdminInstruction">
+        <Value>
+          <![CDATA[ ]]>
+        </Value>
+      </LocaleResource>
+      <LocaleResource Name="PurchaseOrderNumber">
+        <Value>Bestellnummer</Value>
+      </LocaleResource>
+    </Children>
+  </LocaleResource>
 
 </Language>

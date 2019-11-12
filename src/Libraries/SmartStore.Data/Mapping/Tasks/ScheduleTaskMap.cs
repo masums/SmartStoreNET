@@ -7,13 +7,15 @@ namespace SmartStore.Data.Mapping.Tasks
     {
         public ScheduleTaskMap()
         {
-            this.ToTable("ScheduleTask");
-            this.HasKey(t => t.Id);
-            this.Property(t => t.Name).IsRequired();
-            this.Property(t => t.Type).IsRequired();
-			this.Property(t => t.LastError).HasMaxLength(1000);
+            ToTable("ScheduleTask");
+            HasKey(t => t.Id);
+            Property(t => t.Name).HasMaxLength(500).IsRequired();
+            Property(t => t.Type).HasMaxLength(800).IsRequired();
+			Property(t => t.Alias).HasMaxLength(500);
+			Property(t => t.CronExpression).HasMaxLength(1000);
 
-			this.Ignore(t => t.IsRunning);
+			Ignore(t => t.IsPending);
+            Ignore(t => t.LastHistoryEntry);
         }
     }
 }

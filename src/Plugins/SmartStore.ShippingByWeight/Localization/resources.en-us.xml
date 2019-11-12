@@ -8,6 +8,12 @@
   <LocaleResource Name="Fields.Country.Hint">
     <Value>If an asterisk is selected, then this shipping rate will apply to all customers, regardless of the country.</Value>
   </LocaleResource>
+  <LocaleResource Name="Fields.Zip">
+    <Value>Zip-(Range)</Value>
+  </LocaleResource>
+  <LocaleResource Name="Fields.Zip.Hint">
+    <Value>Zip/postal code (range), either as specific values (comma devided) or range pattern (e.g. 4000-4999). You can also define wildcard chars like * or ?. If zip is empty, then this shipping rate will apply to all customers from the given country or state / province, regardless of the zip code. You can also enter multiple ranges (comma devided)</Value>
+  </LocaleResource>
   <LocaleResource Name="Fields.ShippingMethod">
     <Value>Shipping method</Value>
   </LocaleResource>
@@ -30,7 +36,7 @@
     <Value>Use percentage</Value>
   </LocaleResource>
   <LocaleResource Name="Fields.UsePercentage.Hint">
-    <Value>Check to use 'charge percentage' value.</Value>
+    <Value>Check the box to use 'charge percentage' value.</Value>
   </LocaleResource>
   <LocaleResource Name="Fields.ShippingChargePercentage">
     <Value>Charge percentage (of subtotal)</Value>
@@ -56,6 +62,12 @@
   <LocaleResource Name="Fields.CalculatePerWeightUnit.Hint">
     <Value>If you check this option, then rates are multiplied per weight unit (lb, kg, etc). This option is used for the fixed rates (without percents).</Value>
   </LocaleResource>
+  <LocaleResource Name="Fields.IncludeWeightOfFreeShippingProducts">
+    <Value>Include weight of free shipping products</Value>
+  </LocaleResource>
+  <LocaleResource Name="Fields.IncludeWeightOfFreeShippingProducts.Hint">
+    <Value>Specifies whether to include the weight of free shipping products in the calculation.</Value>
+  </LocaleResource>
 	<LocaleResource Name="Fields.Store">
 		<Value>Store</Value>
 	</LocaleResource>
@@ -75,16 +87,21 @@
   <LocaleResource Name="Fields.SmallQuantityThreshold.Hint">
     <Value>Subtotal up to which a "small quantity surcharge" should be added. The surcharge will be ignored if no shipping fee is applied. Use "0" if no fee will be charged.</Value>
   </LocaleResource>
-  <LocaleResource Name="SmallQuantitySurchargeNotReachedt">
+  <LocaleResource Name="SmallQuantitySurchargeNotReached">
     <Value>
       <![CDATA[<br>You're charged with a surcharge of <b class=\"text-success\">{0}</b> because the total of your order hasn't reached <b class=\"text-warning\">{1}</b>.]]>
     </Value>
   </LocaleResource>
-
-    <LocaleResource Name="AddNewRecordTitle">
+  <LocaleResource Name="AddNewRecordTitle">
     <Value>Add new record</Value>
   </LocaleResource>
-  <LocaleResource Name="SettingsTitle">
-    <Value>Settings</Value>
+  <LocaleResource Name="AddNewRecord.Success">
+	<Value>The new record was successfully added.</Value>
+  </LocaleResource>
+  <LocaleResource Name="TabTitleSettings">
+	<Value>Options</Value>
+  </LocaleResource>
+  <LocaleResource Name="TabTitleGrid">
+	<Value>Shipping records</Value>
   </LocaleResource>
 </Language>

@@ -1,15 +1,15 @@
 using System;
-using SmartStore.Core.Domain.Customers;
 using System.Runtime.Serialization;
+using SmartStore.Core.Domain.Customers;
 
 namespace SmartStore.Core.Domain.Orders
 {
-    /// <summary>
-    /// Represents a return request
-    /// </summary>
+	/// <summary>
+	/// Represents a return request
+	/// </summary>
 	[DataContract]
-	public partial class ReturnRequest : BaseEntity
-    {
+	public partial class ReturnRequest : BaseEntity, IAuditable
+	{
 		/// <summary>
 		/// Gets or sets the store identifier
 		/// </summary>
@@ -46,6 +46,12 @@ namespace SmartStore.Core.Domain.Orders
 		[DataMember]
 		public string RequestedAction { get; set; }
 
+		/// <summary>
+		/// Gets or sets the date and time when requested action was last updated
+		/// </summary>
+		[DataMember]
+		public DateTime? RequestedActionUpdatedOnUtc { get; set; }
+
         /// <summary>
         /// Gets or sets the customer comments
         /// </summary>
@@ -58,15 +64,27 @@ namespace SmartStore.Core.Domain.Orders
 		[DataMember]
 		public string StaffNotes { get; set; }
 
+		/// <summary>
+		/// Gets or sets the admin comment
+		/// </summary>
+		[DataMember]
+		public string AdminComment { get; set; }
+
         /// <summary>
         /// Gets or sets the return status identifier
         /// </summary>
 		[DataMember]
 		public int ReturnRequestStatusId { get; set; }
-        
-        /// <summary>
-        /// Gets or sets the date and time of entity creation
-        /// </summary>
+
+		/// <summary>
+		/// Gets or sets whether to refund to wallet.
+		/// </summary>
+		[DataMember]
+		public bool? RefundToWallet { get; set; }
+
+		/// <summary>
+		/// Gets or sets the date and time of entity creation
+		/// </summary>
 		[DataMember]
 		public DateTime CreatedOnUtc { get; set; }
 

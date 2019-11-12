@@ -6,16 +6,23 @@ namespace SmartStore.Utilities
 {
 
     ///<summary>
-    /// Implementation of the Infelctor in Ruby that transforms words from singular to plural, 
+    /// Implementation of the Inflector in Ruby that transforms words from singular to plural, 
     /// class names to table names, modularized class names to ones without, and class names to foreign keys
     ///</summary>
     // TODO: Inflector ist leider Englisch! Irgend 'ne Chance das zu lokalisieren??!!
     public static class Inflector
     {
-        #region fields
-        private static readonly List<Rule> _plurals = new List<Rule>();
+		#region fields
+
+		private static readonly Regex HtmlCaseRegex = new Regex(
+			"(?<!^)((?<=[a-zA-Z0-9])[A-Z][a-z])|((?<=[a-z])[A-Z])",
+			RegexOptions.None,
+			TimeSpan.FromMilliseconds(500));
+
+		private static readonly List<Rule> _plurals = new List<Rule>();
         private static readonly List<Rule> _singulars = new List<Rule>();
         private static readonly List<string> _uncountables = new List<string>();
+
         #endregion
 
         #region ..ctor
@@ -220,12 +227,17 @@ namespace SmartStore.Utilities
             return Uncapitalize(Pascalize(lowercaseAndUnderscoredWord));
         }
 
-        /// <summary>
-        /// Makes an underscored form from the expression in the string. 
-        /// </summary>
-        /// <param name="pascalCasedWord">string. The word to underscore.</param>
-        /// <returns>string. The word with underscore seperators.</returns>
-        public static string Underscore(string pascalCasedWord)
+		public static string Handleize(string input)
+		{
+			return HtmlCaseRegex.Replace(input, "-$1$2").ToLowerInvariant();
+		}
+
+		/// <summary>
+		/// Makes an underscored form from the expression in the string. 
+		/// </summary>
+		/// <param name="pascalCasedWord">string. The word to underscore.</param>
+		/// <returns>string. The word with underscore seperators.</returns>
+		public static string Underscore(string pascalCasedWord)
         {
             return Regex.Replace(
               Regex.Replace(

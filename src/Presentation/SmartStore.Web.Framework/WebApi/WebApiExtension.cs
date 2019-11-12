@@ -4,7 +4,9 @@ using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Web.Http;
+using System.Web.Http.Dependencies;
 using System.Web.Http.OData.Routing;
+using SmartStore.Utilities;
 
 namespace SmartStore.Web.Framework.WebApi
 {
@@ -23,6 +25,13 @@ namespace SmartStore.Web.Framework.WebApi
 		public static HttpResponseMessage CreateResponse(this HttpRequestMessage request, HttpStatusCode status, Type type, object value)
 		{
 			return _createResponse.MakeGenericMethod(type).Invoke(null, new[] { request, status, value }) as HttpResponseMessage;
+		}
+		public static HttpResponseMessage CreateResponseForEntity(this HttpRequestMessage request, object entity, int key)
+		{
+			if (entity == null)
+				return request.CreateResponse(HttpStatusCode.NotFound, WebApiGlobal.Error.EntityNotFound.FormatInvariant(key));
+
+			return request.CreateResponse(HttpStatusCode.OK, entity.GetType(), entity);
 		}
 
 		public static HttpResponseException ExceptionInvalidModelState(this ApiController apiController)
@@ -45,27 +54,39 @@ namespace SmartStore.Web.Framework.WebApi
 		{
 			return new HttpResponseException(HttpStatusCode.Forbidden);
 		}
+		public static HttpResponseException ExceptionForbidden(this ApiController apiController, string message)
+		{
+			return new HttpResponseException(apiController.Request.CreateErrorResponse(HttpStatusCode.Forbidden, message));
+		}
+		public static HttpResponseException ExceptionUnsupportedMediaType(this ApiController apiController)
+		{
+			return new HttpResponseException(HttpStatusCode.UnsupportedMediaType);
+		}
+		public static HttpResponseException ExceptionNotFound(this ApiController apiController, string message)
+		{
+			return new HttpResponseException(apiController.Request.CreateErrorResponse(HttpStatusCode.NotFound, message));
+		}
+		public static HttpResponseException ExceptionInternalServerError(this ApiController apiController, Exception exc)
+		{
+			return new HttpResponseException(apiController.Request.CreateErrorResponse(HttpStatusCode.InternalServerError, exc));
+		}
 
 		/// <summary>
 		/// Further entity processing typically used by OData actions.
 		/// </summary>
-		/// <param name="process">Return an error string or null if your processing succeeded.</param>
-		public static void ProcessEntity(this ApiController apiController, Func<string> process)
+		/// <param name="process">Action for entity processing.</param>
+		public static void ProcessEntity(this ApiController apiController, Action process)
 		{
-			string error = null;
-
 			try
 			{
-				error = process();
+				process();
 			}
-			catch (Exception exc)
+			catch (Exception exception)
 			{
-				error = exc.Message;
+				throw apiController.ExceptionUnprocessableEntity(exception.Message);
 			}
-
-			if (error.HasValue())
-				throw apiController.ExceptionUnprocessableEntity(error);
 		}
+
 		public static bool GetNormalizedKey(this ODataPath odataPath, int segmentIndex, out int key)
 		{
 			if (odataPath.Segments.Count > segmentIndex)
@@ -82,6 +103,32 @@ namespace SmartStore.Web.Framework.WebApi
 			}
 			key = 0;
 			return false;
+		}
+
+		public static string GetNavigation(this ODataPath odataPath, int segmentIndex)
+		{
+			if (odataPath.Segments.Count > segmentIndex)
+			{
+				string navigationProperty = (odataPath.Segments[segmentIndex] as NavigationPathSegment).NavigationPropertyName;
+
+				return navigationProperty;
+			}
+			return null;
+		}
+
+		public static void DeleteLocalFiles(this MultipartFormDataStreamProvider provider)
+		{
+			try
+			{
+				foreach (var file in provider.FileData)
+					FileSystemHelper.DeleteFile(file.LocalFileName);
+			}
+			catch { }
+		}
+
+		public static T GetService<T>(this IDependencyScope dependencyScope)
+		{
+			return (T)dependencyScope.GetService(typeof(T));
 		}
 	}
 }

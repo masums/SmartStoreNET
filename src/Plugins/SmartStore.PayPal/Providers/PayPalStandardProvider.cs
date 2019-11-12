@@ -1,83 +1,56 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Text;
-using System.Linq;
 using System.Web;
 using System.Web.Routing;
-using Autofac;
-using SmartStore.Core;
-using SmartStore.Core.Domain.Directory;
+using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Payments;
 using SmartStore.Core.Domain.Shipping;
 using SmartStore.Core.Logging;
-using SmartStore.Services.Configuration;
-using SmartStore.Services.Directory;
+using SmartStore.Core.Plugins;
+using SmartStore.PayPal.Controllers;
+using SmartStore.PayPal.Settings;
+using SmartStore.Services;
 using SmartStore.Services.Localization;
 using SmartStore.Services.Orders;
 using SmartStore.Services.Payments;
-using SmartStore.Services.Tax;
-using SmartStore.Core.Plugins;
-using SmartStore.PayPal.Settings;
-using SmartStore.PayPal.Services;
-using SmartStore.PayPal.Controllers;
-using System.Diagnostics;
-using SmartStore.Web.Framework.Plugins;
-using SmartStore.Services;
 
 namespace SmartStore.PayPal
 {
-	/// <summary>
-	/// PayPalStandard provider
-	/// </summary>
-    [SystemName("Payments.PayPalStandard")]
+	[SystemName("Payments.PayPalStandard")]
     [FriendlyName("PayPal Standard")]
-    [DisplayOrder(2)]
+    [DisplayOrder(1)]
 	public partial class PayPalStandardProvider : PaymentPluginBase, IConfigurable
 	{
-		#region Fields
-
-		private readonly ICurrencyService _currencyService;
-		private readonly CurrencySettings _currencySettings;
-        private readonly IOrderTotalCalculationService _orderTotalCalculationService;
-		private readonly ICheckoutAttributeParser _checkoutAttributeParser;
-		private readonly ITaxService _taxService;
-        private readonly HttpContextBase _httpContext;
-        private readonly PayPalStandardPaymentSettings _paypalStandardSettings;
-        private readonly ICommonServices _commonServices;
+		private readonly IOrderTotalCalculationService _orderTotalCalculationService;
+        private readonly ICommonServices _services;
         private readonly ILogger _logger;
 
-		#endregion
-
-		#region Ctor
-
-        public PayPalStandardProvider(ICurrencyService currencyService, 
-            HttpContextBase httpContext,
-			CurrencySettings currencySettings,
-            IOrderTotalCalculationService orderTotalCalculationService,
-            ICheckoutAttributeParser checkoutAttributeParser,
-            ITaxService taxService, 
-            PayPalStandardPaymentSettings paypalStandardSettings,
-            ICommonServices commonServices, 
+        public PayPalStandardProvider(
+			IOrderTotalCalculationService orderTotalCalculationService,
+            ICommonServices services, 
             ILogger logger)
 		{
-			_currencyService = currencyService;
-			_currencySettings = currencySettings;
-            _orderTotalCalculationService = orderTotalCalculationService;
-			_checkoutAttributeParser = checkoutAttributeParser;
-			_taxService = taxService;
-            _httpContext = httpContext;
-            _paypalStandardSettings = paypalStandardSettings;
-            _commonServices = commonServices;
+			_orderTotalCalculationService = orderTotalCalculationService;
+            _services = services;
             _logger = logger;
 		}
 
-		#endregion
+		public static string SystemName { get { return "Payments.PayPalStandard"; } }
 
-		#region Methods
+		public override PaymentMethodType PaymentMethodType
+		{
+			get
+			{
+				return PaymentMethodType.Redirection;
+			}
+		}
 
 		/// <summary>
 		/// Process a payment
@@ -89,7 +62,9 @@ namespace SmartStore.PayPal
 			var result = new ProcessPaymentResult();
 			result.NewPaymentStatus = PaymentStatus.Pending;
 
-            if (_paypalStandardSettings.BusinessEmail.IsNullOrEmpty() || _paypalStandardSettings.PdtToken.IsNullOrEmpty())
+			var settings = _services.Settings.LoadSetting<PayPalStandardPaymentSettings>(processPaymentRequest.StoreId);
+
+			if (settings.BusinessEmail.IsEmpty() || settings.PdtToken.IsEmpty())
 			{
 				result.AddError(T("Plugins.Payments.PayPalStandard.InvalidCredentials"));
 			}
@@ -106,15 +81,18 @@ namespace SmartStore.PayPal
 			if (postProcessPaymentRequest.Order.PaymentStatus == PaymentStatus.Paid)
 				return;
 
+			var store = _services.StoreService.GetStoreById(postProcessPaymentRequest.Order.StoreId);
+			var settings = _services.Settings.LoadSetting<PayPalStandardPaymentSettings>(postProcessPaymentRequest.Order.StoreId);
+
 			var builder = new StringBuilder();
-            builder.Append(PayPalHelper.GetPaypalUrl(_paypalStandardSettings));
+            builder.Append(settings.GetPayPalUrl());
 
 			string orderNumber = postProcessPaymentRequest.Order.GetOrderNumber();
-            string cmd = (_paypalStandardSettings.PassProductNamesAndTotals ? "_cart" : "_xclick");
+            string cmd = (settings.PassProductNamesAndTotals ? "_cart" : "_xclick");
 
-            builder.AppendFormat("?cmd={0}&business={1}", cmd, HttpUtility.UrlEncode(_paypalStandardSettings.BusinessEmail));
+            builder.AppendFormat("?cmd={0}&business={1}", cmd, HttpUtility.UrlEncode(settings.BusinessEmail));
 
-            if (_paypalStandardSettings.PassProductNamesAndTotals)
+            if (settings.PassProductNamesAndTotals)
 			{
 				builder.AppendFormat("&upload=1");
 
@@ -219,11 +197,11 @@ namespace SmartStore.PayPal
 
 				if (cartTotal > postProcessPaymentRequest.Order.OrderTotal)
 				{
-					/* Take the difference between what the order total is and what it should be and use that as the "discount".
-					 * The difference equals the amount of the gift card and/or reward points used. 
-					 */
+					// Take the difference between what the order total is and what it should be and use that as the "discount".
+					// The difference equals the amount of the gift card and/or reward points used.
 					decimal discountTotal = cartTotal - postProcessPaymentRequest.Order.OrderTotal;
 					discountTotal = Math.Round(discountTotal, 2);
+
 					//gift card or rewared point amount applied to cart in SmartStore.NET - shows in Paypal as "discount"
 					builder.AppendFormat("&discount_amount_cart={0}", discountTotal.ToString("0.00", CultureInfo.InvariantCulture));
 				}
@@ -239,41 +217,52 @@ namespace SmartStore.PayPal
 
 			builder.AppendFormat("&custom={0}", postProcessPaymentRequest.Order.OrderGuid);
 			builder.AppendFormat("&charset={0}", "utf-8");
-			builder.Append(string.Format("&no_note=1&currency_code={0}", HttpUtility.UrlEncode(_currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId).CurrencyCode)));
+			builder.Append(string.Format("&no_note=1&currency_code={0}", HttpUtility.UrlEncode(store.PrimaryStoreCurrency.CurrencyCode)));
 			builder.AppendFormat("&invoice={0}", HttpUtility.UrlEncode(orderNumber));
 			builder.AppendFormat("&rm=2", new object[0]);
 
-			if (postProcessPaymentRequest.Order.ShippingStatus != ShippingStatus.ShippingNotRequired)
-				builder.AppendFormat("&no_shipping=2", new object[0]);
-			else
-				builder.AppendFormat("&no_shipping=1", new object[0]);
+			Address address = null;
 
-            string returnUrl = _commonServices.WebHelper.GetStoreLocation(false) + "Plugins/PaymentPayPalStandard/PDTHandler";
-            string cancelReturnUrl = _commonServices.WebHelper.GetStoreLocation(false) + "Plugins/PaymentPayPalStandard/CancelOrder";
+			if (postProcessPaymentRequest.Order.ShippingStatus != ShippingStatus.ShippingNotRequired)
+			{
+				address = postProcessPaymentRequest.Order.ShippingAddress ?? postProcessPaymentRequest.Order.BillingAddress;
+
+				// 0 means the buyer is prompted to include a shipping address.
+				builder.AppendFormat("&no_shipping={0}", settings.IsShippingAddressRequired ? "2" : "1");
+			}
+			else
+			{
+				address = postProcessPaymentRequest.Order.BillingAddress;
+
+				builder.AppendFormat("&no_shipping=1", new object[0]);
+			}
+
+            var returnUrl = _services.WebHelper.GetStoreLocation(store.SslEnabled) + "Plugins/SmartStore.PayPal/PayPalStandard/PDTHandler";
+            var cancelReturnUrl = _services.WebHelper.GetStoreLocation(store.SslEnabled) + "Plugins/SmartStore.PayPal/PayPalStandard/CancelOrder";
 			builder.AppendFormat("&return={0}&cancel_return={1}", HttpUtility.UrlEncode(returnUrl), HttpUtility.UrlEncode(cancelReturnUrl));
 
 			//Instant Payment Notification (server to server message)
-            if (_paypalStandardSettings.EnableIpn)
+            if (settings.EnableIpn)
 			{
 				string ipnUrl;
-                if (String.IsNullOrWhiteSpace(_paypalStandardSettings.IpnUrl))
-                    ipnUrl = _commonServices.WebHelper.GetStoreLocation(false) + "Plugins/PaymentPayPalStandard/IPNHandler";
+                if (String.IsNullOrWhiteSpace(settings.IpnUrl))
+                    ipnUrl = _services.WebHelper.GetStoreLocation(store.SslEnabled) + "Plugins/SmartStore.PayPal/PayPalStandard/IPNHandler";
 				else
-                    ipnUrl = _paypalStandardSettings.IpnUrl;
+                    ipnUrl = settings.IpnUrl;
 				builder.AppendFormat("&notify_url={0}", ipnUrl);
 			}
 
-			//address
-			builder.AppendFormat("&address_override=1");
-			builder.AppendFormat("&first_name={0}", HttpUtility.UrlEncode(postProcessPaymentRequest.Order.BillingAddress.FirstName));
-			builder.AppendFormat("&last_name={0}", HttpUtility.UrlEncode(postProcessPaymentRequest.Order.BillingAddress.LastName));
-			builder.AppendFormat("&address1={0}", HttpUtility.UrlEncode(postProcessPaymentRequest.Order.BillingAddress.Address1));
-			builder.AppendFormat("&address2={0}", HttpUtility.UrlEncode(postProcessPaymentRequest.Order.BillingAddress.Address2));
-			builder.AppendFormat("&city={0}", HttpUtility.UrlEncode(postProcessPaymentRequest.Order.BillingAddress.City));
-			//if (!String.IsNullOrEmpty(postProcessPaymentRequest.Order.BillingAddress.PhoneNumber))
+			// Address
+			builder.AppendFormat("&address_override={0}", settings.UsePayPalAddress ? "0" : "1");
+			builder.AppendFormat("&first_name={0}", HttpUtility.UrlEncode(address.FirstName));
+			builder.AppendFormat("&last_name={0}", HttpUtility.UrlEncode(address.LastName));
+			builder.AppendFormat("&address1={0}", HttpUtility.UrlEncode(address.Address1));
+			builder.AppendFormat("&address2={0}", HttpUtility.UrlEncode(address.Address2));
+			builder.AppendFormat("&city={0}", HttpUtility.UrlEncode(address.City));
+			//if (!String.IsNullOrEmpty(address.PhoneNumber))
 			//{
 			//    //strip out all non-digit characters from phone number;
-			//    string billingPhoneNumber = System.Text.RegularExpressions.Regex.Replace(postProcessPaymentRequest.Order.BillingAddress.PhoneNumber, @"\D", string.Empty);
+			//    string billingPhoneNumber = System.Text.RegularExpressions.Regex.Replace(address.PhoneNumber, @"\D", string.Empty);
 			//    if (billingPhoneNumber.Length >= 10)
 			//    {
 			//        builder.AppendFormat("&night_phone_a={0}", HttpUtility.UrlEncode(billingPhoneNumber.Substring(0, 3)));
@@ -281,33 +270,21 @@ namespace SmartStore.PayPal
 			//        builder.AppendFormat("&night_phone_c={0}", HttpUtility.UrlEncode(billingPhoneNumber.Substring(6, 4)));
 			//    }
 			//}
-			if (postProcessPaymentRequest.Order.BillingAddress.StateProvince != null)
-				builder.AppendFormat("&state={0}", HttpUtility.UrlEncode(postProcessPaymentRequest.Order.BillingAddress.StateProvince.Abbreviation));
+			if (address.StateProvince != null)
+				builder.AppendFormat("&state={0}", HttpUtility.UrlEncode(address.StateProvince.Abbreviation));
 			else
 				builder.AppendFormat("&state={0}", "");
 
-			if (postProcessPaymentRequest.Order.BillingAddress.Country != null)
-				builder.AppendFormat("&country={0}", HttpUtility.UrlEncode(postProcessPaymentRequest.Order.BillingAddress.Country.TwoLetterIsoCode));
+			if (address.Country != null)
+				builder.AppendFormat("&country={0}", HttpUtility.UrlEncode(address.Country.TwoLetterIsoCode));
 			else
 				builder.AppendFormat("&country={0}", "");
 
-			builder.AppendFormat("&zip={0}", HttpUtility.UrlEncode(postProcessPaymentRequest.Order.BillingAddress.ZipPostalCode));
-			builder.AppendFormat("&email={0}", HttpUtility.UrlEncode(postProcessPaymentRequest.Order.BillingAddress.Email));
+			builder.AppendFormat("&zip={0}", HttpUtility.UrlEncode(address.ZipPostalCode));
+			builder.AppendFormat("&email={0}", HttpUtility.UrlEncode(address.Email));
 
-			_httpContext.Response.Redirect(builder.ToString());
+			postProcessPaymentRequest.RedirectUrl = builder.ToString();
 		}
-
-        /// <summary>
-        /// Gets additional handling fee
-        /// </summary>
-        /// <param name="cart">Shoping cart</param>
-        /// <returns>Additional handling fee</returns>
-        public override decimal GetAdditionalHandlingFee(IList<OrganizedShoppingCartItem> cart)
-        {
-            var result = this.CalculateAdditionalFee(_orderTotalCalculationService, cart,
-                _paypalStandardSettings.AdditionalFee, _paypalStandardSettings.AdditionalFeePercentage);
-            return result;
-        }
 
 		/// <summary>
 		/// Gets a value indicating whether customers can complete a payment after order is placed but not completed (for redirection payment methods)
@@ -331,7 +308,20 @@ namespace SmartStore.PayPal
 			return typeof(PayPalStandardController);
 		}
 
-		#endregion
+		public override decimal GetAdditionalHandlingFee(IList<OrganizedShoppingCartItem> cart)
+		{
+			var result = decimal.Zero;
+			try
+			{
+				var settings = _services.Settings.LoadSetting<PayPalStandardPaymentSettings>(_services.StoreContext.CurrentStore.Id);
+
+				result = this.CalculateAdditionalFee(_orderTotalCalculationService, cart, settings.AdditionalFee, settings.AdditionalFeePercentage);
+			}
+			catch (Exception)
+			{
+			}
+			return result;
+		}
 
         /// <summary>
         /// Gets PDT details
@@ -340,24 +330,31 @@ namespace SmartStore.PayPal
         /// <param name="values">Values</param>
         /// <param name="response">Response</param>
         /// <returns>Result</returns>
-        public bool GetPDTDetails(string tx, out Dictionary<string, string> values, out string response)
+        public bool GetPDTDetails(string tx, PayPalStandardPaymentSettings settings, out Dictionary<string, string> values, out string response)
         {
-            var req = (HttpWebRequest)WebRequest.Create(PayPalHelper.GetPaypalUrl(_paypalStandardSettings));
-            req.Method = "POST";
-            req.ContentType = "application/x-www-form-urlencoded";
+            var request = (HttpWebRequest)WebRequest.Create(settings.GetPayPalUrl());
+			request.Method = "POST";
+            request.ContentType = "application/x-www-form-urlencoded";
 
-            string formContent = string.Format("cmd=_notify-synch&at={0}&tx={1}", _paypalStandardSettings.PdtToken, tx);
-            req.ContentLength = formContent.Length;
+            var formContent = string.Format("cmd=_notify-synch&at={0}&tx={1}", settings.PdtToken, tx);
+            request.ContentLength = formContent.Length;
 
-            using (var sw = new StreamWriter(req.GetRequestStream(), Encoding.ASCII))
-                sw.Write(formContent);
+			using (var sw = new StreamWriter(request.GetRequestStream(), Encoding.ASCII))
+			{
+				sw.Write(formContent);
+			}
 
             response = null;
-            using (var sr = new StreamReader(req.GetResponse().GetResponseStream()))
-                response = HttpUtility.UrlDecode(sr.ReadToEnd());
+			using (var sr = new StreamReader(request.GetResponse().GetResponseStream()))
+			{
+				response = HttpUtility.UrlDecode(sr.ReadToEnd());
+			}
 
             values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            bool firstLine = true, success = false;
+
+			var firstLine = true;
+			var success = false;
+
             foreach (string l in response.Split('\n'))
             {
                 string line = l.Trim();
@@ -415,10 +412,10 @@ namespace SmartStore.PayPal
             var order = postProcessPaymentRequest.Order;
             var lst = new List<PayPalLineItem>();
 
-            // order items
-            foreach (var orderItem in order.OrderItems)
+			// Order items... checkout attributes are included in order total
+			foreach (var orderItem in order.OrderItems)
             {
-                var item = new PayPalLineItem()
+                var item = new PayPalLineItem
                 {
                     Type = PayPalItemType.CartItem,
                     Name = orderItem.Product.GetLocalized(x => x.Name),
@@ -430,30 +427,10 @@ namespace SmartStore.PayPal
                 cartTotal += orderItem.PriceExclTax;
             }
 
-            // checkout attributes.... are included in order total
-            //foreach (var caValue in checkoutAttributeValues)
-            //{
-            //	var attributePrice = _taxService.GetCheckoutAttributePrice(caValue, false, order.Customer);
-
-            //	if (attributePrice > decimal.Zero && caValue.CheckoutAttribute != null)
-            //	{
-            //		var item = new PayPalLineItem()
-            //		{
-            //			Type = PayPalItemType.CheckoutAttribute,
-            //			Name = caValue.CheckoutAttribute.GetLocalized(x => x.Name),
-            //			Quantity = 1,
-            //			Amount = attributePrice
-            //		};
-            //		lst.Add(item);
-
-            //		cartTotal += attributePrice;
-            //	}
-            //}
-
-            // shipping
+            // Shipping
             if (order.OrderShippingExclTax > decimal.Zero)
             {
-                var item = new PayPalLineItem()
+                var item = new PayPalLineItem
                 {
                     Type = PayPalItemType.Shipping,
                     Name = T("Plugins.Payments.PayPalStandard.ShippingFee").Text,
@@ -465,13 +442,13 @@ namespace SmartStore.PayPal
                 cartTotal += order.OrderShippingExclTax;
             }
 
-            // payment fee
+            // Payment fee
             if (order.PaymentMethodAdditionalFeeExclTax > decimal.Zero)
             {
-                var item = new PayPalLineItem()
+                var item = new PayPalLineItem
                 {
                     Type = PayPalItemType.PaymentFee,
-                    Name = T("Plugins.Payments.PayPalStandard.PaymentMethodFee").Text,
+                    Name = T("Plugins.Payments.PayPal.PaymentMethodFee").Text,
                     Quantity = 1,
                     Amount = order.PaymentMethodAdditionalFeeExclTax
                 };
@@ -480,10 +457,10 @@ namespace SmartStore.PayPal
                 cartTotal += order.PaymentMethodAdditionalFeeExclTax;
             }
 
-            // tax
+            // Tax
             if (order.OrderTax > decimal.Zero)
             {
-                var item = new PayPalLineItem()
+                var item = new PayPalLineItem
                 {
                     Type = PayPalItemType.Tax,
                     Name = T("Plugins.Payments.PayPalStandard.SalesTax").Text,
@@ -518,16 +495,18 @@ namespace SmartStore.PayPal
                     return;
 
                 decimal totalSmartStore = Math.Round(postProcessPaymentRequest.Order.OrderSubtotalExclTax, 2);
-                decimal totalPayPal = decimal.Zero;
-                decimal delta, portion, rest;
+				decimal totalPayPal = decimal.Zero;
+				decimal delta, portion, rest;
 
-                // calculate what PayPal calculates
-                cartItems.Each(x => totalPayPal += (x.AmountRounded * x.Quantity));
-                totalPayPal = Math.Round(totalPayPal, 2, MidpointRounding.AwayFromZero);
+				// calculate what PayPal calculates
+				cartItems.Each(x => totalPayPal += (x.AmountRounded * x.Quantity));
+				totalPayPal = Math.Round(totalPayPal, 2, MidpointRounding.AwayFromZero);
 
-                // calculate difference
-                delta = Math.Round(totalSmartStore - totalPayPal, 2);
-                if (delta == decimal.Zero)
+				// calculate difference
+				delta = Math.Round(totalSmartStore - totalPayPal, 2);
+				//"SM: {0}, PP: {1}, delta: {2}".FormatInvariant(totalSmartStore, totalPayPal, delta).Dump();
+
+				if (delta == decimal.Zero)
                     return;
 
                 // prepare lines... only lines with quantity = 1 are adjustable. if there is no one, create one.
@@ -558,53 +537,12 @@ namespace SmartStore.PayPal
                     restItem.Amount = restItem.Amount + rest;
                 }
 
-                //"SM: {0}, PP: {1}, delta: {2} (portion: {3}, rest: {4})".FormatWith(totalSmartStore, totalPayPal, delta, portion, rest).Dump();
-            }
-            catch (Exception exc)
+				//"SM: {0}, PP: {1}, delta: {2} (portion: {3}, rest: {4})".FormatInvariant(totalSmartStore, totalPayPal, delta, portion, rest).Dump();
+			}
+			catch (Exception exception)
             {
-                _logger.Error(exc.Message, exc);
+                _logger.Error(exception);
             }
-        }
-
-
-        /// <summary>
-        /// Verifies IPN
-        /// </summary>
-        /// <param name="formString">Form string</param>
-        /// <param name="values">Values</param>
-        /// <returns>Result</returns>
-        public bool VerifyIPN(string formString, out Dictionary<string, string> values)
-        {
-            var req = (HttpWebRequest)WebRequest.Create(PayPalHelper.GetPaypalUrl(_paypalStandardSettings));
-            req.Method = "POST";
-            req.ContentType = "application/x-www-form-urlencoded";
-            req.UserAgent = HttpContext.Current.Request.UserAgent;
-
-            string formContent = string.Format("{0}&cmd=_notify-validate", formString);
-            req.ContentLength = formContent.Length;
-
-            using (var sw = new StreamWriter(req.GetRequestStream(), Encoding.ASCII))
-            {
-                sw.Write(formContent);
-            }
-
-            string response = null;
-            using (var sr = new StreamReader(req.GetResponse().GetResponseStream()))
-            {
-                response = HttpUtility.UrlDecode(sr.ReadToEnd());
-            }
-            bool success = response.Trim().Equals("VERIFIED", StringComparison.OrdinalIgnoreCase);
-
-            values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string l in formString.Split('&'))
-            {
-                string line = HttpUtility.UrlDecode(l).Trim();
-                int equalPox = line.IndexOf('=');
-                if (equalPox >= 0)
-                    values.Add(line.Substring(0, equalPox), line.Substring(equalPox + 1));
-            }
-
-            return success;
         }
 
         /// <summary>
@@ -632,17 +570,47 @@ namespace SmartStore.PayPal
             controllerName = "PayPalStandard";
             routeValues = new RouteValueDictionary() { { "area", "SmartStore.PayPal" } };
         }
+	}
 
-		#region Properties
 
-		public override PaymentMethodType PaymentMethodType
+	public class PayPalLineItem : ICloneable<PayPalLineItem>
+	{
+		public PayPalItemType Type { get; set; }
+		public string Name { get; set; }
+		public int Quantity { get; set; }
+		public decimal Amount { get; set; }
+
+		public decimal AmountRounded
 		{
 			get
 			{
-				return PaymentMethodType.Redirection;
+				return Math.Round(Amount, 2);
 			}
 		}
 
-		#endregion
+		public PayPalLineItem Clone()
+		{
+			var item = new PayPalLineItem
+			{
+				Type = this.Type,
+				Name = this.Name,
+				Quantity = this.Quantity,
+				Amount = this.Amount
+			};
+			return item;
+		}
+
+		object ICloneable.Clone()
+		{
+			return this.Clone();
+		}
+	}
+
+	public enum PayPalItemType
+	{
+		CartItem = 0,
+		Shipping,
+		PaymentFee,
+		Tax
 	}
 }

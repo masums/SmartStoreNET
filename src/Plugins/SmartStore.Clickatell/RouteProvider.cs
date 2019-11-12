@@ -1,10 +1,10 @@
 ﻿using System.Web.Mvc;
 using System.Web.Routing;
-using SmartStore.Web.Framework.Mvc.Routes;
+using SmartStore.Web.Framework.Routing;
 
 namespace SmartStore.Clickatell
 {
-    public partial class RouteProvider : IRouteProvider
+	public partial class RouteProvider : IRouteProvider
     {
         public void RegisterRoutes(RouteCollection routes)
         {
@@ -13,8 +13,9 @@ namespace SmartStore.Clickatell
                  new { controller = "SmsClickatell", action = "Configure" },
                  new[] { "SmartStore.Clickatell.Controllers" }
             )
-			.DataTokens["area"] = "SmartStore.Clickatell";
+			.DataTokens["area"] = ClickatellSmsProvider.SystemName;
         }
+
         public int Priority
         {
             get

@@ -3,19 +3,16 @@ namespace SmartStore.Core.Domain.Media
     /// <summary>
     /// Represents a picture item type
     /// </summary>
-    public enum PictureType : int
+    public enum FallbackPictureType
     {
-        /// <summary>
-        /// Entities (products, categories, manufacturers)
-        /// </summary>
-        Entity = 1,
-        /// <summary>
-        /// Avatar
-        /// </summary>
-        Avatar = 10,
+		NoFallback = 0,
+
+		/// <summary>
+		/// Entities (products, categories, manufacturers)
+		/// </summary>
+		Entity = 1,
     }
 
-    // codehint: sm-add
     public enum ThumbnailScaleMode
     {
         Auto,

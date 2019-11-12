@@ -1,5 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\..\packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.2.0.1\build\net46\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.props" Condition="Exists('..\..\packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.2.0.1\build\net46\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
@@ -10,7 +11,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>SmartStore.Services.Tests</RootNamespace>
     <AssemblyName>SmartStore.Services.Tests</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <SccProjectName>
     </SccProjectName>
@@ -62,6 +63,12 @@
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="EntityFramework, Version=6.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL">
+      <HintPath>..\..\packages\EntityFramework.6.2.0\lib\net45\EntityFramework.dll</HintPath>
+    </Reference>
+    <Reference Include="EntityFramework.SqlServer, Version=6.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL">
+      <HintPath>..\..\packages\EntityFramework.6.2.0\lib\net45\EntityFramework.SqlServer.dll</HintPath>
+    </Reference>
     <Reference Include="Microsoft.Web.Infrastructure, Version=1.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <Private>True</Private>
       <HintPath>..\..\packages\Microsoft.Web.Infrastructure.1.0.0.0\lib\net40\Microsoft.Web.Infrastructure.dll</HintPath>
@@ -75,8 +82,10 @@
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.ComponentModel.Composition" />
+    <Reference Include="System.ComponentModel.DataAnnotations" />
     <Reference Include="System.configuration" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
     <Reference Include="System.Web" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
@@ -94,17 +103,24 @@
     <Compile Include="Configuration\ConfigurationProviderTests.cs" />
     <Compile Include="Customers\CustomerExtensionTests.cs" />
     <Compile Include="Customers\CustomerRegistrationServiceTests.cs" />
+    <Compile Include="DataExchange\CsvWriterTests.cs" />
+    <Compile Include="DataExchange\DataReaderTests.cs" />
+    <Compile Include="DataExchange\ImportDataSegmenterTests.cs" />
+    <Compile Include="DataExchange\SyncMappingServiceTests.cs" />
     <Compile Include="Directory\CurrencyServiceTests.cs" />
+    <Compile Include="Directory\GeoCountryLookupTests.cs" />
     <Compile Include="Directory\TestExchangeRateProvider.cs" />
     <Compile Include="Directory\MeasureServiceTests.cs" />
     <Compile Include="Discounts\DiscountExtensionsTests.cs" />
     <Compile Include="Discounts\DiscountServiceTests.cs" />
     <Compile Include="Discounts\TestDiscountRequirementRule.cs" />
-    <Compile Include="ExportImport\ExportManagerTests.cs" />
+    <Compile Include="Events\ConsumerRegistryTests.cs" />
+    <Compile Include="Events\TestConsumers.cs" />
     <Compile Include="Helpers\DateTimeHelperTests.cs" />
     <Compile Include="Localization\LanguageServiceTests.cs" />
     <Compile Include="Logging\CustomerActivityServiceTests.cs" />
-    <Compile Include="Messages\TokenizerTests.cs" />
+    <Compile Include="Media\Storage\TestDatabaseMediaStorageProvider.cs" />
+    <Compile Include="Messages\QueuedEmailServiceTests.cs" />
     <Compile Include="Messages\NewsLetterSubscriptionServiceTests.cs" />
     <Compile Include="MockProviderManager.cs" />
     <Compile Include="Orders\CheckoutAttributeExtensionsTests.cs" />
@@ -113,6 +129,7 @@
     <Compile Include="Orders\OrderTotalCalculationServiceTests.cs" />
     <Compile Include="Payments\TestPaymentMethod.cs" />
     <Compile Include="Payments\PaymentServiceTests.cs" />
+    <Compile Include="Search\LinqCatalogSearchServiceTests.cs" />
     <Compile Include="Seo\SeoExtensionsTests.cs" />
     <Compile Include="ServiceTest.cs" />
     <Compile Include="Security\EncryptionServiceTests.cs" />
@@ -143,7 +160,13 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <EmbeddedResource Include="Messages\Attachment.pdf" />
+    <EmbeddedResource Include="DataExchange\Files\testdata.xlsx" />
+    <EmbeddedResource Include="DataExchange\Files\testdata.csv" />
     <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
   </ItemGroup>
   <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

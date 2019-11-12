@@ -9,9 +9,8 @@ namespace SmartStore.Core.Events
 	/// <summary>
 	/// to initialize scheduled tasks in Application_Start
 	/// </summary>
-	/// <remarks>codehint: sm-add</remarks>
 	public class AppInitScheduledTasksEvent
 	{
-		public List<ScheduleTask> ScheduledTasks { get; set; }
+		public IList<ScheduleTask> ScheduledTasks { get; set; }
 	}
 }

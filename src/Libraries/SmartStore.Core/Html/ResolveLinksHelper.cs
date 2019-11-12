@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
@@ -9,20 +10,18 @@ namespace SmartStore.Core.Html
     /// </summary>
     public partial class ResolveLinksHelper
     {
-        #region Fields
         /// <summary>
         /// The regular expression used to parse links.
         /// </summary>
         private static readonly Regex regex = new Regex("((http://|https://|www\\.)([A-Z0-9.\\-]{1,})\\.[0-9A-Z?;~&\\(\\)#,=\\-_\\./\\+]{2,})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private const string link = "<a href=\"{0}{1}\" rel=\"nofollow\">{2}</a>";
         private const int MAX_LENGTH = 50;
-        #endregion
-
-        #region Utilities
 
         /// <summary>
         /// Shortens any absolute URL to a specified maximum length
         /// </summary>
+        [SuppressMessage("ReSharper", "StringIndexOfIsCultureSpecific.1")]
+        [SuppressMessage("ReSharper", "StringLastIndexOfIsCultureSpecific.1")]
         private static string ShortenUrl(string url, int max)
         {
             if (url.Length <= max)
@@ -77,9 +76,7 @@ namespace SmartStore.Core.Html
 
             return url;
         }
-        #endregion
 
-        #region Methods
         /// <summary>
         /// Formats the text
         /// </summary>
@@ -90,21 +87,20 @@ namespace SmartStore.Core.Html
             if (String.IsNullOrEmpty(text))
                 return string.Empty;
 
-            var info = CultureInfo.InvariantCulture;
+            var ci = CultureInfo.InvariantCulture;
             foreach (Match match in regex.Matches(text))
             {
                 if (!match.Value.Contains("://"))
                 {
-                    text = text.Replace(match.Value, string.Format(info, link, "http://", match.Value, ShortenUrl(match.Value, MAX_LENGTH)));
+                    text = text.Replace(match.Value, string.Format(ci, link, "http://", match.Value, ShortenUrl(match.Value, MAX_LENGTH)));
                 }
                 else
                 {
-                    text = text.Replace(match.Value, string.Format(info, link, string.Empty, match.Value, ShortenUrl(match.Value, MAX_LENGTH)));
+                    text = text.Replace(match.Value, string.Format(ci, link, string.Empty, match.Value, ShortenUrl(match.Value, MAX_LENGTH)));
                 }
             }
 
             return text;
         }
-        #endregion
     }
 }

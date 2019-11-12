@@ -1,13 +1,12 @@
-﻿using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Web.Mvc;
-using SmartStore.Core.Domain.Common;
-using SmartStore.Core.Domain.Seo;
-using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
-using SmartStore.Admin.Validators.Settings;
+﻿using FluentValidation;
 using FluentValidation.Attributes;
 using SmartStore.Core.Domain.Localization;
+using SmartStore.Core.Domain.Seo;
+using SmartStore.Web.Framework;
+using SmartStore.Web.Framework.Modelling;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Web.Mvc;
 
 namespace SmartStore.Admin.Models.Settings
 {
@@ -19,29 +18,25 @@ namespace SmartStore.Admin.Models.Settings
             StoreInformationSettings = new StoreInformationSettingsModel();
             SeoSettings = new SeoSettingsModel();
             SecuritySettings = new SecuritySettingsModel();
+			CaptchaSettings = new CaptchaSettingsModel();
             PdfSettings = new PdfSettingsModel();
             LocalizationSettings = new LocalizationSettingsModel(); 
-            FullTextSettings = new FullTextSettingsModel();
-            //codehint: sm-add begin
             CompanyInformationSettings = new CompanyInformationSettingsModel();
             ContactDataSettings = new ContactDataSettingsModel();
             BankConnectionSettings = new BankConnectionSettingsModel();
             SocialSettings = new SocialSettingsModel();
-            //codehint: sm-add end
         }
 
         public StoreInformationSettingsModel StoreInformationSettings { get; set; }
         public SeoSettingsModel SeoSettings { get; set; }
         public SecuritySettingsModel SecuritySettings { get; set; }
+		public CaptchaSettingsModel CaptchaSettings { get; set; }
         public PdfSettingsModel PdfSettings { get; set; }
         public LocalizationSettingsModel LocalizationSettings { get; set; }
-        public FullTextSettingsModel FullTextSettings { get; set; }
-        //codehint: sm-add begin
         public CompanyInformationSettingsModel CompanyInformationSettings { get; set; }
         public ContactDataSettingsModel ContactDataSettings { get; set; }
         public BankConnectionSettingsModel BankConnectionSettings { get; set; }
         public SocialSettingsModel SocialSettings { get; set; }
-        //codehint: sm-add end
 
         #region Nested classes
 
@@ -49,18 +44,13 @@ namespace SmartStore.Admin.Models.Settings
         {
             public StoreInformationSettingsModel()
             {
-                // codehint: sm-delete
             }
             
-            // codehint: sm-delete
-
             [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.StoreClosed")]
 			public bool StoreClosed { get; set; }
 
             [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.StoreClosedAllowForAdmins")]
             public bool StoreClosedAllowForAdmins { get; set; }
-            
-            // codehint: sm-delete
         }
 
 		public partial class SeoSettingsModel
@@ -84,11 +74,29 @@ namespace SmartStore.Admin.Models.Settings
             [AllowHtml]
             public string DefaultMetaDescription { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.ConvertNonWesternChars")]
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.MetaRobotsContent")]
+			public string MetaRobotsContent { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.ConvertNonWesternChars")]
             public bool ConvertNonWesternChars { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CanonicalUrlsEnabled")]
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.AllowUnicodeCharsInUrls")]
+			public bool AllowUnicodeCharsInUrls { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.SeoNameCharConversion")]
+			public string SeoNameCharConversion { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.TestSeoNameCreation")]
+			public string TestSeoNameCreation { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CanonicalUrlsEnabled")]
             public bool CanonicalUrlsEnabled { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CanonicalHostNameRule")]
+			public CanonicalHostNameRule CanonicalHostNameRule { get; set; }
+
+            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.ExtraRobotsDisallows")]
+            public string ExtraRobotsDisallows { get; set; }
         }
 
 		public partial class SecuritySettingsModel
@@ -104,47 +112,56 @@ namespace SmartStore.Admin.Models.Settings
             [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.HideAdminMenuItemsBasedOnPermissions")]
             public bool HideAdminMenuItemsBasedOnPermissions { get; set; }
 
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.EnableHoneypotProtection")]
+			public bool EnableHoneypotProtection { get; set; }
+		}
 
+		public partial class CaptchaSettingsModel
+		{
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaEnabled")]
+			public bool Enabled { get; set; }
 
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnLoginPage")]
+			public bool ShowOnLoginPage { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaEnabled")]
-            public bool CaptchaEnabled { get; set; }
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnRegistrationPage")]
+			public bool ShowOnRegistrationPage { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnLoginPage")]
-            public bool CaptchaShowOnLoginPage { get; set; }
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnContactUsPage")]
+			public bool ShowOnContactUsPage { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnRegistrationPage")]
-            public bool CaptchaShowOnRegistrationPage { get; set; }
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnEmailWishlistToFriendPage")]
+			public bool ShowOnEmailWishlistToFriendPage { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnContactUsPage")]
-            public bool CaptchaShowOnContactUsPage { get; set; }
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnEmailProductToFriendPage")]
+			public bool ShowOnEmailProductToFriendPage { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnEmailWishlistToFriendPage")]
-            public bool CaptchaShowOnEmailWishlistToFriendPage { get; set; }
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnAskQuestionPage")]
+			public bool ShowOnAskQuestionPage { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnEmailProductToFriendPage")]
-            public bool CaptchaShowOnEmailProductToFriendPage { get; set; }
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnBlogCommentPage")]
+			public bool ShowOnBlogCommentPage { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnAskQuestionPage")]
-            public bool CaptchaShowOnAskQuestionPage { get; set; }
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnNewsCommentPage")]
+			public bool ShowOnNewsCommentPage { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnBlogCommentPage")]
-            public bool CaptchaShowOnBlogCommentPage { get; set; }
-
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnNewsCommentPage")]
-            public bool CaptchaShowOnNewsCommentPage { get; set; }
+            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnForumPage")]
+            public bool ShowOnForumPage { get; set; }
 
             [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.CaptchaShowOnProductReviewPage")]
-            public bool CaptchaShowOnProductReviewPage { get; set; }
-            
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.reCaptchaPublicKey")]
-            [AllowHtml]
-            public string ReCaptchaPublicKey { get; set; }
+			public bool ShowOnProductReviewPage { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.reCaptchaPrivateKey")]
-            [AllowHtml]
-            public string ReCaptchaPrivateKey { get; set; }
-        }
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.reCaptchaPublicKey")]
+			[AllowHtml]
+			public string ReCaptchaPublicKey { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.reCaptchaPrivateKey")]
+			[AllowHtml]
+			public string ReCaptchaPrivateKey { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.UseInvisibleReCaptcha")]
+			public bool UseInvisibleReCaptcha { get; set; }
+		}
 
 		public partial class PdfSettingsModel
         {
@@ -157,6 +174,12 @@ namespace SmartStore.Admin.Models.Settings
             [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.PdfLogo")]
             [UIHint("Picture")]
             public int LogoPictureId { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.AttachOrderPdfToOrderPlacedEmail")]
+			public bool AttachOrderPdfToOrderPlacedEmail { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.AttachOrderPdfToOrderCompletedEmail")]
+			public bool AttachOrderPdfToOrderCompletedEmail { get; set; }
         }
 
 		public partial class LocalizationSettingsModel
@@ -166,9 +189,6 @@ namespace SmartStore.Admin.Models.Settings
 
             [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.SeoFriendlyUrlsForLanguagesEnabled")]
             public bool SeoFriendlyUrlsForLanguagesEnabled { get; set; }
-
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.LoadAllLocaleRecordsOnStartup")]
-            public bool LoadAllLocaleRecordsOnStartup { get; set; }
 
             [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.DefaultLanguageRedirectBehaviour")]
             public DefaultLanguageRedirectBehaviour DefaultLanguageRedirectBehaviour { get; set; }
@@ -180,18 +200,6 @@ namespace SmartStore.Admin.Models.Settings
             public bool DetectBrowserUserLanguage { get; set; }
         }
 
-		public partial class FullTextSettingsModel
-        {
-            public bool Supported { get; set; }
-
-            public bool Enabled { get; set; }
-
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.FullTextSettings.SearchMode")]
-            public FulltextSearchMode SearchMode { get; set; }
-            public SelectList SearchModeValues { get; set; }
-        }
-
-        //codehint: sm-add begin
 		public partial class CompanyInformationSettingsModel
         {
 
@@ -315,9 +323,6 @@ namespace SmartStore.Admin.Models.Settings
             [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.SocialSettings.FacebookLink")]
             public string FacebookLink { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.SocialSettings.GooglePlusLink")]
-            public string GooglePlusLink { get; set; }
-
             [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.SocialSettings.TwitterLink")]
             public string TwitterLink { get; set; }
 
@@ -326,9 +331,22 @@ namespace SmartStore.Admin.Models.Settings
 
             [SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.SocialSettings.YoutubeLink")]
             public string YoutubeLink { get; set; }
-        }
 
-        //codehint: sm-add end
+			[SmartResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.SocialSettings.InstagramLink")]
+			public string InstagramLink { get; set; }
+		}
+
         #endregion
+    }
+
+    public partial class GeneralCommonSettingsValidator : AbstractValidator<GeneralCommonSettingsModel>
+    {
+        public GeneralCommonSettingsValidator()
+        {
+            RuleFor(x => x.ContactDataSettings.CompanyEmailAddress).EmailAddress();
+            RuleFor(x => x.ContactDataSettings.ContactEmailAddress).EmailAddress();
+            RuleFor(x => x.ContactDataSettings.SupportEmailAddress).EmailAddress();
+            RuleFor(x => x.ContactDataSettings.WebmasterEmailAddress).EmailAddress();
+        }
     }
 }

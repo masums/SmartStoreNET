@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Runtime.Serialization;
 
 namespace SmartStore.Core.Domain.Catalog
@@ -24,6 +25,7 @@ namespace SmartStore.Core.Domain.Catalog
         /// Gets or sets a value indicating whether the product is featured
         /// </summary>
         [DataMember]
+		[Index]
         public bool IsFeaturedProduct { get; set; }
 
         /// <summary>
@@ -31,15 +33,17 @@ namespace SmartStore.Core.Domain.Catalog
         /// </summary>
         [DataMember]
         public int DisplayOrder { get; set; }
-        
+
         /// <summary>
         /// Gets the category
         /// </summary>
+        [DataMember]
         public virtual Category Category { get; set; }
 
         /// <summary>
         /// Gets the product
         /// </summary>
+        [DataMember]
         public virtual Product Product { get; set; }
 
     }

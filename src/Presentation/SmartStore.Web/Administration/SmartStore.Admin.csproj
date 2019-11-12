@@ -1,5 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\..\packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.2.0.1\build\net46\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.props" Condition="Exists('..\..\packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.2.0.1\build\net46\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.props')" />
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -13,7 +14,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>SmartStore.Admin</RootNamespace>
     <AssemblyName>SmartStore.Admin</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <MvcBuildViews>false</MvcBuildViews>
     <UseIISExpress>true</UseIISExpress>
     <SccProjectName>
@@ -38,6 +39,8 @@
     <RestorePackages>true</RestorePackages>
     <MvcProjectUpgradeChecked>true</MvcProjectUpgradeChecked>
     <NuGetPackageImportStamp>1e5b888b</NuGetPackageImportStamp>
+    <UseGlobalApplicationHostFile />
+    <Use64BitIISExpress />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -62,77 +65,92 @@
     <Reference Include="Antlr3.Runtime, Version=3.5.0.2, Culture=neutral, PublicKeyToken=eb42632606e9261f, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\..\packages\Antlr.3.5.0.2\lib\Antlr3.Runtime.dll</HintPath>
+      <Private>False</Private>
     </Reference>
-    <Reference Include="Autofac, Version=3.4.0.0, Culture=neutral, PublicKeyToken=17863af14b0044da, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\packages\Autofac.3.4.1\lib\net40\Autofac.dll</HintPath>
+    <Reference Include="Autofac, Version=4.9.0.0, Culture=neutral, PublicKeyToken=17863af14b0044da, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\Autofac.4.9.0\lib\net45\Autofac.dll</HintPath>
     </Reference>
-    <Reference Include="Autofac.Integration.Mvc, Version=3.3.0.0, Culture=neutral, PublicKeyToken=17863af14b0044da, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\packages\Autofac.Mvc5.3.3.1\lib\net45\Autofac.Integration.Mvc.dll</HintPath>
+    <Reference Include="Autofac.Integration.Mvc, Version=4.0.0.0, Culture=neutral, PublicKeyToken=17863af14b0044da, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\Autofac.Mvc5.4.0.2\lib\net45\Autofac.Integration.Mvc.dll</HintPath>
+      <Private>False</Private>
     </Reference>
-    <Reference Include="AutoMapper, Version=3.2.1.0, Culture=neutral, PublicKeyToken=be96cd2c38ef1005, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\packages\AutoMapper.3.2.1\lib\net40\AutoMapper.dll</HintPath>
+    <Reference Include="AutoMapper, Version=8.0.0.0, Culture=neutral, PublicKeyToken=be96cd2c38ef1005, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\AutoMapper.8.0.0\lib\net461\AutoMapper.dll</HintPath>
     </Reference>
-    <Reference Include="AutoMapper.Net4, Version=3.2.1.0, Culture=neutral, PublicKeyToken=be96cd2c38ef1005, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\packages\AutoMapper.3.2.1\lib\net40\AutoMapper.Net4.dll</HintPath>
+    <Reference Include="EntityFramework, Version=6.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\EntityFramework.6.2.0\lib\net45\EntityFramework.dll</HintPath>
+      <Private>True</Private>
     </Reference>
-    <Reference Include="FluentValidation, Version=5.0.0.1, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\packages\FluentValidation.5.0.0.1\lib\Net40\FluentValidation.dll</HintPath>
+    <Reference Include="EntityFramework.SqlServer, Version=6.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\EntityFramework.6.2.0\lib\net45\EntityFramework.SqlServer.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="FluentValidation, Version=7.0.0.0, Culture=neutral, PublicKeyToken=7de548da2fbae0f0, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\FluentValidation.7.4.0\lib\net45\FluentValidation.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.Web.Infrastructure, Version=1.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <Private>True</Private>
+      <Private>False</Private>
       <HintPath>..\..\..\packages\Microsoft.Web.Infrastructure.1.0.0.0\lib\net40\Microsoft.Web.Infrastructure.dll</HintPath>
     </Reference>
-    <Reference Include="Newtonsoft.Json, Version=6.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+    <Reference Include="Microsoft.Web.XmlTransform, Version=3.0.0.34420, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\Microsoft.Web.Xdt.3.0.0\lib\net40\Microsoft.Web.XmlTransform.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json, Version=12.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\Newtonsoft.Json.12.0.1\lib\net45\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="NuGet.Core, Version=2.14.0.832, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\NuGet.Core.2.14.0\lib\net40-Client\NuGet.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="SmartStore.Licensing, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\packages\Newtonsoft.Json.6.0.6\lib\net45\Newtonsoft.Json.dll</HintPath>
+      <HintPath>..\..\..\..\lib\SmartStore.Licensing\SmartStore.Licensing.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="System.ComponentModel.Composition" />
     <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Net.Http.Formatting, Version=5.2.7.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\Microsoft.AspNet.WebApi.Client.5.2.7\lib\net45\System.Net.Http.Formatting.dll</HintPath>
+    </Reference>
     <Reference Include="System.ServiceModel" />
-    <Reference Include="System.Web.Extensions" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System" />
     <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
+    <Reference Include="System.ValueTuple, Version=4.0.3.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\System.ValueTuple.4.5.0\lib\net461\System.ValueTuple.dll</HintPath>
+    </Reference>
     <Reference Include="System.Web.DynamicData" />
     <Reference Include="System.Web.Entity" />
     <Reference Include="System.Web.ApplicationServices" />
     <Reference Include="System.ComponentModel.DataAnnotations" />
     <Reference Include="System.Web" />
     <Reference Include="System.Web.Abstractions" />
+    <Reference Include="System.Web.Extensions" />
     <Reference Include="System.Web.Helpers, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\packages\Microsoft.AspNet.WebPages.3.2.2\lib\net45\System.Web.Helpers.dll</HintPath>
+      <HintPath>..\..\..\packages\Microsoft.AspNet.WebPages.3.2.7\lib\net45\System.Web.Helpers.dll</HintPath>
     </Reference>
-    <Reference Include="System.Web.Mvc, Version=5.2.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\packages\Microsoft.AspNet.Mvc.5.2.0\lib\net45\System.Web.Mvc.dll</HintPath>
+    <Reference Include="System.Web.Mvc, Version=5.2.7.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\Microsoft.AspNet.Mvc.5.2.7\lib\net45\System.Web.Mvc.dll</HintPath>
     </Reference>
     <Reference Include="System.Web.Optimization, Version=1.1.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\..\packages\Microsoft.AspNet.Web.Optimization.1.1.3\lib\net40\System.Web.Optimization.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="System.Web.Razor, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\packages\Microsoft.AspNet.Razor.3.2.2\lib\net45\System.Web.Razor.dll</HintPath>
+      <HintPath>..\..\..\packages\Microsoft.AspNet.Razor.3.2.7\lib\net45\System.Web.Razor.dll</HintPath>
     </Reference>
     <Reference Include="System.Web.Routing" />
     <Reference Include="System.Web.WebPages, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\packages\Microsoft.AspNet.WebPages.3.2.2\lib\net45\System.Web.WebPages.dll</HintPath>
+      <HintPath>..\..\..\packages\Microsoft.AspNet.WebPages.3.2.7\lib\net45\System.Web.WebPages.dll</HintPath>
     </Reference>
     <Reference Include="System.Web.WebPages.Deployment, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\packages\Microsoft.AspNet.WebPages.3.2.2\lib\net45\System.Web.WebPages.Deployment.dll</HintPath>
+      <HintPath>..\..\..\packages\Microsoft.AspNet.WebPages.3.2.7\lib\net45\System.Web.WebPages.Deployment.dll</HintPath>
     </Reference>
     <Reference Include="System.Web.WebPages.Razor, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\packages\Microsoft.AspNet.WebPages.3.2.2\lib\net45\System.Web.WebPages.Razor.dll</HintPath>
+      <HintPath>..\..\..\packages\Microsoft.AspNet.WebPages.3.2.7\lib\net45\System.Web.WebPages.Razor.dll</HintPath>
     </Reference>
     <Reference Include="System.Xml" />
     <Reference Include="System.Configuration" />
@@ -140,11 +158,13 @@
     <Reference Include="System.EnterpriseServices" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="Telerik.Web.Mvc, Version=2012.2.607.340, Culture=neutral, PublicKeyToken=121fae78165ba3d4, processorArchitecture=MSIL">
-      <HintPath>..\..\..\packages\TelerikMvcExtensions.2012.2.607\lib\net40\Telerik.Web.Mvc.dll</HintPath>
+      <HintPath>..\..\..\..\lib\Telerik\Telerik.Web.Mvc.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="WebGrease, Version=1.6.5135.21930, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\..\packages\WebGrease.1.6.0\lib\WebGrease.dll</HintPath>
+      <Private>False</Private>
     </Reference>
   </ItemGroup>
   <ItemGroup>
@@ -161,11 +181,14 @@
     <Compile Include="Controllers\CategoryController.cs" />
     <Compile Include="Controllers\CheckoutAttributeController.cs" />
     <Compile Include="Controllers\CommonController.cs" />
-    <Compile Include="Controllers\ContentSliderController.cs" />
     <Compile Include="Controllers\CountryController.cs" />
     <Compile Include="Controllers\CurrencyController.cs" />
     <Compile Include="Controllers\CustomerController.cs" />
     <Compile Include="Controllers\CustomerRoleController.cs" />
+    <Compile Include="Controllers\ExportController.cs" />
+    <Compile Include="Controllers\ImportController.cs" />
+    <Compile Include="Controllers\MenuController.cs" />
+    <Compile Include="Controllers\QuantityUnitController.cs" />
     <Compile Include="Controllers\DeliveryTimeController.cs" />
     <Compile Include="Controllers\DiscountController.cs" />
     <Compile Include="Controllers\DownloadController.cs" />
@@ -174,8 +197,6 @@
     <Compile Include="Controllers\ForumController.cs" />
     <Compile Include="Controllers\GiftCardController.cs" />
     <Compile Include="Controllers\HomeController.cs" />
-    <Compile Include="Controllers\ImageBrowserController.cs" />
-    <Compile Include="Controllers\MediaController.cs" />
     <Compile Include="Controllers\LanguageController.cs" />
     <Compile Include="Controllers\LogController.cs" />
     <Compile Include="Controllers\ManufacturerController.cs" />
@@ -196,8 +217,11 @@
     <Compile Include="Controllers\QueuedEmailController.cs" />
     <Compile Include="Controllers\RecurringPaymentController.cs" />
     <Compile Include="Controllers\ReturnRequestController.cs" />
+    <Compile Include="Controllers\RoxyFileManagerController.cs" />
     <Compile Include="Controllers\ScheduleTaskController.cs" />
+    <Compile Include="Controllers\AdminModelHelper.cs" />
     <Compile Include="Controllers\SecurityController.cs" />
+    <Compile Include="Controllers\UrlRecordController.cs" />
     <Compile Include="Controllers\SettingController.cs" />
     <Compile Include="Controllers\ShippingController.cs" />
     <Compile Include="Controllers\ShoppingCartController.cs" />
@@ -208,12 +232,16 @@
     <Compile Include="Controllers\TopicController.cs" />
     <Compile Include="Controllers\WidgetController.cs" />
     <Compile Include="Extensions\HtmlHelperExtensions.cs" />
+    <Compile Include="Infrastructure\AdminMenu.cs" />
     <Compile Include="Infrastructure\DependencyRegistrar.cs" />
     <Compile Include="Infrastructure\PreviewModeFilter.cs" />
     <Compile Include="Infrastructure\RouteProvider.cs" />
     <Compile Include="MappingExtensions.cs" />
     <Compile Include="Infrastructure\AdminStartupTask.cs" />
-    <Compile Include="Infrastructure\AutoMapperStartupTask.cs" />
+    <Compile Include="Infrastructure\AutoMapperAdminProfile.cs" />
+    <Compile Include="Models\Catalog\CategoryTreeModel.cs" />
+    <Compile Include="Models\Catalog\ProductAttributeOptionModel.cs" />
+    <Compile Include="Models\Catalog\ProductAttributeOptionsSetModel.cs" />
     <Compile Include="Models\Catalog\ProductBundleItemModel.cs" />
     <Compile Include="Models\Catalog\ProductVariantAttributeCombinationModel.cs" />
     <Compile Include="Models\Catalog\BulkEditProductModel.cs" />
@@ -223,23 +251,49 @@
     <Compile Include="Models\Catalog\ProductReviewListModel.cs" />
     <Compile Include="Models\Catalog\ManufacturerModel.cs" />
     <Compile Include="Models\Catalog\CopyProductModel.cs" />
-    <Compile Include="Models\Cms\RenderWidgetModel.cs" />
     <Compile Include="Models\Cms\WidgetModel.cs" />
+    <Compile Include="Models\Common\CheckUpdateResult.cs" />
     <Compile Include="Models\Common\FeedItemModel.cs" />
     <Compile Include="Models\Common\GenericAttributeModel.cs" />
     <Compile Include="Models\Common\LanguageSelectorModel.cs" />
     <Compile Include="Models\Common\MaintenanceModel.cs" />
     <Compile Include="Models\Common\SystemWarningModel.cs" />
     <Compile Include="Models\Common\SystemInfoModel.cs" />
-    <Compile Include="Models\Common\UrlRecordListModel.cs" />
-    <Compile Include="Models\Common\UrlRecordModel.cs" />
+    <Compile Include="Models\DataExchange\CsvConfigurationModel.cs" />
+    <Compile Include="Models\DataExchange\ExportDeploymentModel.cs" />
+    <Compile Include="Models\DataExchange\ExportFilterModel.cs" />
+    <Compile Include="Models\DataExchange\ImportProfileListModel.cs" />
+    <Compile Include="Models\DataExchange\ImportProfileModel.cs" />
+    <Compile Include="Models\DataExchange\ProfileInfoForProviderModel.cs" />
+    <Compile Include="Models\DataExchange\ExportPreviewModel.cs" />
+    <Compile Include="Models\DataExchange\ExportProjectionModel.cs" />
+    <Compile Include="Models\Directory\CountryListModel.cs" />
+    <Compile Include="Models\Directory\QuantityUnitModel.cs" />
+    <Compile Include="Models\DataExchange\ExportProfileModel.cs" />
+    <Compile Include="Models\Localization\AvailableLanguageModel.cs" />
+    <Compile Include="Models\Localization\CheckAvailableResourcesResult.cs" />
+    <Compile Include="Models\Menus\MenuItemRecordModel.cs" />
+    <Compile Include="Models\Menus\MenuRecordListModel.cs" />
+    <Compile Include="Models\Menus\MenuRecordModel.cs" />
     <Compile Include="Models\Messages\MessageTemplateListModel.cs" />
+    <Compile Include="Models\Messages\MessageTemplatePreviewModel.cs" />
     <Compile Include="Models\News\NewsItemListModel.cs" />
     <Compile Include="Models\Orders\AutoUpdateOrderItemModel.cs" />
+    <Compile Include="Models\Orders\CheckoutAttributeListModel.cs" />
     <Compile Include="Models\Orders\ReturnRequestListModel.cs" />
+    <Compile Include="Models\Payments\PaymentMethodEditModel.cs" />
+    <Compile Include="Models\Plugins\LicenseLabelModel.cs" />
+    <Compile Include="Models\Plugins\LicensePluginModel.cs" />
     <Compile Include="Models\Plugins\LocalPluginsModel.cs" />
     <Compile Include="Models\Plugins\ProviderModelList.cs" />
-    <Compile Include="Models\Settings\ContentSliderSettingsModel.cs" />
+    <Compile Include="Models\Polls\PollVotingRecordModel.cs" />
+    <Compile Include="Models\Settings\ForumSearchSettingsModel.cs" />
+    <Compile Include="Models\Settings\PaymentSettingsModel.cs" />
+    <Compile Include="Models\Settings\SearchSettingsModel.cs" />
+    <Compile Include="Models\Settings\DataExchangeSettingsModel.cs" />
+    <Compile Include="Models\Tasks\ScheduleTaskHistoryModel.cs" />
+    <Compile Include="Models\UrlRecord\UrlRecordListModel.cs" />
+    <Compile Include="Models\UrlRecord\UrlRecordModel.cs" />
     <Compile Include="Models\Customers\OnlineCustomerModel.cs" />
     <Compile Include="Models\Directory\DeliveryTimeModel.cs" />
     <Compile Include="Models\ExternalAuthentication\AuthenticationMethodModel.cs" />
@@ -293,7 +347,6 @@
     <Compile Include="Models\Themes\ThemeManifestModel.cs" />
     <Compile Include="Models\Topics\TopicListModel.cs" />
     <Compile Include="Models\Topics\TopicModel.cs" />
-    <Compile Include="Models\Shipping\ShippingMethodRestrictionModel.cs" />
     <Compile Include="Models\News\NewsCommentModel.cs" />
     <Compile Include="Models\News\NewsItemModel.cs" />
     <Compile Include="Models\Settings\NewsSettingsModel.cs" />
@@ -340,86 +393,46 @@
     <Compile Include="Models\Messages\QueuedEmailModel.cs" />
     <Compile Include="Models\Settings\TaxSettingsModel.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Validators\Catalog\CategoryValidator.cs" />
-    <Compile Include="Validators\Catalog\ProductTagValidator.cs" />
-    <Compile Include="Validators\Catalog\ManufacturerValidator.cs" />
-    <Compile Include="Validators\Common\AddressValidator.cs" />
-    <Compile Include="Validators\Common\GenericAttributeValidator.cs" />
-    <Compile Include="Validators\ContentSlider\ContentSliderValidator.cs" />
-    <Compile Include="Validators\Directory\DeliveryTimeValidator.cs" />
-    <Compile Include="Validators\Messages\NewsLetterSubscriptionValidator.cs" />
-    <Compile Include="Validators\Orders\CheckoutAttributeValueValidator.cs" />
-    <Compile Include="Validators\Orders\CheckoutAttributeValidator.cs" />
-    <Compile Include="Validators\Affiliates\AffiliateValidator.cs" />
-    <Compile Include="Validators\Messages\CampaignValidator.cs" />
-    <Compile Include="Validators\Blogs\BlogPostValidator.cs" />
-    <Compile Include="Validators\Plugins\PluginValidator.cs" />
-    <Compile Include="Validators\Polls\PollAnswerValidator.cs" />
-    <Compile Include="Validators\Polls\PollValidator.cs" />
-    <Compile Include="Validators\Settings\GeneralCommonSettingsValidator.cs" />
-    <Compile Include="Validators\Settings\OrderSettingsValidator.cs" />
-    <Compile Include="Validators\Settings\SettingValidator.cs" />
-    <Compile Include="Validators\Settings\RewardPointsSettingsValidator.cs" />
-    <Compile Include="Validators\Stores\StoreValidator.cs" />
-    <Compile Include="Validators\Tasks\ScheduleTaskValidator.cs" />
-    <Compile Include="Validators\Topics\TopicValidator.cs" />
-    <Compile Include="Validators\News\NewsItemValidator.cs" />
-    <Compile Include="Validators\Messages\MessageTemplateValidator.cs" />
-    <Compile Include="Validators\Messages\EmailAccountValidator.cs" />
-    <Compile Include="Validators\Directory\StateProvinceValidator.cs" />
-    <Compile Include="Validators\Directory\CountryValidator.cs" />
-    <Compile Include="Validators\Catalog\ProductReviewValidator.cs" />
-    <Compile Include="Validators\Orders\ReturnRequestValidator.cs" />
-    <Compile Include="Validators\Orders\RecurringPaymentValidator.cs" />
-    <Compile Include="Validators\Discounts\DiscountValidator.cs" />
-    <Compile Include="Validators\Catalog\ProductVariantAttributeValueModelValidator.cs" />
-    <Compile Include="Validators\Catalog\SpecificationAttributeOptionValidator.cs" />
-    <Compile Include="Validators\Catalog\SpecificationAttributeValidator.cs" />
-    <Compile Include="Validators\Catalog\ProductAttributeValidator.cs" />
-    <Compile Include="Validators\Customers\CustomerRoleValidator.cs" />
-    <Compile Include="Validators\Customers\CustomerValidator.cs" />
-    <Compile Include="Validators\Forums\ForumGroupValidator.cs" />
-    <Compile Include="Validators\Forums\ForumValidator.cs" />
-    <Compile Include="Validators\Messages\QueuedEmailValidator.cs" />
-    <Compile Include="Validators\Shipping\ShippingMethodValidator.cs" />
-    <Compile Include="Validators\Tax\TaxCategoryValidator.cs" />
-    <Compile Include="Validators\Directory\MeasureDimensionValidator.cs" />
-    <Compile Include="Validators\Directory\MeasureWeightValidator.cs" />
-    <Compile Include="Validators\Directory\CurrencyValidator.cs" />
-    <Compile Include="Validators\Localization\LanguageResourceValidator.cs" />
-    <Compile Include="Validators\Localization\LanguageValidator.cs" />
-    <Compile Include="Validators\Catalog\ProductValidator.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Content\images\ajax-progress-2.gif" />
+    <Content Include="Content\filemanager\css\images\animated-overlay.gif" />
+    <Content Include="Content\filemanager\css\images\ui-icons_444444_256x240.png" />
+    <Content Include="Content\filemanager\css\images\ui-icons_555555_256x240.png" />
+    <Content Include="Content\filemanager\css\images\ui-icons_777620_256x240.png" />
+    <Content Include="Content\filemanager\css\images\ui-icons_777777_256x240.png" />
+    <Content Include="Content\filemanager\css\images\ui-icons_cc0000_256x240.png" />
+    <Content Include="Content\filemanager\css\images\ui-icons_ffffff_256x240.png" />
+    <Content Include="Content\filemanager\css\jquery-ui-1.10.4.custom.css" />
+    <Content Include="Content\filemanager\css\jquery-ui-1.10.4.custom.min.css" />
+    <Content Include="Content\filemanager\css\main.scss" />
+    <Content Include="Content\filemanager\images\blank.gif" />
+    <Content Include="Content\filemanager\images\file-upload.png" />
+    <Content Include="Content\filemanager\images\folder-green.png" />
+    <Content Include="Content\filemanager\images\folder-opened.png" />
+    <Content Include="Content\filemanager\images\folder.png" />
+    <Content Include="Content\filemanager\images\loading-dir.gif" />
+    <Content Include="Content\filemanager\images\loading.gif" />
+    <Content Include="Content\filemanager\images\remove-upload.png" />
+    <Content Include="Content\filemanager\images\sprite.png" />
+    <Content Include="Content\filemanager\images\stripes-reverse.gif" />
+    <Content Include="Content\filemanager\images\stripes.gif" />
+    <Content Include="Content\filemanager\images\upload-big.png" />
+    <Content Include="Content\filemanager\js\custom.js" />
+    <Content Include="Content\filemanager\js\directory.js" />
+    <Content Include="Content\filemanager\js\file.js" />
+    <Content Include="Content\filemanager\js\filetypes.js" />
+    <Content Include="Content\filemanager\js\jquery-2.1.1.min.js" />
+    <Content Include="Content\filemanager\js\jquery-dateFormat.min.js" />
+    <Content Include="Content\filemanager\js\jquery-ui-1.10.4.custom.min.js" />
+    <Content Include="Content\filemanager\js\main.js" />
+    <Content Include="Content\filemanager\js\utils.js" />
+    <Content Include="Content\filemanager\lang\en.js" />
+    <Content Include="Content\filemanager\LICENSE.txt" />
+    <Content Include="Content\filemanager\third-party.txt" />
     <Content Include="Content\images\ajax_loader_small.gif" />
-    <Content Include="Content\images\ap-catalog-white.png" />
-    <Content Include="Content\images\ap-catalog.png" />
-    <Content Include="Content\images\ap-chevron.png" />
-    <Content Include="Content\images\ap-cms-white.png" />
-    <Content Include="Content\images\ap-cms.png" />
-    <Content Include="Content\images\ap-customers-white.png" />
-    <Content Include="Content\images\ap-customers.png" />
-    <Content Include="Content\images\ap-dashboard-white.png" />
-    <Content Include="Content\images\ap-dashboard.png" />
-    <Content Include="Content\images\ap-default-white.png" />
-    <Content Include="Content\images\ap-default.png" />
-    <Content Include="Content\images\ap-help-white.png" />
-    <Content Include="Content\images\ap-help.png" />
-    <Content Include="Content\images\ap-marketing-white.png" />
-    <Content Include="Content\images\ap-marketing.png" />
-    <Content Include="Content\images\ap-sales-white.png" />
-    <Content Include="Content\images\ap-sales.png" />
-    <Content Include="Content\images\ap-settings-white.png" />
-    <Content Include="Content\images\ap-settings.png" />
-    <Content Include="Content\images\ap-system-white.png" />
-    <Content Include="Content\images\ap-system.png" />
-    <Content Include="Content\images\checkmark.png" />
-    <Content Include="Content\images\google-maps.gif" />
     <Content Include="Content\images\ico-content-negative.png" />
     <Content Include="Content\images\ico-content-o60.png" />
     <Content Include="Content\images\ico-content.png" />
-    <Content Include="Content\images\fileuploader-loading.gif" />
     <Content Include="Content\images\icon-plugin-admin.png" />
     <Content Include="Content\images\icon-plugin-analytics.png" />
     <Content Include="Content\images\icon-plugin-api.png" />
@@ -442,37 +455,155 @@
     <Content Include="Content\images\icon-plugin-shipping.png" />
     <Content Include="Content\images\icon-plugin-social.png" />
     <Content Include="Content\images\icon-plugin-tax.png" />
-    <Content Include="Content\images\preloader-32.gif" />
-    <Content Include="Content\images\smnet.png" />
+    <Content Include="Content\images\loading.gif" />
+    <Content Include="Content\images\smartstore-icon.svg" />
+    <Content Include="Content\images\smartstore.svg" />
+    <Content Include="Content\telerik\css\2012.2.607\telerik.common.css" />
+    <Content Include="Content\telerik\css\2012.2.607\telerik.rtl.css" />
+    <Content Include="Content\telerik\js\jquery.validate.js" />
+    <Content Include="Content\telerik\js\jquery-1.7.1.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.calendar.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.common.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.datepicker.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.datetimepicker.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.draganddrop.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.grid.editing.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.grid.filtering.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.grid.grouping.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.grid.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.grid.reordering.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.grid.resizing.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.textbox.min.js" />
+    <Content Include="Content\telerik\js\2012.2.607\telerik.treeview.min.js" />
+    <Content Include="Content\telerik\img\editor.png" />
+    <Content Include="Content\telerik\img\gradient.png" />
+    <Content Include="Content\telerik\img\imagebrowser.png" />
+    <Content Include="Content\telerik\img\loading.gif" />
+    <Content Include="Content\telerik\img\slider-h.gif" />
+    <Content Include="Content\telerik\img\slider-v.gif" />
+    <Content Include="Content\telerik\img\sprite-vertical.png" />
+    <Content Include="Content\telerik\img\sprite.png" />
     <Content Include="favicon.ico" />
     <Content Include="Scripts\admin.common.js" />
-    <None Include="Scripts\jquery-1.8.3.intellisense.js" />
-    <Content Include="Scripts\jquery-1.8.3.js" />
-    <Content Include="Scripts\jquery-1.8.3.min.js" />
+    <Content Include="Content\filemanager\conf.json" />
+    <Content Include="Content\filemanager\lang\bg.js" />
+    <Content Include="Content\filemanager\lang\de.js" />
+    <Content Include="Content\filemanager\lang\fr.js" />
+    <Content Include="Content\filemanager\lang\ca.js" />
+    <Content Include="Content\filemanager\lang\cs.js" />
+    <Content Include="Content\filemanager\lang\cs1.js" />
+    <Content Include="Content\filemanager\lang\da.js" />
+    <Content Include="Content\filemanager\lang\es.js" />
+    <Content Include="Content\filemanager\lang\hu.js" />
+    <Content Include="Content\filemanager\lang\it.js" />
+    <Content Include="Content\filemanager\lang\nl.js" />
+    <Content Include="Content\filemanager\lang\pl.js" />
+    <Content Include="Content\filemanager\lang\pt.js" />
+    <Content Include="Content\filemanager\lang\ru.js" />
+    <Content Include="Content\filemanager\lang\sk.js" />
+    <Content Include="Content\filemanager\lang\tr.js" />
+    <Content Include="Content\theme.scss" />
+    <Content Include="Content\_telerik.scss" />
+    <Content Include="Content\_variables.scss" />
+    <Content Include="Content\_admin.scss" />
+    <Content Include="Scripts\jquery-shims.js" />
     <Content Include="Scripts\jquery.tmpl.min.js" />
     <Content Include="Scripts\admin.globalinit.js" />
-    <Content Include="Scripts\smartstore.discountrules.js">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Scripts\_references.js" />
+    <Content Include="Scripts\smartstore.iconchooser.js" />
+    <Content Include="Scripts\smartstore.download.js" />
+    <Content Include="Scripts\smartstore.discountrules.js" />
+    <Content Include="Content\theme-rtl.scss" />
+    <Content Include="Content\_rtl.scss" />
+    <None Include="Scripts\_references.js" />
     <Content Include="sitemap.config">
       <SubType>Designer</SubType>
     </Content>
     <Content Include="Views\Product\_CreateOrUpdate.Inventory.cshtml" />
     <Content Include="Views\Product\_Create.SaveFirst.cshtml" />
     <Content Include="Views\Plugin\ConfigureProvider.cshtml" />
-    <Content Include="Views\Shared\_Providers.cshtml" />
-    <Content Include="Views\Shared\EditorTemplates\RichEditor.cshtml" />
+    <Content Include="Views\RoxyFileManager\Index.cshtml" />
+    <Content Include="Views\Shared\Partials\_Providers.cshtml" />
     <Content Include="Views\Plugin\EditProviderPopup.cshtml" />
     <Content Include="Views\Theme\PreviewTool.cshtml" />
-    <Content Include="Views\Shared\_AdminRoot.cshtml" />
+    <Content Include="Views\Shared\Layouts\_AdminRoot.cshtml" />
     <Content Include="Views\Home\MarketplaceFeed.cshtml" />
+    <Content Include="Views\Order\ShipmentDetails.Print.cshtml" />
+    <Content Include="Views\QuantityUnit\_CreateOrUpdate.cshtml" />
+    <Content Include="Views\QuantityUnit\Create.cshtml" />
+    <Content Include="Views\QuantityUnit\Edit.cshtml" />
+    <Content Include="Views\QuantityUnit\List.cshtml" />
+    <Content Include="Views\Home\UaTester.cshtml" />
+    <Content Include="Views\Plugin\LicensePlugin.cshtml" />
+    <Content Include="Views\Common\CheckUpdate.cshtml" />
+    <Content Include="Views\Payment\Edit.cshtml" />
+    <Content Include="Views\Shared\EditorTemplates\Download.cshtml" />
+    <Content Include="Views\ScheduleTask\Edit.cshtml" />
+    <Content Include="Views\ScheduleTask\FutureSchedules.cshtml" />
+    <Content Include="Views\ScheduleTask\_LastRun.cshtml" />
+    <Content Include="Views\ScheduleTask\_NextRun.cshtml" />
+    <Content Include="Views\ScheduleTask\MinimalTask.cshtml" />
+    <Content Include="Views\ScheduleTask\_MinimalTaskWidget.cshtml" />
+    <Content Include="Views\Export\List.cshtml" />
+    <Content Include="Views\Export\Create.cshtml" />
+    <Content Include="Views\Export\Edit.cshtml" />
+    <Content Include="Views\Export\Preview.cshtml" />
+    <Content Include="Views\Export\EditDeployment.cshtml" />
+    <Content Include="Views\Export\CreateDeployment.cshtml" />
+    <Content Include="Views\Export\_CreateOrUpdate.Deployment.cshtml" />
+    <Content Include="Views\Export\_Tab.Filter.cshtml" />
+    <Content Include="Views\Export\_Tab.Projection.cshtml" />
+    <Content Include="Views\Export\InfoProfile.cshtml" />
+    <Content Include="Views\Export\_Tab.Deployment.cshtml" />
+    <Content Include="Views\UrlRecord\List.cshtml" />
+    <Content Include="Views\UrlRecord\Edit.cshtml" />
+    <Content Include="Views\UrlRecord\_CreateOrUpdate.cshtml" />
+    <Content Include="Views\UrlRecord\NamesPerEntity.cshtml" />
+    <Content Include="Views\Export\ProfileFileCount.cshtml" />
+    <Content Include="Views\Export\ProfileFileDetails.cshtml" />
+    <Content Include="Views\Import\List.cshtml" />
+    <Content Include="Views\Import\_Update.cshtml" />
+    <Content Include="Views\Import\Edit.cshtml" />
+    <Content Include="Views\Shared\Partials\CsvConfiguration.cshtml" />
+    <Content Include="Views\Import\_ColumnMappings.cshtml" />
+    <Content Include="Views\Import\ProfileImportResult.cshtml" />
+    <Content Include="Views\Setting\DataExchange.cshtml" />
+    <Content Include="Views\Export\_ProfileList.cshtml" />
+    <Content Include="Views\Product\EditorTemplates\TierPriceCalculationMethod.cshtml" />
+    <Content Include="Views\Setting\Search.cshtml" />
+    <Content Include="Views\Shared\EditorTemplates\ModelTree.cshtml" />
+    <Content Include="Views\ProductAttribute\OptionCreatePopup.cshtml" />
+    <Content Include="Views\ProductAttribute\OptionEditPopup.cshtml" />
+    <Content Include="Views\ProductAttribute\_CreateOrUpdateOption.cshtml" />
+    <Content Include="Views\Setting\Partials\CommonFacet.cshtml" />
+    <Content Include="Views\Plugin\Partials\LicenseLabel.cshtml" />
+    <Content Include="Views\Language\Partials\AvailableLanguages.cshtml" />
+    <Content Include="Views\MessageTemplate\Preview.cshtml" />
+    <Content Include="Views\Shared\Partials\StoreSelector.cshtml" />
+    <Content Include="Views\Shared\Partials\AclSelector.cshtml" />
+    <Content Include="Views\Order\_Edit.Products.cshtml" />
+    <Content Include="Views\Order\_Edit.BillingAndShipment.cshtml" />
+    <Content Include="Views\Order\_Edit.Info.cshtml" />
+    <Content Include="Views\Order\_Edit.OrderNotes.cshtml" />
+    <Content Include="Views\Shared\Layouts\_AdminBareLayout.cshtml" />
+    <Content Include="Views\Setting\Payment.cshtml" />
+    <Content Include="Views\Shared\EditorTemplates\SelectList.cshtml" />
+    <Content Include="Views\Product\_CreateOrUpdate.Downloads.cshtml" />
+    <Content Include="Views\Menu\List.cshtml" />
+    <Content Include="Views\Menu\Edit.cshtml" />
+    <Content Include="Views\Menu\Create.cshtml" />
+    <Content Include="Views\Menu\_CreateOrUpdate.cshtml" />
+    <Content Include="Views\Menu\_CreateOrUpdate.Item.cshtml" />
+    <Content Include="Views\Menu\EditItem.cshtml" />
+    <Content Include="Views\Menu\CreateItem.cshtml" />
+    <Content Include="Views\Menu\ItemList.cshtml" />
+    <Content Include="Views\Menu\EditorTemplates\MenuItem.Entity.cshtml" />
+    <Content Include="Views\Menu\EditorTemplates\MenuItem.Route.cshtml" />
+    <Content Include="Views\Menu\EditorTemplates\MenuItem.Catalog.cshtml" />
+    <Content Include="Views\Shared\EditorTemplates\AccessPermissions.cshtml" />
+    <Content Include="Views\Shared\Menus\Admin.cshtml" />
+    <Content Include="Views\Shared\Partials\FontAwesomeIcon.cshtml" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Content\admin.less" />
-    <Content Include="Content\theme.less" />
-    <Content Include="Content\variables.custom.less" />
-    <Content Include="Content\variables.less" />
     <Content Include="Views\Category\Create.cshtml" />
     <Content Include="Views\Category\Edit.cshtml" />
     <Content Include="Views\Category\List.cshtml" />
@@ -488,29 +619,35 @@
     <Content Include="Views\Language\Resources.cshtml" />
     <Content Include="Views\Language\_CreateOrUpdate.cshtml" />
     <Content Include="Views\Log\List.cshtml" />
-    <Content Include="Views\Shared\Delete.cshtml" />
-    <Content Include="Views\Shared\EditorTemplates\Picture.cshtml" />
-    <Content Include="Views\Shared\Menu.cshtml" />
-    <Content Include="Views\Shared\_AdminLayout.cshtml" />
+    <Content Include="Views\Shared\Partials\Delete.cshtml" />
+    <Content Include="Views\Shared\Layouts\_AdminLayout.cshtml" />
     <Content Include="Views\Web.config">
       <SubType>Designer</SubType>
     </Content>
     <Content Include="Views\_ViewStart.cshtml" />
-    <Content Include="Views\Shared\Navbar.cshtml" />
+    <Content Include="Views\Shared\Partials\Navbar.cshtml" />
     <Content Include="Views\ScheduleTask\List.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\Libraries\SmartStore.Core\SmartStore.Core.csproj">
       <Project>{6bda8332-939f-45b7-a25e-7a797260ae59}</Project>
       <Name>SmartStore.Core</Name>
+      <Private>False</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\Libraries\SmartStore.Data\SmartStore.Data.csproj">
+      <Project>{CCD7F2C9-6A2C-4CF0-8E89-076B8FC0F144}</Project>
+      <Name>SmartStore.Data</Name>
+      <Private>False</Private>
     </ProjectReference>
     <ProjectReference Include="..\..\..\Libraries\SmartStore.Services\SmartStore.Services.csproj">
       <Project>{210541ad-f659-47da-8763-16f36c5cd2f4}</Project>
       <Name>SmartStore.Services</Name>
+      <Private>False</Private>
     </ProjectReference>
     <ProjectReference Include="..\..\SmartStore.Web.Framework\SmartStore.Web.Framework.csproj">
       <Project>{75fd4163-333c-4dd5-854d-2ef294e45d94}</Project>
       <Name>SmartStore.Web.Framework</Name>
+      <Private>False</Private>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
@@ -658,22 +795,13 @@
     <Content Include="Views\SpecificationAttribute\OptionEditPopup.cshtml" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Views\Shared\_AdminPopupLayout.cshtml" />
+    <Content Include="Views\Shared\Layouts\_AdminPopupLayout.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Product\EditorTemplates\ProductCategory.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Product\EditorTemplates\ProductManufacturer.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\Product\RelatedProductAddPopup.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\Product\CrossSellProductAddPopup.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\Category\ProductAddPopup.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Product\EditorTemplates\TierPriceCustomer.cshtml" />
@@ -692,9 +820,6 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Product\_CreateOrUpdateProductAttributeValue.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\Shared\EditorTemplates\Download.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\CheckoutAttribute\_CreateOrUpdate.cshtml" />
@@ -827,7 +952,6 @@
     <Content Include="Views\Order\Edit.cshtml" />
     <Content Include="Views\Order\List.cshtml" />
     <Content Include="Views\Order\PartiallyRefundOrderPopup.cshtml" />
-    <Content Include="Views\Order\_CreateOrUpdateAddress.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Blog\_CreateOrUpdate.cshtml" />
@@ -864,9 +988,6 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\News\Comments.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\Shipping\Restrictions.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Topic\_CreateOrUpdate.cshtml" />
@@ -974,9 +1095,6 @@
     <Content Include="Views\Manufacturer\List.cshtml" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Views\Manufacturer\ProductAddPopup.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
     <Content Include="Views\ShoppingCart\CurrentCarts.cshtml" />
   </ItemGroup>
   <ItemGroup>
@@ -1063,9 +1181,6 @@
   <ItemGroup>
     <Content Include="Views\Product\_CreateOrUpdateProductTag.cshtml" />
   </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\Widget\WidgetsByZone.cshtml" />
-  </ItemGroup>
   <ItemGroup />
   <ItemGroup>
     <Content Include="Views\DeliveryTime\List.cshtml" />
@@ -1080,18 +1195,6 @@
     <Content Include="Views\DeliveryTime\Edit.cshtml" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Views\ContentSlider\CreateSlide.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\ContentSlider\_CreateOrUpdate.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\ContentSlider\EditSlide.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\ContentSlider\Index.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
     <Content Include="Views\Product\AttributeCombinationCreatePopup.cshtml" />
   </ItemGroup>
   <ItemGroup>
@@ -1102,9 +1205,6 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Theme\Configure.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\Common\SeNames.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Store\Create.cshtml" />
@@ -1132,9 +1232,6 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Common\GenericAttributes.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\Shared\EditorTemplates\RichEditor.SummerNote.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Product\EditorTemplates\AttributeControlType.cshtml" />
@@ -1170,9 +1267,6 @@
     <Content Include="Views\Product\_CreateOrUpdate.Stores.cshtml" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Views\Product\AssociatedProductAddPopup.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
     <Content Include="Views\Product\_CreateOrUpdate.AssociatedProducts.cshtml" />
   </ItemGroup>
   <ItemGroup>
@@ -1185,32 +1279,13 @@
     <Content Include="Views\Product\_CreateOrUpdate.BundleItems.cshtml" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Views\Product\BundleItemAddPopup.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
     <Content Include="Views\Product\BundleItemEditPopup.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\Product\ProductAttributeValueLinkagePopup.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Views\Media\UploadImage.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Home\About.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Packaging\UploadPackage.cshtml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Scripts\Web.config">
-      <SubType>Designer</SubType>
-    </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Content\Web.config">
-      <SubType>Designer</SubType>
-    </Content>
   </ItemGroup>
   <ItemGroup>
     <Content Include="Views\Order\_AutoUpdateOrderItem.cshtml" />
@@ -1236,6 +1311,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <WarningLevel>0</WarningLevel>
   </PropertyGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <Import Project="$(VSToolsPath)\WebApplications\Microsoft.WebApplication.targets" Condition="'$(VSToolsPath)' != ''" />
@@ -1267,6 +1343,10 @@
       </FlavorProperties>
     </VisualStudio>
   </ProjectExtensions>
-  <Import Project="$(SolutionDir)\.nuget\nuget.targets" />
-  <Import Project="..\..\..\packages\AutoMapper.3.2.1\tools\AutoMapper.targets" Condition="Exists('..\..\..\packages\AutoMapper.3.2.1\tools\AutoMapper.targets')" />
+  <Import Project="$(SolutionDir)\.nuget\nuget.targets" Condition="Exists('$(SolutionDir)\.nuget\NuGet.targets')" />
+  <Import Project="$(SolutionDir)\FixRazorIntellisense.targets" Condition="'$(Configuration)' == 'PluginDev'" />
+  <PropertyGroup>
+    <PreBuildEvent>
+    </PreBuildEvent>
+  </PropertyGroup>
 </Project>

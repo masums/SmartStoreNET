@@ -1,66 +1,84 @@
 using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
-using System.Net;
-using System.Text;
-using System.Web;
-using System.Web.Routing;
-using Autofac;
 using SmartStore.Core;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Directory;
-using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Payments;
 using SmartStore.Core.Plugins;
-using SmartStore.Services.Configuration;
-using SmartStore.Services.Customers;
-using SmartStore.Services.Directory;
-using SmartStore.Services.Localization;
-using SmartStore.Services.Orders;
-using SmartStore.Services.Payments;
-using SmartStore.Web.Framework.Plugins;
-using SmartStore.PayPal;
-using SmartStore.PayPal.Services;
+using SmartStore.PayPal.Controllers;
 using SmartStore.PayPal.PayPalSvc;
 using SmartStore.PayPal.Settings;
-using SmartStore.PayPal.Controllers;
+using SmartStore.Services.Customers;
+using SmartStore.Services.Payments;
 
 namespace SmartStore.PayPal
 {
-	/// <summary>
-	/// PayPalDirect provider
-	/// </summary>
-    [SystemName("Payments.PayPalDirect")]
+	[SystemName("Payments.PayPalDirect")]
     [FriendlyName("PayPal Direct")]
     [DisplayOrder(1)]
     public class PayPalDirectProvider : PayPalProviderBase<PayPalDirectPaymentSettings>
 	{
-		#region Fields
-
-		private readonly ICurrencyService _currencyService;
 		private readonly ICustomerService _customerService;
-		private readonly CurrencySettings _currencySettings;
-		private readonly IOrderTotalCalculationService _orderTotalCalculationService;
-		#endregion
 
-		#region Ctor
-
-        public PayPalDirectProvider( ICurrencyService currencyService, 
-            ICustomerService customerService,
-			CurrencySettings currencySettings, 
-			IOrderTotalCalculationService orderTotalCalculationService,
-            IComponentContext ctx)
+        public PayPalDirectProvider(
+            ICustomerService customerService)
 		{
-			_currencyService = currencyService;
 			_customerService = customerService;
-			_currencySettings = currencySettings;
-			_orderTotalCalculationService = orderTotalCalculationService;
 		}
 
-		#endregion
+		public static string SystemName { get { return "Payments.PayPalDirect"; } }
 
-		#region Methods
+		public override bool RequiresInteraction
+		{
+			get
+			{
+				return true;
+			}
+		}
+
+		public override RecurringPaymentType RecurringPaymentType
+		{
+			get
+			{
+				return RecurringPaymentType.Automatic;
+			}
+		}
+
+		public override PaymentMethodType PaymentMethodType
+		{
+			get
+			{
+				return PaymentMethodType.Standard;
+			}
+		}
+
+		private CreditCardTypeType GetCreditCardType(string creditCardType)
+		{
+			var creditCardTypeType = (CreditCardTypeType)Enum.Parse(typeof(CreditCardTypeType), creditCardType);
+			return creditCardTypeType;
+		}
+
+		private CountryCodeType GetCountryCodeType(Country country)
+		{
+			CountryCodeType payerCountry = CountryCodeType.US;
+			try
+			{
+				payerCountry = (CountryCodeType)Enum.Parse(typeof(CountryCodeType), country.TwoLetterIsoCode);
+			}
+			catch {	}
+
+			return payerCountry;
+		}
+
+		protected override string GetControllerName()
+		{
+			return "PayPalDirect";
+		}
+
+		public override Type GetControllerType()
+		{
+			return typeof(PayPalDirectController);
+		}
 
 		protected override string GetResourceRootKey()
 		{
@@ -76,31 +94,37 @@ namespace SmartStore.PayPal
 		{
             var result = new ProcessPaymentResult();
 
+			var store = Services.StoreService.GetStoreById(processPaymentRequest.StoreId);
             var customer = _customerService.GetCustomerById(processPaymentRequest.CustomerId);
+			var settings = Services.Settings.LoadSetting<PayPalDirectPaymentSettings>(processPaymentRequest.StoreId);
             
             var req = new DoDirectPaymentReq();
             req.DoDirectPaymentRequest = new DoDirectPaymentRequestType();
-            req.DoDirectPaymentRequest.Version = PayPalHelper.GetApiVersion();
+            req.DoDirectPaymentRequest.Version = ApiVersion;
+
             var details = new DoDirectPaymentRequestDetailsType();
             req.DoDirectPaymentRequest.DoDirectPaymentRequestDetails = details;
-            details.IPAddress = CommonServices.WebHelper.GetCurrentIpAddress();
-            if (details.IPAddress == null || details.IPAddress == "::1")
+            details.IPAddress = Services.WebHelper.GetCurrentIpAddress();
+
+			if (details.IPAddress.IsEmpty())
                 details.IPAddress = "127.0.0.1";
-            if (Settings.TransactMode == TransactMode.Authorize)
+
+            if (settings.TransactMode == TransactMode.Authorize)
                 details.PaymentAction = PaymentActionCodeType.Authorization;
             else
                 details.PaymentAction = PaymentActionCodeType.Sale;
+
             //credit card
             details.CreditCard = new CreditCardDetailsType();
             details.CreditCard.CreditCardNumber = processPaymentRequest.CreditCardNumber;
-            details.CreditCard.CreditCardType = PayPalHelper.GetPaypalCreditCardType(processPaymentRequest.CreditCardType);
+            details.CreditCard.CreditCardType = GetCreditCardType(processPaymentRequest.CreditCardType);
             details.CreditCard.ExpMonthSpecified = true;
             details.CreditCard.ExpMonth = processPaymentRequest.CreditCardExpireMonth;
             details.CreditCard.ExpYearSpecified = true;
             details.CreditCard.ExpYear = processPaymentRequest.CreditCardExpireYear;
             details.CreditCard.CVV2 = processPaymentRequest.CreditCardCvv2;
             details.CreditCard.CardOwner = new PayerInfoType();
-            details.CreditCard.CardOwner.PayerCountry = PayPalHelper.GetPaypalCountryCodeType(customer.BillingAddress.Country);
+            details.CreditCard.CardOwner.PayerCountry = GetCountryCodeType(customer.BillingAddress.Country);
             details.CreditCard.CreditCardTypeSpecified = true;
             //billing address
             details.CreditCard.CardOwner.Address = new AddressType();
@@ -112,14 +136,16 @@ namespace SmartStore.PayPal
                 details.CreditCard.CardOwner.Address.StateOrProvince = customer.BillingAddress.StateProvince.Abbreviation;
             else
                 details.CreditCard.CardOwner.Address.StateOrProvince = "CA";
-            details.CreditCard.CardOwner.Address.Country = PayPalHelper.GetPaypalCountryCodeType(customer.BillingAddress.Country);
+            details.CreditCard.CardOwner.Address.Country = GetCountryCodeType(customer.BillingAddress.Country);
             details.CreditCard.CardOwner.Address.PostalCode = customer.BillingAddress.ZipPostalCode;
             details.CreditCard.CardOwner.Payer = customer.BillingAddress.Email;
             details.CreditCard.CardOwner.PayerName = new PersonNameType();
             details.CreditCard.CardOwner.PayerName.FirstName = customer.BillingAddress.FirstName;
             details.CreditCard.CardOwner.PayerName.LastName = customer.BillingAddress.LastName;
-            //order totals
-            var payPalCurrency = PayPalHelper.GetPaypalCurrency(_currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId));
+            
+			//order totals
+            var payPalCurrency = GetApiCurrency(store.PrimaryStoreCurrency);
+
             details.PaymentDetails = new PaymentDetailsType();
             details.PaymentDetails.OrderTotal = new BasicAmountType();
             details.PaymentDetails.OrderTotal.Value = Math.Round(processPaymentRequest.OrderTotal, 2).ToString("N", new CultureInfo("en-us"));
@@ -144,19 +170,18 @@ namespace SmartStore.PayPal
             }
 
             //send request
-            using (var service = new PayPalAPIAASoapBinding())
+            using (var service = GetApiAaService(settings))
             {
-                service.Url = PayPalHelper.GetPaypalServiceUrl(Settings);
-                service.RequesterCredentials = PayPalHelper.GetPaypalApiCredentials(Settings);
-                DoDirectPaymentResponseType response = service.DoDirectPayment(req);
+                var response = service.DoDirectPayment(req);
 
-                string error = "";
-                bool success = PayPalHelper.CheckSuccess(Helper, response, out error);
+                var error = "";
+                var success = IsSuccess(response, out error);
+
                 if (success)
                 {
                     result.AvsResult = response.AVSCode;
                     result.AuthorizationTransactionCode = response.CVV2Code;
-                    if (Settings.TransactMode == TransactMode.Authorize)
+                    if (settings.TransactMode == TransactMode.Authorize)
                     {
                         result.AuthorizationTransactionId = response.TransactionID;
                         result.AuthorizationTransactionResult = response.Ack.ToString();
@@ -188,24 +213,26 @@ namespace SmartStore.PayPal
 		{
 			var result = new ProcessPaymentResult();
 
+			var store = Services.StoreService.GetStoreById(processPaymentRequest.StoreId);
 			var customer = _customerService.GetCustomerById(processPaymentRequest.CustomerId);
+			var settings = Services.Settings.LoadSetting<PayPalDirectPaymentSettings>(processPaymentRequest.StoreId);
 
 			var req = new CreateRecurringPaymentsProfileReq();
 			req.CreateRecurringPaymentsProfileRequest = new CreateRecurringPaymentsProfileRequestType();
-            req.CreateRecurringPaymentsProfileRequest.Version = PayPalHelper.GetApiVersion();
+            req.CreateRecurringPaymentsProfileRequest.Version = ApiVersion;
 			var details = new CreateRecurringPaymentsProfileRequestDetailsType();
 			req.CreateRecurringPaymentsProfileRequest.CreateRecurringPaymentsProfileRequestDetails = details;
 
 			details.CreditCard = new CreditCardDetailsType();
 			details.CreditCard.CreditCardNumber = processPaymentRequest.CreditCardNumber;
-			details.CreditCard.CreditCardType = PayPalHelper.GetPaypalCreditCardType(processPaymentRequest.CreditCardType);
+			details.CreditCard.CreditCardType = GetCreditCardType(processPaymentRequest.CreditCardType);
 			details.CreditCard.ExpMonthSpecified = true;
 			details.CreditCard.ExpMonth = processPaymentRequest.CreditCardExpireMonth;
 			details.CreditCard.ExpYearSpecified = true;
 			details.CreditCard.ExpYear = processPaymentRequest.CreditCardExpireYear;
 			details.CreditCard.CVV2 = processPaymentRequest.CreditCardCvv2;
 			details.CreditCard.CardOwner = new PayerInfoType();
-            details.CreditCard.CardOwner.PayerCountry = PayPalHelper.GetPaypalCountryCodeType(customer.BillingAddress.Country);
+            details.CreditCard.CardOwner.PayerCountry = GetCountryCodeType(customer.BillingAddress.Country);
 			details.CreditCard.CreditCardTypeSpecified = true;
 
 			details.CreditCard.CardOwner.Address = new AddressType();
@@ -217,7 +244,7 @@ namespace SmartStore.PayPal
 				details.CreditCard.CardOwner.Address.StateOrProvince = customer.BillingAddress.StateProvince.Abbreviation;
 			else
 				details.CreditCard.CardOwner.Address.StateOrProvince = "CA";
-            details.CreditCard.CardOwner.Address.Country = PayPalHelper.GetPaypalCountryCodeType(customer.BillingAddress.Country);
+            details.CreditCard.CardOwner.Address.Country = GetCountryCodeType(customer.BillingAddress.Country);
 			details.CreditCard.CardOwner.Address.PostalCode = customer.BillingAddress.ZipPostalCode;
 			details.CreditCard.CardOwner.Payer = customer.BillingAddress.Email;
 			details.CreditCard.CardOwner.PayerName = new PersonNameType();
@@ -231,11 +258,11 @@ namespace SmartStore.PayPal
 
 			//schedule
 			details.ScheduleDetails = new ScheduleDetailsType();
-			details.ScheduleDetails.Description = Helper.GetResource("RecurringPayment");
+			details.ScheduleDetails.Description = T("Plugins.Payments.PayPalDirect.RecurringPayment");
 			details.ScheduleDetails.PaymentPeriod = new BillingPeriodDetailsType();
 			details.ScheduleDetails.PaymentPeriod.Amount = new BasicAmountType();
 			details.ScheduleDetails.PaymentPeriod.Amount.Value = Math.Round(processPaymentRequest.OrderTotal, 2).ToString("N", new CultureInfo("en-us"));
-			details.ScheduleDetails.PaymentPeriod.Amount.currencyID = PayPalHelper.GetPaypalCurrency(_currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId));
+			details.ScheduleDetails.PaymentPeriod.Amount.currencyID = GetApiCurrency(store.PrimaryStoreCurrency);
 			details.ScheduleDetails.PaymentPeriod.BillingFrequency = processPaymentRequest.RecurringCycleLength;
 			switch (processPaymentRequest.RecurringCyclePeriod)
 			{
@@ -252,19 +279,18 @@ namespace SmartStore.PayPal
 					details.ScheduleDetails.PaymentPeriod.BillingPeriod = BillingPeriodType.Year;
 					break;
 				default:
-                    throw new SmartException(Helper.GetResource("NotSupportedPeriod"));
+					throw new SmartException(T("Plugins.Payments.PayPalDirect.NotSupportedPeriod"));
 			}
 			details.ScheduleDetails.PaymentPeriod.TotalBillingCycles = processPaymentRequest.RecurringTotalCycles;
 			details.ScheduleDetails.PaymentPeriod.TotalBillingCyclesSpecified = true;
 
-			using (var service = new PayPalAPIAASoapBinding())
+			using (var service = GetApiAaService(settings))
 			{
-                service.Url = PayPalHelper.GetPaypalServiceUrl(Settings);
-                service.RequesterCredentials = PayPalHelper.GetPaypalApiCredentials(Settings);
-				CreateRecurringPaymentsProfileResponseType response = service.CreateRecurringPaymentsProfile(req);
+				var response = service.CreateRecurringPaymentsProfile(req);
 
-				string error = "";
-                bool success = PayPalHelper.CheckSuccess(Helper, response, out error);
+				var error = "";
+                var success = IsSuccess(response, out error);
+
 				if (success)
 				{
 					result.NewPaymentStatus = PaymentStatus.Pending;
@@ -281,51 +307,5 @@ namespace SmartStore.PayPal
 
 			return result;
 		}
-
-        protected override string GetControllerName()
-        {
-            return "PayPalDirect";
-        }
-
-		public override Type GetControllerType()
-		{
-			return typeof(PayPalDirectController);
-		}
-
-		#endregion
-
-		#region Properties
-
-		public override bool RequiresInteraction
-		{
-			get
-			{
-				return true;
-			}
-		}
-
-		/// <summary>
-		/// Gets a recurring payment type of payment method
-		/// </summary>
-		public override RecurringPaymentType RecurringPaymentType
-		{
-			get
-			{
-				return RecurringPaymentType.Automatic;
-			}
-		}
-
-		/// <summary>
-		/// Gets a payment method type
-		/// </summary>
-		public override PaymentMethodType PaymentMethodType
-		{
-			get
-			{
-				return PaymentMethodType.Standard;
-			}
-		}
-
-		#endregion
 	}
 }

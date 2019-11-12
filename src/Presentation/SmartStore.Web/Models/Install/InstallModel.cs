@@ -1,32 +1,28 @@
 ﻿using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Web.Mvc;
+using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Web.Framework.Mvc;
-using SmartStore.Web.Validators.Install;
+using SmartStore.Web.Framework.Modelling;
+using SmartStore.Web.Infrastructure.Installation;
 
 namespace SmartStore.Web.Models.Install
 {
-    [Validator(typeof(InstallValidator))]
+	[Validator(typeof(InstallValidator))]
     public partial class InstallModel : ModelBase
     {
         public InstallModel()
         {
             this.AvailableLanguages = new List<SelectListItem>();
-            // codehint: sm-add
             this.AvailableAppLanguages = new List<SelectListItem>();
             this.AvailableMediaStorages = new List<SelectListItem>();
         }
 
-        [AllowHtml]
         public string AdminEmail { get; set; }
-        [AllowHtml]
         [DataType(DataType.Password)]
         public string AdminPassword { get; set; }
-        [AllowHtml]
         [DataType(DataType.Password)]
         public string ConfirmPassword { get; set; }
-
 
         [AllowHtml]
         public string DatabaseConnectionString { get; set; }
@@ -35,7 +31,7 @@ namespace SmartStore.Web.Models.Install
         public string SqlConnectionInfo { get; set; }
         [AllowHtml]
         public string SqlServerName { get; set; }
-        [AllowHtml]
+
         public string SqlDatabaseName { get; set; }
         [AllowHtml]
         public string SqlServerUsername { get; set; }
@@ -45,7 +41,6 @@ namespace SmartStore.Web.Models.Install
         public bool SqlServerCreateDatabase { get; set; }
 
         public bool UseCustomCollation { get; set; }
-        [AllowHtml]
         public string Collation { get; set; }
 
 
@@ -53,10 +48,23 @@ namespace SmartStore.Web.Models.Install
 
         public List<SelectListItem> AvailableLanguages { get; set; }
 
-        // codehint: sm-add
         public string PrimaryLanguage { get; set; }
         public List<SelectListItem> AvailableAppLanguages { get; set; }
         public string MediaStorage { get; set; }
         public List<SelectListItem> AvailableMediaStorages { get; set; }
+    }
+
+    public class InstallValidator : AbstractValidator<InstallModel>
+    {
+        public InstallValidator(IInstallationLocalizationService locService)
+        {
+            RuleFor(x => x.AdminEmail).NotEmpty();
+            RuleFor(x => x.AdminEmail).EmailAddress();
+            RuleFor(x => x.AdminPassword).NotEmpty();
+            RuleFor(x => x.ConfirmPassword).NotEmpty();
+            RuleFor(x => x.AdminPassword).Equal(x => x.ConfirmPassword).WithMessage(locService.GetResource("PasswordsDoNotMatch"));
+            RuleFor(x => x.DataProvider).NotEmpty();
+            RuleFor(x => x.PrimaryLanguage).NotEmpty();
+        }
     }
 }

@@ -1,20 +1,20 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Xml;
 using SmartStore.Collections;
 
 namespace SmartStore.Core.Themes
-{
-    
+{   
     internal class ThemeManifestMaterializer
     {
         private readonly ThemeManifest _manifest;
 
         public ThemeManifestMaterializer(ThemeFolderData folderData)
         {
-			Guard.ArgumentNotNull(() => folderData);
+			Guard.NotNull(folderData, nameof(folderData));
 
             _manifest = new ThemeManifest();
 
@@ -22,6 +22,7 @@ namespace SmartStore.Core.Themes
 			_manifest.BaseThemeName = folderData.BaseTheme;
             _manifest.Location = folderData.VirtualBasePath;
             _manifest.Path = folderData.FullPath;
+			_manifest.IsSymbolicLink = folderData.IsSymbolicLink;
             _manifest.ConfigurationNode = folderData.Configuration.DocumentElement;
         }
         
@@ -29,12 +30,11 @@ namespace SmartStore.Core.Themes
         {
             var root = _manifest.ConfigurationNode;
 
-			_manifest.ThemeTitle = root.GetAttribute("title") ?? _manifest.ThemeName;
-            _manifest.SupportRtl = root.GetAttribute("supportRTL").ToBool();
-            _manifest.MobileTheme = root.GetAttribute("mobileTheme").ToBool();
+			_manifest.ThemeTitle = root.GetAttribute("title").NullEmpty() ?? _manifest.ThemeName;
             _manifest.PreviewImageUrl = root.GetAttribute("previewImageUrl").NullEmpty() ?? "~/Themes/{0}/preview.png".FormatCurrent(_manifest.ThemeName);
             _manifest.PreviewText = root.GetAttribute("previewText").ToSafe();
             _manifest.Author = root.GetAttribute("author").ToSafe();
+			_manifest.Url = root.GetAttribute("url").ToSafe();
             _manifest.Version = root.GetAttribute("version").ToSafe().HasValue() ? root.GetAttribute("version") : "1.0";
 
             _manifest.Selects = MaterializeSelects();
@@ -43,7 +43,9 @@ namespace SmartStore.Core.Themes
             return _manifest;
         }
 
-        private Multimap<string, string> MaterializeSelects()
+	    [SuppressMessage("ReSharper", "AssignNullToNotNullAttribute")]
+	    [SuppressMessage("ReSharper", "PossibleMultipleEnumeration")]
+	    private Multimap<string, string> MaterializeSelects()
         {
             var selects = new Multimap<string, string>();
             var root = _manifest.ConfigurationNode;
@@ -111,17 +113,17 @@ namespace SmartStore.Core.Themes
                 throw new SmartException("The name attribute is required for the 'Var' element. Affected: '{0}' - element: {1}", _manifest.FullPath, xel.OuterXml);
             }
 
-            if (value.IsEmpty())
-            {
-                throw new SmartException("A value is required for the 'Var' element. Affected: '{0}' - element: {1}", _manifest.FullPath, xel.OuterXml);
-            }
-
             string type = xel.GetAttribute("type").ToSafe("String");
 
             string selectRef = null;
             var varType = ConvertVarType(type, xel, out selectRef);
 
-            var info = new ThemeVariableInfo
+			if (varType != ThemeVariableType.String && value.IsEmpty())
+			{
+				throw new SmartException("A value is required for non-string 'Var' elements. Affected: '{0}' - element: {1}", _manifest.FullPath, xel.OuterXml);
+			}
+
+			var info = new ThemeVariableInfo
             {
                 Name = name,
                 DefaultValue = value,
@@ -150,7 +152,7 @@ namespace SmartStore.Core.Themes
                 return ThemeVariableType.Select;
             }
 
-            switch (type.ToLower())
+            switch (type.ToLowerInvariant())
             {
                 case "string":
                     result = ThemeVariableType.String;
@@ -168,7 +170,5 @@ namespace SmartStore.Core.Themes
 
             return result;
         }
-
     }
-
 }

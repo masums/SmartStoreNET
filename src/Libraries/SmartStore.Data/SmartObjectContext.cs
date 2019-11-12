@@ -1,27 +1,23 @@
 using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Data.Common;
 using System.Data.Entity;
-using System.Data.Entity.Infrastructure;
 using System.Data.Entity.ModelConfiguration;
 using System.Linq;
 using System.Reflection;
 using SmartStore.Core.Data;
+using SmartStore.Core.Domain.Cms;
 using SmartStore.Data.Migrations;
 using SmartStore.Data.Setup;
 
 namespace SmartStore.Data
 {
-	
-	/// <summary>
-    /// Object context
-    /// </summary>
-	public class SmartObjectContext : ObjectContextBase
+    public class SmartObjectContext : ObjectContextBase
     {
-
 		static SmartObjectContext()
 		{
+			if (!DataSettings.DatabaseIsInstalled())
+				return;
+
 			var initializer = new MigrateDatabaseInitializer<SmartObjectContext, MigrationsConfiguration>
 			{
 				TablesToCheck = new[] { "Customer", "Discount", "Order", "Product", "ShoppingCartItem" }
@@ -53,7 +49,7 @@ namespace SmartStore.Data
             //        && type.BaseType != null 
             //        && type.BaseType.IsGenericType 
             //        && type.BaseType.GetGenericTypeDefinition() == typeof(EntityTypeConfiguration<>));
-
+			
             var typesToRegister = from t in Assembly.GetExecutingAssembly().GetTypes()
                         where t.Namespace.HasValue() && 
                               t.BaseType != null &&
@@ -69,6 +65,9 @@ namespace SmartStore.Data
             }
             //...or do it manually below. For example,
             //modelBuilder.Configurations.Add(new LanguageMap());
+
+            modelBuilder.Entity<MenuRecord>();
+            modelBuilder.Entity<MenuItemRecord>();
 
             base.OnModelCreating(modelBuilder);
         }

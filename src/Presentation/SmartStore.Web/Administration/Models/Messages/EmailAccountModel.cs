@@ -1,9 +1,9 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.Web.Mvc;
+﻿using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Validators.Messages;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
+using System.ComponentModel.DataAnnotations;
+using System.Web.Mvc;
 
 namespace SmartStore.Admin.Models.Messages
 {
@@ -48,5 +48,16 @@ namespace SmartStore.Admin.Models.Messages
         [AllowHtml]
         public string SendTestEmailTo { get; set; }
 
+		public string TestEmailShortErrorMessage { get; set; }
+		public string TestEmailFullErrorMessage { get; set; }
+	}
+
+    public partial class EmailAccountValidator : AbstractValidator<EmailAccountModel>
+    {
+        public EmailAccountValidator()
+        {
+            RuleFor(x => x.Email).NotEmpty().EmailAddress();
+            RuleFor(x => x.DisplayName).NotEmpty();
+        }
     }
 }

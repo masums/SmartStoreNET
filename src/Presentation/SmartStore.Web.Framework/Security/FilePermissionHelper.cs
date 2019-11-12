@@ -3,6 +3,7 @@ using System.IO;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using SmartStore.Core;
+using SmartStore.Core.Data;
 
 namespace SmartStore.Web.Framework.Security
 {
@@ -154,21 +155,13 @@ namespace SmartStore.Web.Framework.Security
         {
             string rootDir = webHelper.MapPath("~/");
             var dirsToCheck = new List<string>();
-            //dirsToCheck.Add(rootDir);
             dirsToCheck.Add(Path.Combine(rootDir, "App_Data"));
-            //dirsToCheck.Add(Path.Combine(rootDir, "App_Data\\files"));
-            //dirsToCheck.Add(Path.Combine(rootDir, "App_Data\\files\\exportimport"));
-            dirsToCheck.Add(Path.Combine(rootDir, "bin"));
+			dirsToCheck.Add(Path.Combine(rootDir, "App_Data", "Tenants", DataSettings.Current.TenantName));
+			dirsToCheck.Add(Path.Combine(rootDir, "App_Data", "Tenants", DataSettings.Current.TenantName, "Media"));
+			dirsToCheck.Add(Path.Combine(rootDir, "bin"));
             dirsToCheck.Add(Path.Combine(rootDir, "content"));
-            dirsToCheck.Add(Path.Combine(rootDir, "content\\files\\exportimport"));
-            //dirsToCheck.Add(Path.Combine(rootDir, "content\\images"));
-            //dirsToCheck.Add(Path.Combine(rootDir, "content\\images\\thumbs"));
-            //dirsToCheck.Add(Path.Combine(rootDir, "content\\images\\uploaded"));
-            dirsToCheck.Add(Path.Combine(rootDir, "media"));
-            dirsToCheck.Add(Path.Combine(rootDir, "media\\thumbs"));
-            dirsToCheck.Add(Path.Combine(rootDir, "media\\uploaded"));
-            //dirsToCheck.Add(Path.Combine(rootDir, "media\\exportimport"));
-            dirsToCheck.Add(Path.Combine(rootDir, "plugins"));
+			dirsToCheck.Add(Path.Combine(rootDir, "Exchange"));
+			dirsToCheck.Add(Path.Combine(rootDir, "plugins"));
             dirsToCheck.Add(Path.Combine(rootDir, "plugins\\bin"));
             return dirsToCheck;
         }
@@ -182,11 +175,12 @@ namespace SmartStore.Web.Framework.Security
         {
             string rootDir = webHelper.MapPath("~/");
             var filesToCheck = new List<string>();
-            filesToCheck.Add(Path.Combine(rootDir, "Global.asax"));
-            filesToCheck.Add(Path.Combine(rootDir, "web.config"));
-            filesToCheck.Add(Path.Combine(rootDir, "App_Data\\InstalledPlugins.txt"));
-            filesToCheck.Add(Path.Combine(rootDir, "App_Data\\Settings.txt"));
-            return filesToCheck;
+			//filesToCheck.Add(Path.Combine(rootDir, "Global.asax"));
+			//filesToCheck.Add(Path.Combine(rootDir, "web.config"));
+			filesToCheck.Add(Path.Combine(rootDir, "App_Data", "Tenants", DataSettings.Current.TenantName, "InstalledPlugins.txt"));
+			filesToCheck.Add(Path.Combine(rootDir, "App_Data", "Tenants", DataSettings.Current.TenantName, "Settings.txt"));
+
+			return filesToCheck;
         }
     }
 }

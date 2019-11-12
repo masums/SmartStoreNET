@@ -15,7 +15,7 @@ namespace SmartStore.Core.Data
 
 		public SqlFileTokenizer(string fileName, Assembly assembly = null, string location = null)
 		{
-			Guard.ArgumentNotEmpty(() => fileName);
+			Guard.NotEmpty(fileName, nameof(fileName));
 
 			this.FileName = fileName;
 			this.Assembly = assembly;
@@ -49,10 +49,10 @@ namespace SmartStore.Core.Data
 			
 			using (var reader = ReadSqlFile())
 			{
-				var statement = string.Empty;
+				string statement;
 				while ((statement = ReadNextSqlStatement(reader)) != null)
 				{
-					yield return statement;
+					yield return statement.EmptyNull();
 				}
 			}
 		}

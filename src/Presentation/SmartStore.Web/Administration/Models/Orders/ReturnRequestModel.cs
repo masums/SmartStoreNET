@@ -1,15 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Web.Mvc;
-using FluentValidation.Attributes;
-using SmartStore.Admin.Validators.Orders;
+﻿using FluentValidation.Attributes;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
+using System;
+using System.Collections.Generic;
+using System.Web.Mvc;
 
 namespace SmartStore.Admin.Models.Orders
 {
-    [Validator(typeof(ReturnRequestValidator))]
     public class ReturnRequestModel : EntityModelBase
     {
 		public ReturnRequestModel()
@@ -22,7 +20,10 @@ namespace SmartStore.Admin.Models.Orders
         [SmartResourceDisplayName("Admin.ReturnRequests.Fields.ID")]
         public override int Id { get; set; }
 
-        [SmartResourceDisplayName("Admin.ReturnRequests.Fields.Order")]
+		[SmartResourceDisplayName("Admin.Customers.Customers.Orders.Store")]
+		public string StoreName { get; set; }
+
+		[SmartResourceDisplayName("Admin.ReturnRequests.Fields.Order")]
         public int OrderId { get; set; }
 		public string OrderNumber { get; set; }
 
@@ -33,16 +34,17 @@ namespace SmartStore.Admin.Models.Orders
 
         public int ProductId { get; set; }
 		public string ProductSku { get; set; }
+		public string AttributeInfo { get; set; }
 
 		[SmartResourceDisplayName("Admin.ReturnRequests.Fields.Product")]
         public string ProductName { get; set; }
 		public string ProductTypeName { get; set; }
 		public string ProductTypeLabelHint { get; set; }
 
-		[SmartResourceDisplayName("Admin.Customers.Customers.Orders.Store")]
-		public string StoreName { get; set; }
+		[SmartResourceDisplayName("Admin.ReturnRequests.MaxRefundAmount")]
+		public string MaxRefundAmount { get; set; }
 
-        [SmartResourceDisplayName("Admin.ReturnRequests.Fields.Quantity")]
+		[SmartResourceDisplayName("Admin.ReturnRequests.Fields.Quantity")]
         public int Quantity { get; set; }
 
         [AllowHtml]
@@ -55,6 +57,9 @@ namespace SmartStore.Admin.Models.Orders
         public string RequestedAction { get; set; }
 		public IList<SelectListItem> AvailableRequestedAction { get; set; }
 
+		[SmartResourceDisplayName("Admin.ReturnRequests.Fields.RequestedActionUpdatedOnUtc")]
+		public DateTime? RequestedActionUpdated { get; set; }
+
         [AllowHtml]
         [SmartResourceDisplayName("Admin.ReturnRequests.Fields.CustomerComments")]
         public string CustomerComments { get; set; }
@@ -63,13 +68,19 @@ namespace SmartStore.Admin.Models.Orders
         [SmartResourceDisplayName("Admin.ReturnRequests.Fields.StaffNotes")]
         public string StaffNotes { get; set; }
 
+		[SmartResourceDisplayName("Admin.Common.AdminComment")]
+		public string AdminComment { get; set; }
+
         [SmartResourceDisplayName("Admin.ReturnRequests.Fields.Status")]
         public int ReturnRequestStatusId { get; set; }
         [SmartResourceDisplayName("Admin.ReturnRequests.Fields.Status")]
         public string ReturnRequestStatusStr { get; set; }
 
-        [SmartResourceDisplayName("Admin.ReturnRequests.Fields.CreatedOn")]
+        [SmartResourceDisplayName("Common.CreatedOn")]
         public DateTime CreatedOn { get; set; }
+
+		[SmartResourceDisplayName("Common.UpdatedOn")]
+		public DateTime UpdatedOn { get; set; }
 
 		public bool CanAccept
 		{
