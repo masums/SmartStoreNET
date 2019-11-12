@@ -5,47 +5,50 @@ using System.ServiceModel.Syndication;
 using System.Web.Mvc;
 using SmartStore.Core;
 using SmartStore.Core.Caching;
-using SmartStore.Core.Domain;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Localization;
 using SmartStore.Core.Domain.Media;
 using SmartStore.Core.Domain.News;
+using SmartStore.Core.Logging;
+using SmartStore.Core.Security;
+using SmartStore.Services;
 using SmartStore.Services.Common;
 using SmartStore.Services.Customers;
 using SmartStore.Services.Helpers;
 using SmartStore.Services.Localization;
-using SmartStore.Core.Logging;
 using SmartStore.Services.Media;
-using SmartStore.Services.Messages;
 using SmartStore.Services.News;
 using SmartStore.Services.Seo;
 using SmartStore.Services.Stores;
+using SmartStore.Utilities;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Controllers;
+using SmartStore.Web.Framework.Filters;
+using SmartStore.Web.Framework.Modelling;
 using SmartStore.Web.Framework.Security;
-using SmartStore.Web.Framework.UI.Captcha;
 using SmartStore.Web.Infrastructure.Cache;
+using SmartStore.Web.Models.Common;
+using SmartStore.Web.Models.Media;
 using SmartStore.Web.Models.News;
 
 namespace SmartStore.Web.Controllers
 {
-    [RequireHttpsByConfigAttribute(SslRequirement.No)]
+    [RewriteUrl(SslRequirement.No)]
     public partial class NewsController : PublicControllerBase
     {
         #region Fields
 
+        private readonly ICommonServices _services;
         private readonly INewsService _newsService;
-        private readonly IWorkContext _workContext;
-		private readonly IStoreContext _storeContext;
         private readonly IPictureService _pictureService;
-        private readonly ILocalizationService _localizationService;
         private readonly ICustomerContentService _customerContentService;
         private readonly IDateTimeHelper _dateTimeHelper;
-        private readonly IWorkflowMessageService _workflowMessageService;
         private readonly IWebHelper _webHelper;
         private readonly ICacheManager _cacheManager;
         private readonly ICustomerActivityService _customerActivityService;
 		private readonly IStoreMappingService _storeMappingService;
+		private readonly ILanguageService _languageService;
+        private readonly IGenericAttributeService _genericAttributeService;
 
         private readonly MediaSettings _mediaSettings;
         private readonly NewsSettings _newsSettings;
@@ -57,35 +60,41 @@ namespace SmartStore.Web.Controllers
 
         #region Constructors
 
-        public NewsController(INewsService newsService,
-			IWorkContext workContext, IStoreContext storeContext, 
-			IPictureService pictureService, ILocalizationService localizationService,
-            ICustomerContentService customerContentService, IDateTimeHelper dateTimeHelper,
-            IWorkflowMessageService workflowMessageService, IWebHelper webHelper,
-            ICacheManager cacheManager, ICustomerActivityService customerActivityService,
+        public NewsController(
+            ICommonServices services,
+            INewsService newsService,
+			IPictureService pictureService, 
+            ICustomerContentService customerContentService, 
+            IDateTimeHelper dateTimeHelper,
+            IWebHelper webHelper,
+            ICacheManager cacheManager,
+            ICustomerActivityService customerActivityService,
 			IStoreMappingService storeMappingService,
-            MediaSettings mediaSettings, NewsSettings newsSettings,
-            LocalizationSettings localizationSettings, CustomerSettings customerSettings,
+			ILanguageService languageService,
+            IGenericAttributeService genericAttributeService,
+            MediaSettings mediaSettings, 
+            NewsSettings newsSettings,
+            LocalizationSettings localizationSettings,
+            CustomerSettings customerSettings,
             CaptchaSettings captchaSettings)
         {
-            this._newsService = newsService;
-            this._workContext = workContext;
-			this._storeContext = storeContext;
-            this._pictureService = pictureService;
-            this._localizationService = localizationService;
-            this._customerContentService = customerContentService;
-            this._dateTimeHelper = dateTimeHelper;
-            this._workflowMessageService = workflowMessageService;
-            this._webHelper = webHelper;
-            this._cacheManager = cacheManager;
-            this._customerActivityService = customerActivityService;
-			this._storeMappingService = storeMappingService;
+            _services = services;
+            _newsService = newsService;
+            _pictureService = pictureService;
+            _customerContentService = customerContentService;
+            _dateTimeHelper = dateTimeHelper;
+            _webHelper = webHelper;
+            _cacheManager = cacheManager;
+            _customerActivityService = customerActivityService;
+			_storeMappingService = storeMappingService;
+			_languageService = languageService;
+            _genericAttributeService = genericAttributeService;
 
-            this._mediaSettings = mediaSettings;
-            this._newsSettings = newsSettings;
-            this._localizationSettings = localizationSettings;
-            this._customerSettings = customerSettings;
-            this._captchaSettings = captchaSettings;
+            _mediaSettings = mediaSettings;
+            _newsSettings = newsSettings;
+            _localizationSettings = localizationSettings;
+            _customerSettings = customerSettings;
+            _captchaSettings = captchaSettings;
         }
 
         #endregion
@@ -95,11 +104,10 @@ namespace SmartStore.Web.Controllers
         [NonAction]
         protected void PrepareNewsItemModel(NewsItemModel model, NewsItem newsItem, bool prepareComments)
         {
-            if (newsItem == null)
-                throw new ArgumentNullException("newsItem");
+			Guard.NotNull(newsItem, nameof(newsItem));
+			Guard.NotNull(model, nameof(model));
 
-            if (model == null)
-                throw new ArgumentNullException("model");
+			Services.DisplayControl.Announce(newsItem);
 
             model.Id = newsItem.Id;
             model.MetaTitle = newsItem.MetaTitle;
@@ -109,36 +117,38 @@ namespace SmartStore.Web.Controllers
             model.Title = newsItem.Title;
             model.Short = newsItem.Short;
             model.Full = newsItem.Full;
-            model.AllowComments = newsItem.AllowComments;
-            model.AvatarPictureSize = _mediaSettings.AvatarPictureSize; // codehint: sm-add
-            model.CreatedOn = _dateTimeHelper.ConvertToUserTime(newsItem.CreatedOnUtc, DateTimeKind.Utc);
-            model.NumberOfComments = newsItem.ApprovedCommentCount;
-            model.AddNewComment.DisplayCaptcha = _captchaSettings.Enabled && _captchaSettings.ShowOnNewsCommentPage;
-			model.AllowCustomersToUploadAvatars = _customerSettings.AllowCustomersToUploadAvatars;
+			model.CreatedOn = _dateTimeHelper.ConvertToUserTime(newsItem.CreatedOnUtc, DateTimeKind.Utc);
+            model.AddNewComment.DisplayCaptcha = _captchaSettings.CanDisplayCaptcha && _captchaSettings.ShowOnNewsCommentPage;
+            model.DisplayAdminLink = _services.Permissions.Authorize(Permissions.System.AccessBackend, _services.WorkContext.CurrentCustomer);
+            model.PictureModel = PrepareNewsItemPictureModel(newsItem, newsItem.PictureId);
+            model.PreviewPictureModel = PrepareNewsItemPictureModel(newsItem, newsItem.PreviewPictureId);
+
+            model.Comments.AllowComments = newsItem.AllowComments;
+            model.Comments.NumberOfComments = newsItem.ApprovedCommentCount;
+			model.Comments.AllowCustomersToUploadAvatars = _customerSettings.AllowCustomersToUploadAvatars;
+
             if (prepareComments)
             {
                 var newsComments = newsItem.NewsComments.Where(n => n.IsApproved).OrderBy(pr => pr.CreatedOnUtc);
                 foreach (var nc in newsComments)
                 {
-                    var commentModel = new NewsCommentModel()
-                    {
-                        Id = nc.Id,
-                        CustomerId = nc.CustomerId,
-                        CustomerName = nc.Customer.FormatUserName(),
-                        CommentTitle = nc.CommentTitle,
-                        CommentText = nc.CommentText,
-                        CreatedOn = _dateTimeHelper.ConvertToUserTime(nc.CreatedOnUtc, DateTimeKind.Utc),
-                        AllowViewingProfiles = _customerSettings.AllowViewingProfiles && nc.Customer != null && !nc.Customer.IsGuest(),
+                    var isGuest = nc.Customer.IsGuest();
+
+                    var commentModel = new CommentModel(model.Comments)
+					{
+						Id = nc.Id,
+						CustomerId = nc.CustomerId,
+						CustomerName = nc.Customer.FormatUserName(_customerSettings, T, false),
+						CommentTitle = nc.CommentTitle,
+						CommentText = nc.CommentText,
+						CreatedOn = _dateTimeHelper.ConvertToUserTime(nc.CreatedOnUtc, DateTimeKind.Utc),
+						CreatedOnPretty = nc.CreatedOnUtc.RelativeFormat(true, "f"),
+                        AllowViewingProfiles = _customerSettings.AllowViewingProfiles && !isGuest,
                     };
-                    if (_customerSettings.AllowCustomersToUploadAvatars)
-                    {
-                        var customer = nc.Customer;
-                        string avatarUrl = _pictureService.GetPictureUrl(customer.GetAttribute<int>(SystemCustomerAttributeNames.AvatarPictureId), _mediaSettings.AvatarPictureSize, false);
-                        if (String.IsNullOrEmpty(avatarUrl) && _customerSettings.DefaultAvatarEnabled)
-                            avatarUrl = _pictureService.GetDefaultPictureUrl(_mediaSettings.AvatarPictureSize, PictureType.Avatar);
-                        commentModel.CustomerAvatarUrl = avatarUrl;
-                    }
-                    model.Comments.Add(commentModel);
+
+                    commentModel.Avatar = nc.Customer.ToAvatarModel(_genericAttributeService, _pictureService, _customerSettings, _mediaSettings, Url, commentModel.CustomerName);
+
+                    model.Comments.Comments.Add(commentModel);
                 }
             }
         }
@@ -152,13 +162,19 @@ namespace SmartStore.Web.Controllers
             if (!_newsSettings.Enabled || !_newsSettings.ShowNewsOnMainPage)
                 return Content("");
 
-			var cacheKey = string.Format(ModelCacheEventConsumer.HOMEPAGE_NEWSMODEL_KEY, _workContext.WorkingLanguage.Id, _storeContext.CurrentStore.Id);
+            var workingLanguageId = _services.WorkContext.WorkingLanguage.Id;
+            var currentStoreId = _services.StoreContext.CurrentStore.Id;
+            var cacheKey = string.Format(ModelCacheEventConsumer.HOMEPAGE_NEWSMODEL_KEY, workingLanguageId, currentStoreId);
+
             var cachedModel = _cacheManager.Get(cacheKey, () =>
             {
-				var newsItems = _newsService.GetAllNews(_workContext.WorkingLanguage.Id, _storeContext.CurrentStore.Id, 0, _newsSettings.MainPageNewsCount);
-                return new HomePageNewsItemsModel()
+				var newsItems = _newsService.GetAllNews(workingLanguageId, currentStoreId, 0, _newsSettings.MainPageNewsCount);
+
+				Services.DisplayControl.AnnounceRange(newsItems);
+
+				return new HomePageNewsItemsModel()
                 {
-                    WorkingLanguageId = _workContext.WorkingLanguage.Id,
+                    WorkingLanguageId = workingLanguageId,
                     NewsItems = newsItems
                         .Select(x =>
                         {
@@ -170,12 +186,15 @@ namespace SmartStore.Web.Controllers
                 };
             });
 
-            //"Comments" property of "NewsItemModel" object depends on the current customer.
-            //Furthermore, we just don't need it for home page news. So let's update reset it.
-            //But first we need to clone the cached model (the updated one should not be cached)
+            // "Comments" property of "NewsItemModel" object depends on the current customer.
+            // Furthermore, we just don't need it for home page news. So let's update reset it.
+            // But first we need to clone the cached model (the updated one should not be cached)
             var model = (HomePageNewsItemsModel)cachedModel.Clone();
             foreach (var newsItemModel in model.NewsItems)
-                newsItemModel.Comments.Clear();
+			{
+				newsItemModel.Comments.Comments.Clear();
+			}
+                
             return PartialView(model);
         }
 
@@ -184,16 +203,16 @@ namespace SmartStore.Web.Controllers
             if (!_newsSettings.Enabled)
 				return HttpNotFound();
 
+            var workingLanguageId = _services.WorkContext.WorkingLanguage.Id;
             var model = new NewsItemListModel();
-            model.WorkingLanguageId = _workContext.WorkingLanguage.Id;
+            model.WorkingLanguageId = workingLanguageId;
 
             if (command.PageSize <= 0)
                 command.PageSize = _newsSettings.NewsArchivePageSize;
             if (command.PageNumber <= 0)
                 command.PageNumber = 1;
 
-			var newsItems = _newsService.GetAllNews(_workContext.WorkingLanguage.Id, _storeContext.CurrentStore.Id,
-                command.PageNumber - 1, command.PageSize);
+			var newsItems = _newsService.GetAllNews(workingLanguageId, _services.StoreContext.CurrentStore.Id, command.PageNumber - 1, command.PageSize);
             model.PagingFilteringContext.LoadPagedList(newsItems);
 
             model.NewsItems = newsItems
@@ -205,34 +224,60 @@ namespace SmartStore.Web.Controllers
                 })
                 .ToList();
 
+			Services.DisplayControl.AnnounceRange(newsItems);
+
             return View(model);
         }
 
 		[ActionName("rss")]
-        public ActionResult ListRss(int languageId)
+        public ActionResult ListRss(int? languageId)
         {
-            var feed = new SyndicationFeed(
-									string.Format("{0}: News", _storeContext.CurrentStore.Name),
-                                    "News",
-                                    new Uri(_webHelper.GetStoreLocation(false)),
-                                    "NewsRSS",
-                                    DateTime.UtcNow);
+			languageId = languageId ?? _services.WorkContext.WorkingLanguage.Id;
 
-            if (!_newsSettings.Enabled)
-                return new RssActionResult() { Feed = feed };
+			DateTime? maxAge = null;
+			var protocol = _webHelper.IsCurrentConnectionSecured() ? "https" : "http";
+			var selfLink = Url.Action("rss", "News", new { languageId = languageId }, protocol);
+			var newsLink = Url.RouteUrl("NewsArchive", null, protocol);
 
-            var items = new List<SyndicationItem>();
-			var newsItems = _newsService.GetAllNews(languageId, _storeContext.CurrentStore.Id, 0, int.MaxValue);
-            foreach (var n in newsItems)
-            {
-                string newsUrl = Url.RouteUrl("NewsItem", new { SeName = n.GetSeName(n.LanguageId, ensureTwoPublishedLanguages: false) }, "http");
-                items.Add(new SyndicationItem(n.Title, n.Short, new Uri(newsUrl), String.Format("Blog:{0}", n.Id), n.CreatedOnUtc));
-            }
-            feed.Items = items;
-            return new RssActionResult() { Feed = feed };
+			var title = "{0} - News".FormatInvariant(_services.StoreContext.CurrentStore.Name);
+
+			if (_newsSettings.MaxAgeInDays > 0)
+			{
+				maxAge = DateTime.UtcNow.Subtract(new TimeSpan(_newsSettings.MaxAgeInDays, 0, 0, 0));
+			}
+
+			var language = _languageService.GetLanguageById(languageId.Value);
+			var feed = new SmartSyndicationFeed(new Uri(newsLink), title);
+
+			feed.AddNamespaces(true);
+			feed.Init(selfLink, language);
+
+			if (!_newsSettings.Enabled)
+			{
+				return new RssActionResult { Feed = feed };
+			}
+
+			var items = new List<SyndicationItem>();
+			var newsItems = _newsService.GetAllNews(languageId.Value, _services.StoreContext.CurrentStore.Id, 0, int.MaxValue, false, maxAge);
+
+			foreach (var news in newsItems)
+			{
+				var newsUrl = Url.RouteUrl("NewsItem", new { SeName = news.GetSeName(news.LanguageId, ensureTwoPublishedLanguages: false) }, protocol);
+
+				var item = feed.CreateItem(news.Title, news.Short, newsUrl, news.CreatedOnUtc, news.Full);
+
+				items.Add(item);
+			}
+
+			feed.Items = items;
+
+			Services.DisplayControl.AnnounceRange(newsItems);
+
+            return new RssActionResult { Feed = feed };
         }
 
-        public ActionResult NewsItem(int newsItemId)
+		[GdprConsent]
+		public ActionResult NewsItem(int newsItemId)
         {
             if (!_newsSettings.Enabled)
 				return HttpNotFound();
@@ -254,8 +299,9 @@ namespace SmartStore.Web.Controllers
 
         [HttpPost, ActionName("NewsItem")]
         [FormValueRequired("add-comment")]
-        [CaptchaValidator]
-        public ActionResult NewsCommentAdd(int newsItemId, NewsItemModel model, bool captchaValid)
+        [ValidateCaptcha]
+		[GdprConsent]
+		public ActionResult NewsCommentAdd(int newsItemId, NewsItemModel model, bool captchaValid)
         {
             if (!_newsSettings.Enabled)
 				return HttpNotFound();
@@ -265,14 +311,14 @@ namespace SmartStore.Web.Controllers
 				return HttpNotFound();
 
             //validate CAPTCHA
-            if (_captchaSettings.Enabled && _captchaSettings.ShowOnNewsCommentPage && !captchaValid)
+            if (_captchaSettings.CanDisplayCaptcha && _captchaSettings.ShowOnNewsCommentPage && !captchaValid)
             {
-                ModelState.AddModelError("", _localizationService.GetResource("Common.WrongCaptcha"));
+                ModelState.AddModelError("", T("Common.WrongCaptcha"));
             }
 
-            if (_workContext.CurrentCustomer.IsGuest() && !_newsSettings.AllowNotRegisteredUsersToLeaveComments)
+            if (_services.WorkContext.CurrentCustomer.IsGuest() && !_newsSettings.AllowNotRegisteredUsersToLeaveComments)
             {
-                ModelState.AddModelError("", _localizationService.GetResource("News.Comments.OnlyRegisteredUsersLeaveComments"));
+                ModelState.AddModelError("", T("News.Comments.OnlyRegisteredUsersLeaveComments"));
             }
 
             if (ModelState.IsValid)
@@ -280,13 +326,11 @@ namespace SmartStore.Web.Controllers
                 var comment = new NewsComment()
                 {
                     NewsItemId = newsItem.Id,
-                    CustomerId = _workContext.CurrentCustomer.Id,
+                    CustomerId = _services.WorkContext.CurrentCustomer.Id,
                     IpAddress = _webHelper.GetCurrentIpAddress(),
                     CommentTitle = model.AddNewComment.CommentTitle,
                     CommentText = model.AddNewComment.CommentText,
-                    IsApproved = true,
-                    CreatedOnUtc = DateTime.UtcNow,
-                    UpdatedOnUtc = DateTime.UtcNow,
+                    IsApproved = true
                 };
                 _customerContentService.InsertCustomerContent(comment);
 
@@ -295,17 +339,15 @@ namespace SmartStore.Web.Controllers
 
                 //notify a store owner;
                 if (_newsSettings.NotifyAboutNewNewsComments)
-                    _workflowMessageService.SendNewsCommentNotificationMessage(comment, _localizationSettings.DefaultAdminLanguageId);
+                    Services.MessageFactory.SendNewsCommentNotificationMessage(comment, _localizationSettings.DefaultAdminLanguageId);
 
                 //activity log
-                _customerActivityService.InsertActivity("PublicStore.AddNewsComment", _localizationService.GetResource("ActivityLog.PublicStore.AddNewsComment"));
+                _customerActivityService.InsertActivity("PublicStore.AddNewsComment", T("ActivityLog.PublicStore.AddNewsComment"));
 
-                //The text boxes should be cleared after a comment has been posted
-                //That' why we reload the page
-                TempData["sm.news.addcomment.result"] = _localizationService.GetResource("News.Comments.SuccessfullyAdded");
+				NotifySuccess(T("News.Comments.SuccessfullyAdded"));
+
                 return RedirectToRoute("NewsItem", new { SeName = newsItem.GetSeName(newsItem.LanguageId, ensureTwoPublishedLanguages: false) });
             }
-
 
             //If we got this far, something failed, redisplay form
             PrepareNewsItemModel(model, newsItem, true);
@@ -318,10 +360,31 @@ namespace SmartStore.Web.Controllers
             if (!_newsSettings.Enabled || !_newsSettings.ShowHeaderRssUrl)
                 return Content("");
 
-            string link = string.Format("<link href=\"{0}\" rel=\"alternate\" type=\"application/rss+xml\" title=\"{1}: News\" />",
-				Url.Action("rss", null, new { languageId = _workContext.WorkingLanguage.Id }, _webHelper.IsCurrentConnectionSecured() ? "https" : "http"), _storeContext.CurrentStore.Name);
+            var link = string.Format("<link href=\"{0}\" rel=\"alternate\" type=\"application/rss+xml\" title=\"{1}: News\" />",
+				Url.Action("rss", null, new { languageId = _services.WorkContext.WorkingLanguage.Id }, _webHelper.IsCurrentConnectionSecured() ? "https" : "http"),
+				_services.StoreContext.CurrentStore.Name);
 
             return Content(link);
+        }
+
+        [NonAction]
+        protected PictureModel PrepareNewsItemPictureModel(NewsItem newsItem, int? pictureId)
+        {
+            var pictureInfo = _pictureService.GetPictureInfo(pictureId);
+
+            var pictureModel = new PictureModel
+            {
+                PictureId = newsItem.PictureId.GetValueOrDefault(),
+                Size = 512,
+                ImageUrl = _pictureService.GetUrl(pictureInfo, 512, false),
+                FullSizeImageUrl = _pictureService.GetUrl(pictureInfo, 0, false),
+                FullSizeImageWidth = pictureInfo?.Width,
+                FullSizeImageHeight = pictureInfo?.Height,
+                Title = newsItem.Title,
+                AlternateText = newsItem.Title
+            };
+
+            return pictureModel;
         }
 
         #endregion

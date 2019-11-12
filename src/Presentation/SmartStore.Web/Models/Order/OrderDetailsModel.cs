@@ -2,13 +2,14 @@
 using System.Collections.Generic;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Common;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Services.Localization;
+using SmartStore.Web.Framework.Modelling;
 using SmartStore.Web.Models.Common;
+using SmartStore.Web.Models.Media;
 
 namespace SmartStore.Web.Models.Order
 {
-	
-	public partial class OrderDetailsModel : EntityModelBase
+    public partial class OrderDetailsModel : EntityModelBase
     {
         public OrderDetailsModel()
         {
@@ -67,13 +68,20 @@ namespace SmartStore.Web.Models.Order
         public string OrderTotalDiscount { get; set; }
         public int RedeemedRewardPoints { get; set; }
         public string RedeemedRewardPointsAmount { get; set; }
+		public string CreditBalance { get; set; }
+		public string OrderTotalRounding { get; set; }
         public string OrderTotal { get; set; }
+        public string CustomerComment { get; set; }
+		public int CustomerLanguageId { get; set; }
 
-        public IList<GiftCard> GiftCards { get; set; }
+		public IList<GiftCard> GiftCards { get; set; }
 
         public bool ShowSku { get; set; }
-        public IList<OrderItemModel> Items { get; set; }
+		public bool ShowProductImages { get; set; }
+        public bool ShowProductBundleImages { get; set; }
+        public int BundleThumbSize { get; set; }
 
+        public IList<OrderItemModel> Items { get; set; }
         public IList<OrderNote> OrderNotes { get; set; }
 
         #region Nested Classes
@@ -87,31 +95,36 @@ namespace SmartStore.Web.Models.Order
 
             public string Sku { get; set; }
             public int ProductId { get; set; }
-            public string ProductName { get; set; }
+            public LocalizedValue<string> ProductName { get; set; }
             public string ProductSeName { get; set; }
+			public string ProductUrl { get; set; }
 			public ProductType ProductType { get; set; }
             public string UnitPrice { get; set; }
             public string SubTotal { get; set; }
             public int Quantity { get; set; }
+            public string QuantityUnit { get; set; }
             public string AttributeInfo { get; set; }
-
 			public bool BundlePerItemPricing { get; set; }
 			public bool BundlePerItemShoppingCart { get; set; }
+			public PictureModel Picture { get; set; }
 
-			public IList<BundleItemModel> BundleItems { get; set; }
+            public IList<BundleItemModel> BundleItems { get; set; }
         }
 
 		public partial class BundleItemModel : ModelBase
 		{
-			public string Sku { get; set; }
+            public PictureModel Picture { get; set; }
+            public string Sku { get; set; }
 			public string ProductName { get; set; }
 			public string ProductSeName { get; set; }
+			public string ProductUrl { get; set; }
 			public bool VisibleIndividually { get; set; }
 			public int Quantity { get; set; }
 			public int DisplayOrder { get; set; }
 			public string PriceWithDiscount { get; set; }
 			public string AttributeInfo { get; set; }
-		}
+            public bool HideThumbnail { get; set; }
+        }
 
         public partial class TaxRate : ModelBase
         {
@@ -124,13 +137,15 @@ namespace SmartStore.Web.Models.Order
         {
             public string CouponCode { get; set; }
             public string Amount { get; set; }
-        }
+			public string Remaining { get; set; }
+		}
 
         public partial class OrderNote : ModelBase
         {
             public string Note { get; set; }
             public DateTime CreatedOn { get; set; }
-        }
+			public string FriendlyCreatedOn { get; set; }
+		}
 
         public partial class ShipmentBriefModel : EntityModelBase
         {
@@ -138,6 +153,7 @@ namespace SmartStore.Web.Models.Order
             public DateTime? ShippedDate { get; set; }
             public DateTime? DeliveryDate { get; set; }
         }
+
         #endregion
     }
 }

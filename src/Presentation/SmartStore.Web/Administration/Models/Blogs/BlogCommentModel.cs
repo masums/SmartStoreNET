@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Web.Mvc;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Blogs
 {
@@ -24,7 +24,7 @@ namespace SmartStore.Admin.Models.Blogs
         [SmartResourceDisplayName("Admin.ContentManagement.Blog.Comments.Fields.Comment")]
         public string Comment { get; set; }
 
-        [SmartResourceDisplayName("Admin.ContentManagement.Blog.Comments.Fields.CreatedOn")]
+        [SmartResourceDisplayName("Common.CreatedOn")]
         public DateTime CreatedOn { get; set; }
 
     }

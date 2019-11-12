@@ -9,7 +9,7 @@
 		normalizeOptions(this, options);
 
 		if (_.isEmpty(options.url)) {
-			console.log('doAjax can\'t find the url!');
+		    console.log('doAjax cannot find the URL!');
 		}
 		else if (!_.isFalse(options.valid)) {
 			doRequestSwitch(options);
@@ -22,16 +22,44 @@
 	    /* [...] */
 	};
 
+	$.fn.doPostData = function (options) {
+		function createAndSubmitForm() {
+			var id = 'DynamicForm_' + Math.random().toString().substring(2),
+				form = '<form id="' + id + '" action="' + options.url + '" method="' + options.type + '">';
+
+			if (!_.isUndefined(options.data)) {
+				$.each(options.data, function (key, val) {
+					form += '<input type="hidden" name="' + key + '" value="' + $('<div/>').text(val).html() + '" />';
+				});
+			}
+
+			form += '</form>';
+
+			$('body').append(form);
+			$('#' + id).submit();
+		}
+
+		normalizeOptions(this, options);
+
+		if (_.isEmpty(options.url)) {
+			console.log('doAjax.doPostData cannot find the URL!');
+		}
+		else if (_.isEmpty(options.ask)) {
+			createAndSubmitForm();
+		}
+		else if (confirm(options.ask)) {
+			createAndSubmitForm();
+		}
+
+		return this.each(function () { });
+	}
+
 
 	function normalizeOptions(element, opt) {
 		opt.ask = (_.isUndefined(opt.ask) ? $(element).attr('data-ask') : opt.ask);
 
 		if (_.isUndefined(opt.type)) {
-			opt.type = (_.isUndefined(opt.autoContainer) ? 'POST' : 'GET');
-		}
-
-		if (!_.isUndefined(opt.autoContainer)) {
-			opt.smallIcon = opt.autoContainer;
+			opt.type = 'POST';
 		}
 
         if ($(element).is('form')) {
@@ -41,7 +69,7 @@
 			    opt.url = $(element).attr('action');
 		}
 
-        opt.url = (_.isUndefined(opt.url) ? findUrl(element) : opt.url);
+		opt.url = (_.isUndefined(opt.url) ? findUrl(element) : opt.url);
 	}
 
 	function findUrl(element) {
@@ -51,10 +79,10 @@
 			if (typeof url === 'string' && url.substr(0, 11) === 'javascript:')
 				url = '';
 
-			if (_.isUndefined(url) || url.length <= 0)
+			if (_.isUndefined(url) || url.length <= 1)
 				url = $(element).attr('data-url');
 
-			if (_.isUndefined(url) || url.length <= 0)
+			if (_.isUndefined(url) || url.length <= 1)
 				url = $(element).attr('data-button');
 		}
 		return url;
@@ -65,10 +93,10 @@
 	        $.throbber.show(opt.curtainTitle);
 	    }
 	    else if (opt.throbber) {
-	        $(opt.throbber).removeData('throbber').throbber({ white: true, small: true });
+	        $(opt.throbber).removeData('throbber').throbber({ white: true, small: true, message: '' });
 	    }
 	    else if (opt.smallIcon) {
-	        $(opt.smallIcon).append('<span class="ajax-loader-small"></span>');
+	        $(opt.smallIcon).append(window.createCircularSpinner(16, true));
 	    }
 	}
 
@@ -77,8 +105,9 @@
 	        $.throbber.hide(true);
 	    if (opt.throbber)
 	        $(opt.throbber).data('throbber').hide(true);
-	    if (opt.smallIcon)
-	        $(opt.smallIcon).find('span.ajax-loader-small').remove();
+	    if (opt.smallIcon) {
+	        $(opt.smallIcon).find('.spinner').remove();
+	    }  
 	}
 
 	function doRequest(opt) {
@@ -87,17 +116,11 @@
 			type: opt.type,
 			data: opt.data,
 			url: opt.url + (_.isEmpty(opt.appendToUrl) ? '' : opt.appendToUrl),
-			async: opt.async,
+			async: opt.async === undefined ? true : opt.async,
 			beforeSend: function () {
-				if (!_.isUndefined(opt.autoContainer))
-					$(opt.autoContainer).empty();
-
 				_.call(opt.callbackBeforeSend);
 			},
 			success: function (response) {
-				if (!_.isUndefined(opt.autoContainer))
-					$(opt.autoContainer).html(response);
-
 				_.call(opt.callbackSuccess, response);
 			},
 			error: function (objXml) {

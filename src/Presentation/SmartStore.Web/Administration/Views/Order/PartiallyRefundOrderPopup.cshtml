@@ -1,8 +1,6 @@
-﻿@{
-    Layout = "~/Administration/Views/Shared/_AdminPopupLayout.cshtml";
-}
-@model OrderModel
-@{    
+﻿@model OrderModel
+@{
+    Layout = "_AdminPopupLayout";
     ViewBag.Title = T("Admin.Orders.Fields.PartialRefund").Text;
 }
 
@@ -10,45 +8,33 @@
 {
     <div class="section-header">
         <div class="title">
-            @T("Admin.Orders.Fields.PartialRefund")
+			@string.Format(T("Admin.Orders.Fields.PartialRefund.OrderInfo").Text, Model.Id)
         </div>
         <div class="options">
         </div>
     </div>
     
     @Html.ValidationSummary(false)
-    
-    if (ViewBag.RefreshPage == true)
-    {
-    <script type="text/javascript">
-        try {window.opener.document.forms['@(ViewBag.formId)'].@(ViewBag.btnId).click();}
-        catch (e){} 
-        window.close();
-    </script>
-    }
-
-    <p>
-        <b>@string.Format(T("Admin.Orders.Fields.PartialRefund.OrderInfo").Text, Model.Id)</b>
-    </p>
-
-    <table width="100%">
+	
+    <table class="adminContent">
         <tr>
             <td class="adminTitle">
                 @Html.SmartLabelFor(model => model.AmountToRefund)
             </td>
             <td class="adminData">
-                @Html.EditorFor(model => model.AmountToRefund) &nbsp;&nbsp;&nbsp; <span style="white-space: nowrap">
-                    @string.Format(@T("Admin.Orders.Fields.PartialRefund.AmountToRefund.Max").Text, Model.MaxAmountToRefundFormatted, "")</span>
+                @Html.EditorFor(model => model.AmountToRefund)
+				<div class="alert alert-info mt-3">
+                    @string.Format(@T("Admin.Orders.Fields.PartialRefund.AmountToRefund.Max").Text, Model.MaxAmountToRefundFormatted, "")
+				</div>
             </td>
         </tr>
 		<tr>
 			<td class="adminTitle">
-				&nbsp;
 			</td>
 			<td class="adminData">
-				<button type="submit" name="partialrefundorder" value="@T("Admin.Orders.Fields.Refund")" id="partialrefundorder" class="btn btn-primary">
+				<button type="submit" name="partialrefundorder" value="@T("Admin.Orders.Fields.Refund")" id="partialrefundorder" class="btn btn-warning">
 					<i class="fa fa-check"></i>
-					@T("Admin.Orders.Fields.Refund")
+					<span>@T("Admin.Orders.Fields.Refund")</span>
 				</button>
 			</td>
 		</tr>

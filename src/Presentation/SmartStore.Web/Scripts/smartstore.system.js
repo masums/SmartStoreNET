@@ -1,24 +1,48 @@
 /* smartstore.system.js
 -------------------------------------------------------------- */
 ;
-
 (function ($) {
-	
+
+    function detectTouchscreen() {
+        var result = false;
+        if (window.PointerEvent && ('maxTouchPoints' in navigator)) {
+            // if Pointer Events are supported, just check maxTouchPoints
+            if (navigator.maxTouchPoints > 0) {
+                result = true;
+            }
+        } else {
+            // no Pointer Events...
+            if (window.matchMedia && window.matchMedia("(any-pointer:coarse)").matches) {
+                // check for any-pointer:coarse which mostly means touchscreen
+                result = true;
+            } else if (window.TouchEvent || ('ontouchstart' in window)) {
+                // last resort - check for exposed touch events API / event handler
+                result = true;
+            }
+        }
+        return result;
+    }
+
+    Modernizr.touchevents = detectTouchscreen();
+
+    if (Modernizr.touchevents) {
+        window.document.documentElement.classList.remove("no-touchevents");
+        window.document.documentElement.classList.add("touchevents");
+    }
+
 	var formatRe = /\{(\d+)\}/g;
 	
-	String.prototype.format = function() {
-	    var s = this, args = arguments;
-	    return s.replace(formatRe, function(m, i) {
-	        return args[i];
-	    });
-	};
+    String.prototype.format = function() {
+        var s = this, args = arguments;
+        return s.replace(formatRe, function(m, i) {
+            return args[i];
+        });
+    };
 
 	// define noop funcs for window.console in order
 	// to prevent scripting errors
 	var c = window.console = window.console || {};
-	function noop() { };
-	var funcs = ['log', 'debug', 'info', 'warn', 'error', 'assert', 'dir', 'dirxml', 'group', 'groupEnd', 
-					'time', 'timeEnd', 'count', 'trace', 'profile', 'profileEnd'],
+	var funcs = ['log', 'debug', 'info', 'warn', 'error', 'assert', 'dir', 'dirxml', 'group', 'groupEnd', 'time', 'timeEnd', 'count', 'trace', 'profile', 'profileEnd'],
 		flen = funcs.length,
 		noop = function(){};
 	while (flen) {
@@ -29,7 +53,7 @@
 		
 	// define default secure-casts
 	jQuery.extend(window, {
-			
+
 		toBool: function(val) {
 			var defVal = typeof arguments[1] === "boolean" ? arguments[1] : false;
 			var t = typeof val;
@@ -79,10 +103,13 @@
 				return defVal;	
 			}
 			return x;
-		}
-				
-				
+        },
+
+        requestAnimationFrame: window.requestAnimationFrame || function (callback) {
+            setTimeout(callback, 10);
+        }
 	});
 	
-
-})(jQuery);
+	// provide main app namespace
+	window.SmartStore = {};
+})( jQuery );

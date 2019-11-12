@@ -1,22 +1,50 @@
-﻿using System;
-using System.Web.Mvc;
+﻿using System.Web.Mvc;
 using System.Web.Mvc.Routing.Constraints;
 using System.Web.Routing;
+using SmartStore.Services.Media;
+using SmartStore.Utilities;
+using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Localization;
-using SmartStore.Web.Framework.Mvc.Routes;
+using SmartStore.Web.Framework.Routing;
 
 namespace SmartStore.Web.Infrastructure
 {
-    public partial class StoreRoutes : IRouteProvider
+	public partial class StoreRoutes : IRouteProvider
     {
         public void RegisterRoutes(RouteCollection routes)
         {
 			var idConstraint = new MinRouteConstraint(1);
-			
+
+			/* Media
+			----------------------------------------*/
+
+			// By default IIS handles requests for static files (through its static file handler, even if they don't exist physically), but we don't want that. 
+			// Registering the following patterns ensures that MVC catches this requests and passes them to our media controller.
+			// Within this controller we gonna find the actual file and stream it back to the client, 
+			// or - in case of blob storage - redirect the client to the computed public url.
+
+			var mediaPublicPath = MediaFileSystem.GetMediaPublicPath();
+
+			// Match URL pattern /{pub}/image/{id}/{path}[?{query}], e.g. '/media/image/234/myproduct.png?size=250' 
+			SmartUrlRoutingModule.RegisterRoutablePath(@"/{0}image/([1-9]\d*|0)/.*?$".FormatInvariant(mediaPublicPath), "GET|HEAD");
+			routes.MapRoute("Image",
+				mediaPublicPath + "image/{id}/{*name}",
+				new { controller = "Media", action = "Image" },
+				//new { id = new MinRouteConstraint(0) }, // Don't bother with this, the Regex matches this already
+				new[] { "SmartStore.Web.Controllers" });
+
+			// Match URL pattern /{pub}/{folder}/{*storageRelativePath}[?{query}], e.g. '/media/uploaded/subfolder/image.png' 
+			SmartUrlRoutingModule.RegisterRoutablePath(@"/{0}.*?$".FormatInvariant(mediaPublicPath), "GET|HEAD");
+			routes.MapRoute("MediaUploaded",
+				mediaPublicPath + "{*path}",
+				new { controller = "Media", action = "File" },
+				new[] { "SmartStore.Web.Controllers" });
+
+
 			/* Common
 			----------------------------------------*/
-			
-            routes.MapLocalizedRoute("HomePage",
+
+			routes.MapLocalizedRoute("HomePage",
 				"",
 				new { controller = "Home", action = "Index"},
 				new[] { "SmartStore.Web.Controllers" });
@@ -51,34 +79,19 @@ namespace SmartStore.Web.Infrastructure
 				new { controller = "ShoppingCart", action = "Wishlist", customerGuid = UrlParameter.Optional },
 				new[] { "SmartStore.Web.Controllers" });
 
-			routes.MapLocalizedRoute("MyAccount",
-				"customer/myaccount",
-				new { controller = "Customer", action = "MyAccount" },
-				new[] { "SmartStore.Web.Controllers" });
-
-			routes.MapLocalizedRoute("Topic",
+			routes.MapLocalizedRoute("TopicLegacy",
 				"t/{SystemName}",
-				new { controller = "Topic", action = "TopicDetails" },
+				new { controller = "Topic", action = "TopicDetailsLegacy" },
 				new[] { "SmartStore.Web.Controllers" });
 
-			routes.MapLocalizedRoute("TopicPopup",
-				"t-popup/{SystemName}",
-				new { controller = "Topic", action = "TopicDetailsPopup" },
-				new[] { "SmartStore.Web.Controllers" });
-
-			routes.MapLocalizedRoute("ProductSearch",
+			routes.MapLocalizedRoute("Search",
 				"search/",
-				new { controller = "Catalog", action = "Search" },
+				new { controller = "Search", action = "Search" },
 				new[] { "SmartStore.Web.Controllers" });
 
-			routes.MapLocalizedRoute("ProductSearchAutoComplete",
-				"catalog/searchtermautocomplete",
-				new { controller = "Catalog", action = "SearchTermAutoComplete" },
-				new[] { "SmartStore.Web.Controllers" });
-
-			routes.MapLocalizedRoute("ChangeDevice",
-				"changedevice/{dontusemobileversion}",
-				new { controller = "Common", action = "ChangeDevice" },
+			routes.MapLocalizedRoute("InstantSearch",
+				"instantsearch",
+				new { controller = "Search", action = "InstantSearch" },
 				new[] { "SmartStore.Web.Controllers" });
 
 			routes.MapLocalizedRoute("ChangeCurrency",
@@ -99,6 +112,7 @@ namespace SmartStore.Web.Infrastructure
 				new { customertaxtype = idConstraint },
 				new[] { "SmartStore.Web.Controllers" });
 
+
 			/* Catalog
 			----------------------------------------*/
 
@@ -108,8 +122,8 @@ namespace SmartStore.Web.Infrastructure
 				new[] { "SmartStore.Web.Controllers" });
 
 			routes.MapLocalizedRoute("ProductsByTag",
-				"producttag/{productTagId}/{SeName}",
-				new { controller = "Catalog", action = "ProductsByTag", SeName = UrlParameter.Optional },
+				"producttag/{productTagId}/{*path}",
+				new { controller = "Catalog", action = "ProductsByTag" },
 				new { productTagId = idConstraint },
 				new[] { "SmartStore.Web.Controllers" });
 
@@ -165,12 +179,6 @@ namespace SmartStore.Web.Infrastructure
                 new { controller = "Checkout", action = "Index" },
                 new[] { "SmartStore.Web.Controllers" });
 
-			routes.MapLocalizedRoute("ReturnRequest",
-				"returnrequest/{orderId}",
-				new { controller = "ReturnRequest", action = "ReturnRequest" },
-				new { orderId = idConstraint },
-				new[] { "SmartStore.Web.Controllers" });
-
 
 			/* Newsletter
 			----------------------------------------*/
@@ -222,8 +230,7 @@ namespace SmartStore.Web.Infrastructure
 
             routes.MapLocalizedRoute("BlogRSS",
                 "blog/rss/{languageId}",
-                new { controller = "Blog", action = "ListRss" },
-				new { languageId = idConstraint },
+                new { controller = "Blog", action = "ListRss", languageId = UrlParameter.Optional },
                 new[] { "SmartStore.Web.Controllers" });
 
 
@@ -307,9 +314,9 @@ namespace SmartStore.Web.Infrastructure
                 new { controller = "Home", action = "Sitemap" },
                 new[] { "SmartStore.Web.Controllers" });
 
-            routes.MapLocalizedRoute("SitemapSEO",
+            routes.MapLocalizedRoute("XmlSitemap",
                 "sitemap.xml",
-				new { controller = "Home", action = "SitemapSeo" },
+				new { controller = "Media", action = "XmlSitemap" },
                 new[] { "SmartStore.Web.Controllers" });
 
 			routes.MapLocalizedRoute("StoreClosed",
@@ -322,9 +329,9 @@ namespace SmartStore.Web.Infrastructure
                 new { controller = "Common", action = "RobotsTextFile" },
                 new[] { "SmartStore.Web.Controllers" });
 
-			routes.MapLocalizedRoute("Config",
-				"config",
-				new { controller = "Common", action = "Config" },
+			routes.MapLocalizedRoute("Settings",
+				"settings",
+				new { controller = "Common", action = "Settings" },
 				new[] { "SmartStore.Web.Controllers" });
 
         }

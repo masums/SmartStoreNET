@@ -1,83 +1,89 @@
 ﻿using System;
 using System.Linq;
 using System.Web.Mvc;
-using SmartStore.Admin.Models.Directory;
 using SmartStore.Admin.Models.Stores;
-using SmartStore.Core.Domain.Directory;
 using SmartStore.Core.Domain.Stores;
-using SmartStore.Services.Configuration;
+using SmartStore.Core.Security;
 using SmartStore.Services.Directory;
-using SmartStore.Services.Localization;
-using SmartStore.Services.Security;
-using SmartStore.Services.Stores;
+using SmartStore.Services.Media;
 using SmartStore.Web.Framework.Controllers;
+using SmartStore.Web.Framework.Filters;
+using SmartStore.Web.Framework.Security;
 using Telerik.Web.Mvc;
 
 namespace SmartStore.Admin.Controllers
 {
-	[AdminAuthorize]
+    [AdminAuthorize]
 	public partial class StoreController : AdminControllerBase
 	{
-		private readonly IStoreService _storeService;
-		private readonly ISettingService _settingService;
-		private readonly ILocalizationService _localizationService;
-		private readonly IPermissionService _permissionService;
+		private readonly ICurrencyService _currencyService;
 
-		public StoreController(IStoreService storeService,
-			ISettingService settingService,
-			ILocalizationService localizationService,
-			IPermissionService permissionService)
+		public StoreController(ICurrencyService currencyService)
 		{
-			this._storeService = storeService;
-			this._settingService = settingService;
-			this._localizationService = localizationService;
-			this._permissionService = permissionService;
+			_currencyService = currencyService;
 		}
 
+		private void PrepareStoreModel(StoreModel model, Store store)
+		{
+			model.AvailableCurrencies = _currencyService.GetAllCurrencies(false, store == null ? 0 : store.Id)
+				.Select(x => new SelectListItem
+				{
+					Text = x.Name,
+					Value = x.Id.ToString()
+				})
+				.ToList();
+		}
+
+        // Ajax.
+        public ActionResult AllStores(string label, string selectedIds)
+        {
+            var stores = Services.StoreService.GetAllStores();
+            var ids = selectedIds.ToIntArray();
+
+            if (label.HasValue())
+            {
+                stores.Insert(0, new Store { Name = label, Id = 0 });
+            }
+
+            var list =
+                from m in stores
+                select new
+                {
+                    id = m.Id.ToString(),
+                    text = m.Name,
+                    selected = ids.Contains(m.Id)
+                };
+
+            return new JsonResult { Data = list.ToList(), JsonRequestBehavior = JsonRequestBehavior.AllowGet };
+        }
+
+        [Permission(Permissions.Configuration.Store.Read)]
 		public ActionResult List()
 		{
-			if (!_permissionService.Authorize(StandardPermissionProvider.ManageStores))
-				return AccessDeniedView();
-
 			return View();
 		}
 
-		public ActionResult AllStores(string label, int selectedId = 0)
-		{
-			var stores = _storeService.GetAllStores();
-
-			if (label.HasValue())
-			{
-				stores.Insert(0, new Store { Name = label, Id = 0 });
-			}
-
-			var list = 
-				from m in stores
-				select new
-				{
-					id = m.Id.ToString(),
-					text = m.Name,
-					selected = m.Id == selectedId
-				};
-
-			return new JsonResult { Data = list.ToList(), JsonRequestBehavior = JsonRequestBehavior.AllowGet };
-		}
-
 		[HttpPost, GridAction(EnableCustomBinding = true)]
-		public ActionResult List(GridCommand command)
+        [Permission(Permissions.Configuration.Store.Read)]
+        public ActionResult List(GridCommand command)
 		{
-			if (!_permissionService.Authorize(StandardPermissionProvider.ManageStores))
-				return AccessDeniedView();
+			var gridModel = new GridModel<StoreModel>();
 
-			var storeModels = _storeService.GetAllStores()
-				.Select(x => x.ToModel())
+			var storeModels = Services.StoreService.GetAllStores()
+				.Select(x =>
+				{
+					var model = x.ToModel();
+
+					PrepareStoreModel(model, x);
+
+					model.Hosts = model.Hosts.EmptyNull().Replace(",", "<br />");
+
+					return model;
+				})
 				.ToList();
 
-			var gridModel = new GridModel<StoreModel>
-			{
-				Data = storeModels,
-				Total = storeModels.Count()
-			};
+			gridModel.Data = storeModels;
+			gridModel.Total = storeModels.Count();
 
 			return new JsonResult
 			{
@@ -85,119 +91,124 @@ namespace SmartStore.Admin.Controllers
 			};
 		}
 
-		public ActionResult Create()
+        [Permission(Permissions.Configuration.Store.Create)]
+        public ActionResult Create()
 		{
-			if (!_permissionService.Authorize(StandardPermissionProvider.ManageStores))
-				return AccessDeniedView();
-
 			var model = new StoreModel();
+			PrepareStoreModel(model, null);
+
 			return View(model);
 		}
 
-		[HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
-		public ActionResult Create(StoreModel model, bool continueEditing)
+		[HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
+        [Permission(Permissions.Configuration.Store.Create)]
+        public ActionResult Create(StoreModel model, bool continueEditing)
 		{
-			if (!_permissionService.Authorize(StandardPermissionProvider.ManageStores))
-				return AccessDeniedView();
-
 			if (ModelState.IsValid)
 			{
 				var store = model.ToEntity();
-				//ensure we have "/" at the end
-				store.Url = store.Url.EnsureEndsWith("/");
-				_storeService.InsertStore(store);
+				MediaHelper.UpdatePictureTransientStateFor(store, s => s.LogoPictureId);
 
-				NotifySuccess(_localizationService.GetResource("Admin.Configuration.Stores.Added"));
+                // Ensure we have "/" at the end.
+                store.Url = store.Url.EnsureEndsWith("/");
+				Services.StoreService.InsertStore(store);
+
+				NotifySuccess(T("Admin.Configuration.Stores.Added"));
 				return continueEditing ? RedirectToAction("Edit", new { id = store.Id }) : RedirectToAction("List");
 			}
 
-			//If we got this far, something failed, redisplay form
+			PrepareStoreModel(model, null);
 			return View(model);
 		}
 
-		public ActionResult Edit(int id)
+        [Permission(Permissions.Configuration.Store.Read)]
+        public ActionResult Edit(int id)
 		{
-			if (!_permissionService.Authorize(StandardPermissionProvider.ManageStores))
-				return AccessDeniedView();
-
-			var store = _storeService.GetStoreById(id);
-			if (store == null)
-				//No store found with the specified id
-				return RedirectToAction("List");
+			var store = Services.StoreService.GetStoreById(id);
+            if (store == null)
+            {
+                return RedirectToAction("List");
+            }
 
 			var model = store.ToModel();
+			PrepareStoreModel(model, store);
+
 			return View(model);
 		}
 
-		[HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
+		[HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
 		[FormValueRequired("save", "save-continue")]
-		public ActionResult Edit(StoreModel model, bool continueEditing)
+        [Permission(Permissions.Configuration.Store.Update)]
+        public ActionResult Edit(StoreModel model, bool continueEditing)
 		{
-			if (!_permissionService.Authorize(StandardPermissionProvider.ManageStores))
-				return AccessDeniedView();
-
-			var store = _storeService.GetStoreById(model.Id);
-			if (store == null)
-				//No store found with the specified id
-				return RedirectToAction("List");
+			var store = Services.StoreService.GetStoreById(model.Id);
+            if (store == null)
+            {
+                return RedirectToAction("List");
+            }
 
 			if (ModelState.IsValid)
 			{
 				store = model.ToEntity(store);
-				//ensure we have "/" at the end
-				store.Url = store.Url.EnsureEndsWith("/");
-				_storeService.UpdateStore(store);
 
-				NotifySuccess(_localizationService.GetResource("Admin.Configuration.Stores.Updated"));
+				MediaHelper.UpdatePictureTransientStateFor(store, s => s.LogoPictureId);
+
+				// Ensure we have "/" at the end.
+				store.Url = store.Url.EnsureEndsWith("/");
+				Services.StoreService.UpdateStore(store);
+
+				NotifySuccess(T("Admin.Configuration.Stores.Updated"));
 				return continueEditing ? RedirectToAction("Edit", new { id = store.Id }) : RedirectToAction("List");
 			}
 
-			//If we got this far, something failed, redisplay form
+			PrepareStoreModel(model, store);
 			return View(model);
 		}
 
 		[HttpPost]
-		public ActionResult Delete(int id)
+        [Permission(Permissions.Configuration.Store.Delete)]
+        public ActionResult Delete(int id)
 		{
-			if (!_permissionService.Authorize(StandardPermissionProvider.ManageStores))
-				return AccessDeniedView();
-
-			var store = _storeService.GetStoreById(id);
-			if (store == null)
-				//No store found with the specified id
-				return RedirectToAction("List");
+			var store = Services.StoreService.GetStoreById(id);
+            if (store == null)
+            {
+                return RedirectToAction("List");
+            }
 
 			try
 			{
-				_storeService.DeleteStore(store);
+				Services.StoreService.DeleteStore(store);
 
-				//when we delete a store we should also ensure that all "per store" settings will also be deleted
-				var settingsToDelete = _settingService
+				// When we delete a store we should also ensure that all "per store" settings will also be deleted.
+				var settingsToDelete = Services.Settings
 					.GetAllSettings()
 					.Where(s => s.StoreId == id)
 					.ToList();
-				foreach (var setting in settingsToDelete)
-					_settingService.DeleteSetting(setting);
-				//when we had two stores and now have only one store, we also should delete all "per store" settings
-				var allStores = _storeService.GetAllStores();
+
+				settingsToDelete.ForEach(x => Services.Settings.DeleteSetting(x));
+
+				// When we had two stores and now have only one store, we also should delete all "per store" settings.
+				var allStores = Services.StoreService.GetAllStores();
+
 				if (allStores.Count == 1)
 				{
-					settingsToDelete = _settingService
+					settingsToDelete = Services.Settings
 						.GetAllSettings()
 						.Where(s => s.StoreId == allStores[0].Id)
 						.ToList();
-					foreach (var setting in settingsToDelete)
-						_settingService.DeleteSetting(setting);
+
+					settingsToDelete.ForEach(x => Services.Settings.DeleteSetting(x));
 				}
 
-				NotifySuccess(_localizationService.GetResource("Admin.Configuration.Stores.Deleted"));
+				NotifySuccess(T("Admin.Configuration.Stores.Deleted"));
 				return RedirectToAction("List");
 			}
-			catch (Exception exc)
+			catch (Exception ex)
 			{
-				NotifyError(exc);
-				return RedirectToAction("Edit", new { id = store.Id });
+				NotifyError(ex);
 			}
+
+			return RedirectToAction("Edit", new { id = store.Id });
 		}
 	}
 }

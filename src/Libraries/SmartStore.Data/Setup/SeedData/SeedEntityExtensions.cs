@@ -8,15 +8,13 @@ using SmartStore.Core.Configuration;
 
 namespace SmartStore.Data.Setup
 {
-
     public static class SeedEntityExtensions
     {
-
         #region fluent extensions
 
-        public static SeedEntityAlterer<T, TKey> WithKey<T, TKey>(this IList<T> list, Expression<Func<T, TKey>> expression) where T : BaseEntity
+        public static SeedEntityAlterer<T, TKey> WithKey<T, TKey>(this IList<T> list, Func<T, TKey> predicate) where T : BaseEntity
         {
-            return new SeedEntityAlterer<T, TKey>(list, expression);
+            return new SeedEntityAlterer<T, TKey>(list, predicate);
         }
 
         public static SeedSettingsAlterer Alter<TSettings>(this IList<ISettings> list, Action<TSettings> action) where TSettings : class, ISettings, new()
@@ -62,13 +60,13 @@ namespace SmartStore.Data.Setup
             private readonly Dictionary<TKey, T> _entityMap; // for faster access!
             private readonly IList<T> _entities;
 
-            public SeedEntityAlterer(IList<T> list, Expression<Func<T, TKey>> keyExpression)
+            public SeedEntityAlterer(IList<T> list, Func<T, TKey> keyPredicate)
             {
                 _entities = list;
 
                 // fetch all key values from list and build a key/value map for faster access.
                 _entityMap = new Dictionary<TKey, T>(list.Count);
-                var fn = keyExpression.Compile();
+                var fn = keyPredicate;
 
                 foreach (var entity in list)
                 {
@@ -104,5 +102,4 @@ namespace SmartStore.Data.Setup
 
         #endregion
     }
-
 }

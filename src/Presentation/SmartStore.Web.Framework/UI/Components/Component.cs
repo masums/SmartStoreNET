@@ -1,18 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Web.Mvc;
-using System.Web.UI;
-using System.IO;
 using System.Web.Routing;
 
 namespace SmartStore.Web.Framework.UI 
 {
-    
     public abstract class Component : IUiComponent
     {
-
         protected Component()
         {
             this.HtmlAttributes = new RouteValueDictionary();
@@ -53,6 +46,5 @@ namespace SmartStore.Web.Framework.UI
                 return false;
             }
         }
-    }
-
+	}
 }

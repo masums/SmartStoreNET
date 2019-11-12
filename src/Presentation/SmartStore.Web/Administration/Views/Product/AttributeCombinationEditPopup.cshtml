@@ -1,5 +1,5 @@
 ﻿@{
-    Layout = "~/Administration/Views/Shared/_AdminPopupLayout.cshtml";
+    Layout = "_AdminPopupLayout";
 }
 @model ProductVariantAttributeCombinationModel
 @{    
@@ -18,11 +18,12 @@
             @T("Admin.Catalog.Products.ProductVariantAttributes.AttributeCombinations.EditTitle")
         </div>
         <div class="options">
-            <button type="submit" id="save" name="save" value="save" class="btn btn-primary">
+            <button type="submit" id="save" name="save" value="save" class="btn btn-warning">
                 <i class="fa fa-check"></i>
                 @T("Admin.Common.Save")
             </button>
         </div>
     </div>
-    @Html.Partial("_CreateOrUpdateAttributeCombinationPopup", Model)
+
+    Html.RenderPartial("_CreateOrUpdateAttributeCombinationPopup", Model);
 }

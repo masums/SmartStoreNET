@@ -1,42 +1,41 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Globalization;
 using System.Linq;
 using System.Text;
-using System.Web;
 using System.Web.Mvc;
 using SmartStore.Core.Domain.Blogs;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Domain.Customers;
-using SmartStore.Core.Domain.Discounts;
 using SmartStore.Core.Domain.Forums;
 using SmartStore.Core.Domain.Localization;
 using SmartStore.Core.Domain.Media;
 using SmartStore.Core.Domain.Messages;
+using SmartStore.Core.Domain.News;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Seo;
 using SmartStore.Core.Domain.Tax;
 using SmartStore.Core.Domain.Themes;
 using SmartStore.Core.Infrastructure;
 using SmartStore.Core.Localization;
+using SmartStore.Core.Security;
 using SmartStore.Core.Themes;
 using SmartStore.Services;
-using SmartStore.Services.Catalog;
 using SmartStore.Services.Common;
 using SmartStore.Services.Customers;
 using SmartStore.Services.Directory;
 using SmartStore.Services.Forums;
 using SmartStore.Services.Localization;
 using SmartStore.Services.Media;
-using SmartStore.Services.Orders;
 using SmartStore.Services.Security;
-using SmartStore.Services.Topics;
+using SmartStore.Services.Seo;
+using SmartStore.Utilities;
+using SmartStore.Utilities.ObjectPools;
+using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Controllers;
-using SmartStore.Web.Framework.Localization;
+using SmartStore.Web.Framework.Filters;
 using SmartStore.Web.Framework.Pdf;
-using SmartStore.Web.Framework.Themes;
+using SmartStore.Web.Framework.Theming;
 using SmartStore.Web.Framework.UI;
 using SmartStore.Web.Infrastructure.Cache;
 using SmartStore.Web.Models.Common;
@@ -45,93 +44,90 @@ namespace SmartStore.Web.Controllers
 {
     public partial class CommonController : PublicControllerBase
     {
-        #region Fields
-
-        private readonly ITopicService _topicService;
-        private readonly ILanguageService _languageService;
-        private readonly ICurrencyService _currencyService;
-        private readonly IThemeContext _themeContext;
-        private readonly IThemeRegistry _themeRegistry;
-        private readonly IForumService _forumservice;
-        private readonly IGenericAttributeService _genericAttributeService;
-        private readonly IMobileDeviceHelper _mobileDeviceHelper;
-
 		private readonly static string[] s_hints = new string[] { "Shopsystem", "Onlineshop Software", "Shopsoftware", "E-Commerce Solution" };
 
-        private readonly CustomerSettings _customerSettings;
-        private readonly TaxSettings _taxSettings;
+		private readonly ICommonServices _services;
+		private readonly IMenuService _menuService;
+		private readonly Lazy<ILanguageService> _languageService;
+        private readonly Lazy<ICurrencyService> _currencyService;
+        private readonly IThemeContext _themeContext;
+        private readonly Lazy<IThemeRegistry> _themeRegistry;
+        private readonly Lazy<IForumService> _forumService;
+        private readonly Lazy<IGenericAttributeService> _genericAttributeService;
+		private readonly Lazy<IUrlRecordService> _urlRecordService;
+		private readonly IPageAssetsBuilder _pageAssetsBuilder;
+		private readonly Lazy<IPictureService> _pictureService;
+
+		private readonly CustomerSettings _customerSettings;
+		private readonly PrivacySettings _privacySettings;
+		private readonly TaxSettings _taxSettings;
         private readonly CatalogSettings _catalogSettings;
+        private readonly ShoppingCartSettings _shoppingCartSettings;
         private readonly ThemeSettings _themeSettings;
         private readonly CommonSettings _commonSettings;
+		private readonly NewsSettings _newsSettings;
         private readonly BlogSettings _blogSettings;
         private readonly ForumSettings _forumSettings;
         private readonly LocalizationSettings _localizationSettings;
+		private readonly Lazy<SocialSettings> _socialSettings;
 
-        private readonly IOrderTotalCalculationService _orderTotalCalculationService;
-        private readonly IPriceFormatter _priceFormatter;
-		private readonly IPageAssetsBuilder _pageAssetsBuilder;
-		private readonly Lazy<IPictureService> _pictureService;
-		private readonly ICommonServices _services;
-
-        #endregion
-
-        #region Constructors
-
-        public CommonController(
-			ITopicService topicService,
-            ILanguageService languageService,
-            ICurrencyService currencyService,
+		private readonly IBreadcrumb _breadcrumb;
+		
+		public CommonController(
+			ICommonServices services,
+			IMenuService menuService,
+			Lazy<ILanguageService> languageService,
+            Lazy<ICurrencyService> currencyService,
 			IThemeContext themeContext,
-            IThemeRegistry themeRegistry, 
-			IForumService forumService,
-            IGenericAttributeService genericAttributeService, 
-			IMobileDeviceHelper mobileDeviceHelper,
-			CustomerSettings customerSettings, 
-            TaxSettings taxSettings, 
+            Lazy<IThemeRegistry> themeRegistry, 
+			Lazy<IForumService> forumService,
+            Lazy<IGenericAttributeService> genericAttributeService, 
+			Lazy<IMobileDeviceHelper> mobileDeviceHelper,
+			Lazy<IUrlRecordService> urlRecordService,
+			IPageAssetsBuilder pageAssetsBuilder,
+			Lazy<IPictureService> pictureService,
+			CustomerSettings customerSettings,
+			PrivacySettings privacySettings,
+			TaxSettings taxSettings, 
 			CatalogSettings catalogSettings,
+            ShoppingCartSettings shoppingCartSettings,
             EmailAccountSettings emailAccountSettings,
             CommonSettings commonSettings, 
+			NewsSettings newsSettings,
 			BlogSettings blogSettings, 
 			ForumSettings forumSettings,
             LocalizationSettings localizationSettings, 
-            IOrderTotalCalculationService orderTotalCalculationService, 
-			IPriceFormatter priceFormatter,
+			Lazy<SocialSettings> socialSettings,
             ThemeSettings themeSettings, 
-			IPageAssetsBuilder pageAssetsBuilder,
-			Lazy<IPictureService> pictureService,
-			ICommonServices services)
+			IBreadcrumb breadcrumb)
         {
-            this._topicService = topicService;
-            this._languageService = languageService;
-            this._currencyService = currencyService;
-            this._themeContext = themeContext;
-            this._themeRegistry = themeRegistry;
-            this._forumservice = forumService;
-            this._genericAttributeService = genericAttributeService;
-            this._mobileDeviceHelper = mobileDeviceHelper;
-			
-            this._customerSettings = customerSettings;
-            this._taxSettings = taxSettings;
-            this._catalogSettings = catalogSettings;
-            this._commonSettings = commonSettings;
-            this._blogSettings = blogSettings;
-            this._forumSettings = forumSettings;
-            this._localizationSettings = localizationSettings;
+			_services = services;
+			_menuService = menuService;
+            _languageService = languageService;
+            _currencyService = currencyService;
+            _themeContext = themeContext;
+            _themeRegistry = themeRegistry;
+            _forumService = forumService;
+            _genericAttributeService = genericAttributeService;
+			_urlRecordService = urlRecordService;
+			_pageAssetsBuilder = pageAssetsBuilder;
+			_pictureService = pictureService;
 
-            this._orderTotalCalculationService = orderTotalCalculationService;
-            this._priceFormatter = priceFormatter;
+			_customerSettings = customerSettings;
+			_privacySettings = privacySettings;
+			_taxSettings = taxSettings;
+            _catalogSettings = catalogSettings;
+            _shoppingCartSettings = shoppingCartSettings;
+            _commonSettings = commonSettings;
+			_newsSettings = newsSettings;
+            _blogSettings = blogSettings;
+            _forumSettings = forumSettings;
+            _localizationSettings = localizationSettings;
+			_socialSettings = socialSettings;
+            _themeSettings = themeSettings;
 
-            this._themeSettings = themeSettings;
-			this._pageAssetsBuilder = pageAssetsBuilder;
-			this._pictureService = pictureService;
-			this._services = services;
-
-			T = NullLocalizer.Instance;
-        }
-
-		public Localizer T { get; set; }
-
-        #endregion
+			_breadcrumb = breadcrumb;
+		}
 
         #region Utilities
 
@@ -140,13 +136,13 @@ namespace SmartStore.Web.Controllers
         {
 			var availableLanguages = _services.Cache.Get(string.Format(ModelCacheEventConsumer.AVAILABLE_LANGUAGES_MODEL_KEY, _services.StoreContext.CurrentStore.Id), () =>
             {
-                var result = _languageService
+                var result = _languageService.Value
 					.GetAllLanguages(storeId: _services.StoreContext.CurrentStore.Id)
                     .Select(x => new LanguageModel
                     {
                         Id = x.Id,
                         Name = x.Name,
-                        NativeName = GetLanguageNativeName(x.LanguageCulture) ?? x.Name,
+                        NativeName = LocalizationHelper.GetLanguageNativeName(x.LanguageCulture) ?? x.Name,
                         ISOCode = x.LanguageCulture,
                         SeoCode = x.UniqueSeoCode,
                         FlagImageFileName = x.FlagImageFileName
@@ -157,20 +153,21 @@ namespace SmartStore.Web.Controllers
 
 			var workingLanguage = _services.WorkContext.WorkingLanguage;
 
-            var model = new LanguageSelectorModel()
+            var model = new LanguageSelectorModel
             {
                 CurrentLanguageId = workingLanguage.Id,
                 AvailableLanguages = availableLanguages,
                 UseImages = _localizationSettings.UseImagesForLanguageSelection
             };
 
-			string defaultSeoCode = _services.WorkContext.GetDefaultLanguageSeoCode();
+			string defaultSeoCode = _languageService.Value.GetDefaultLanguageSeoCode();
 
             foreach (var lang in model.AvailableLanguages)
             {
-                var helper = new LocalizedUrlHelper(HttpContext.Request, true);
+                //var helper = new LocalizedUrlHelper(HttpContext.Request, true);
+				var helper = CreateUrlHelperForLanguageSelector(lang, workingLanguage.Id);
 
-                if (_localizationSettings.SeoFriendlyUrlsForLanguagesEnabled)
+				if (_localizationSettings.SeoFriendlyUrlsForLanguagesEnabled)
                 {
                     if (lang.SeoCode == defaultSeoCode && (int)(_localizationSettings.DefaultLanguageRedirectBehaviour) > 0)
                     {
@@ -182,47 +179,64 @@ namespace SmartStore.Web.Controllers
                     }
                 }
 
-                model.ReturnUrls[lang.SeoCode] = helper.GetAbsolutePath();
+                model.ReturnUrls[lang.SeoCode] = helper.RelativePath;
             }
 
             return model;
         }
 
-        // TODO: (MC) zentral auslagern
-        private string GetLanguageNativeName(string locale)
-        {
-            try
-            {
-                if (!string.IsNullOrEmpty(locale))
-                {
-                    var info = CultureInfo.GetCultureInfoByIetfLanguageTag(locale);
-                    if (info == null)
-                    {
-                        return null;
-                    }
-                    return info.NativeName;
-                }
-                return null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
+		private LocalizedUrlHelper CreateUrlHelperForLanguageSelector(LanguageModel model, int currentLanguageId)
+		{
+			if (currentLanguageId != model.Id)
+			{
+				var routeValues = this.Request.RequestContext.RouteData.Values;
+				var controller = routeValues["controller"].ToString();
+
+				if (!routeValues.TryGetValue(controller + "id", out var val))
+				{
+					controller = routeValues["action"].ToString();
+					routeValues.TryGetValue(controller + "id", out val);
+				}
+
+				int entityId = 0;
+				if (val != null)
+				{
+					entityId = val.Convert<int>();
+				}
+
+				if (entityId > 0)
+				{
+					var activeSlug = _urlRecordService.Value.GetActiveSlug(entityId, controller, model.Id);
+					if (activeSlug.IsEmpty())
+					{
+						// Fallback to default value.
+						activeSlug = _urlRecordService.Value.GetActiveSlug(entityId, controller, 0);
+					}
+
+					if (activeSlug.HasValue())
+					{
+						var helper = new LocalizedUrlHelper(Request.ApplicationPath, activeSlug, false);
+						return helper;
+					}
+				}
+			}
+
+			return new LocalizedUrlHelper(HttpContext.Request, true);
+		}
 
         [NonAction]
         protected CurrencySelectorModel PrepareCurrencySelectorModel()
         {
 			var availableCurrencies = _services.Cache.Get(string.Format(ModelCacheEventConsumer.AVAILABLE_CURRENCIES_MODEL_KEY, _services.WorkContext.WorkingLanguage.Id, _services.StoreContext.CurrentStore.Id), () =>
             {
-                var result = _currencyService
+                var result = _currencyService.Value
 					.GetAllCurrencies(storeId: _services.StoreContext.CurrentStore.Id)
-                    .Select(x => new CurrencyModel()
+                    .Select(x => new CurrencyModel
                     {
                         Id = x.Id,
                         Name = x.GetLocalized(y => y.Name),
                         ISOCode = x.CurrencyCode,
-                        Symbol = GetCurrencySymbol(x.DisplayLocale) ?? x.CurrencyCode
+                        Symbol = LocalizationHelper.GetCurrencySymbol(x.DisplayLocale) ?? x.CurrencyCode
                     })
                     .ToList();
                 return result;
@@ -236,28 +250,6 @@ namespace SmartStore.Web.Controllers
             return model;
         }
 
-        // TODO: Zentral auslagern
-        private static string GetCurrencySymbol(string locale)
-        {
-            try
-            {
-                if (!string.IsNullOrEmpty(locale))
-                {
-                    var info = new RegionInfo(locale);
-                    if (info == null)
-                    {
-                        return null;
-                    }
-                    return info.CurrencySymbol;
-                }
-                return null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
         [NonAction]
         protected TaxTypeSelectorModel PrepareTaxTypeSelectorModel()
         {
@@ -267,24 +259,6 @@ namespace SmartStore.Web.Controllers
 				CurrentTaxType = _services.WorkContext.TaxDisplayType
             };
             return model;
-        }
-
-        [NonAction]
-        protected int GetUnreadPrivateMessages()
-        {
-            var result = 0;
-			var customer = _services.WorkContext.CurrentCustomer;
-            if (_forumSettings.AllowPrivateMessages && !customer.IsGuest())
-            {
-				var privateMessages = _forumservice.GetAllPrivateMessages(_services.StoreContext.CurrentStore.Id, 0, customer.Id, false, null, false, string.Empty, 0, 1);
-
-                if (privateMessages.TotalCount > 0)
-                {
-                    result = privateMessages.TotalCount;
-                }
-            }
-
-            return result;
         }
 
         #endregion
@@ -305,7 +279,7 @@ namespace SmartStore.Web.Controllers
 				var host = _services.WebHelper.GetStoreLocation();
 				foreach (var lang in model.AvailableLanguages)
 				{
-					_pageAssetsBuilder.AddLinkPart("alternate", host + model.ReturnUrls[lang.SeoCode].TrimStart('/'), hreflang: lang.SeoCode);
+					_pageAssetsBuilder.AddLinkPart("alternate", host.EnsureEndsWith("/") + model.ReturnUrls[lang.SeoCode].TrimStart('/'), hreflang: lang.SeoCode);
 				}
 			}
 
@@ -313,366 +287,236 @@ namespace SmartStore.Web.Controllers
         }
 
         [ChildActionOnly]
-        public ActionResult Header()
+        public ActionResult Logo()
         {
-			var model = _services.Cache.Get(ModelCacheEventConsumer.SHOPHEADER_MODEL_KEY.FormatWith(_services.StoreContext.CurrentStore.Id), () =>
+			var logoPictureInfo = _pictureService.Value.GetPictureInfo(_services.StoreContext.CurrentStore.LogoPictureId);
+			var hasLogo = logoPictureInfo != null;
+
+			var model = new ShopHeaderModel
 			{
-                var pictureService = _pictureService.Value;
-				int logoPictureId = _services.StoreContext.CurrentStore.LogoPictureId;
+				LogoUploaded = hasLogo,
+				LogoUrl = _pictureService.Value.GetUrl(logoPictureInfo, 0, FallbackPictureType.NoFallback),
+				LogoWidth = logoPictureInfo?.Width ?? 0,
+				LogoHeight = logoPictureInfo?.Height ?? 0,
+				LogoTitle = _services.StoreContext.CurrentStore.Name
+			};
 
-                Picture picture = null;
-                if (logoPictureId > 0)
-                {
-                    picture = pictureService.GetPictureById(logoPictureId);
-                }
-
-                string logoUrl = null;
-                var logoSize = new Size();
-                if (picture != null)
-                {
-                    logoUrl = pictureService.GetPictureUrl(picture);
-                    logoSize = pictureService.GetPictureSize(picture);
-                }
-
-                return new ShopHeaderModel()
-                {
-                    LogoUploaded = picture != null,
-                    LogoUrl = logoUrl,
-                    LogoWidth = logoSize.Width,
-                    LogoHeight = logoSize.Height,
-					LogoTitle = _services.StoreContext.CurrentStore.Name
-                };
-            });
-            
-
-            return PartialView(model);
+			return PartialView(model);
         }
 
         public ActionResult SetLanguage(int langid, string returnUrl = "")
         {
-            var language = _languageService.GetLanguageById(langid);
+			var language = _languageService.Value.GetLanguageById(langid);
             if (language != null && language.Published)
             {
 				_services.WorkContext.WorkingLanguage = language;
             }
-            
-            // url referrer
-            if (String.IsNullOrEmpty(returnUrl))
-            {
-				returnUrl = _services.WebHelper.GetUrlReferrer();
-            }
 
-            // home page
-            if (String.IsNullOrEmpty(returnUrl))
-            {
-                returnUrl = Url.RouteUrl("HomePage");
-            }
+            var helper = new LocalizedUrlHelper(HttpContext.Request.ApplicationPath, returnUrl, false);
 
             if (_localizationSettings.SeoFriendlyUrlsForLanguagesEnabled)
             {
-                var helper = new LocalizedUrlHelper(HttpContext.Request.ApplicationPath, returnUrl, true);
-				helper.PrependSeoCode(_services.WorkContext.WorkingLanguage.UniqueSeoCode, true);
-                returnUrl = helper.GetAbsolutePath();
+                helper.PrependSeoCode(_services.WorkContext.WorkingLanguage.UniqueSeoCode, true);
             }
 
-            return Redirect(returnUrl);
+            returnUrl = helper.GetAbsolutePath();
+
+            return RedirectToReferrer(returnUrl);
         }
 
-        //currency
         [ChildActionOnly]
         public ActionResult CurrencySelector()
         {
             var model = PrepareCurrencySelectorModel();
 
-			if (model.AvailableCurrencies.Count < 2)
-				return Content("");
+            if (model.AvailableCurrencies.Count < 2)
+            {
+                return new EmptyResult();
+            }
 
             return PartialView(model);
         }
+
         public ActionResult CurrencySelected(int customerCurrency, string returnUrl = "")
         {
-            var currency = _currencyService.GetCurrencyById(customerCurrency);
+			var currency = _currencyService.Value.GetCurrencyById(customerCurrency);
             if (currency != null)
+			{
 				_services.WorkContext.WorkingCurrency = currency;
+			}		
 
-            //url referrer
-            if (String.IsNullOrEmpty(returnUrl))
-				returnUrl = _services.WebHelper.GetUrlReferrer();
-            //home page
-            if (String.IsNullOrEmpty(returnUrl))
-                returnUrl = Url.RouteUrl("HomePage");
-            return Redirect(returnUrl);
+            return RedirectToReferrer(returnUrl);
         }
 
-        //tax type
         [ChildActionOnly]
         public ActionResult TaxTypeSelector()
         {
             var model = PrepareTaxTypeSelectorModel();
             return PartialView(model);
         }
+
         public ActionResult TaxTypeSelected(int customerTaxType, string returnUrl = "")
         {
             var taxDisplayType = (TaxDisplayType)Enum.ToObject(typeof(TaxDisplayType), customerTaxType);
 			_services.WorkContext.TaxDisplayType = taxDisplayType;
 
-            //url referrer
-            if (String.IsNullOrEmpty(returnUrl))
-				returnUrl = _services.WebHelper.GetUrlReferrer();
-            //home page
-            if (String.IsNullOrEmpty(returnUrl))
-                returnUrl = Url.RouteUrl("HomePage");
-            return Redirect(returnUrl);
+            return RedirectToReferrer(returnUrl);
         }
 
-        //Configuration page (used on mobile devices)
-        [ChildActionOnly]
-        public ActionResult ConfigButton()
-        {
-            var langModel = PrepareLanguageSelectorModel();
-            var currModel = PrepareCurrencySelectorModel();
-            var taxModel = PrepareTaxTypeSelectorModel();
-            //should we display the button?
-            if (langModel.AvailableLanguages.Count > 1 ||
-                currModel.AvailableCurrencies.Count > 1 ||
-                taxModel.Enabled)
-                return PartialView();
-            else
-                return Content("");
-        }
-        public ActionResult Config()
-        {
-            return View();
-        }
-
-        //footer
+        // footer
         [ChildActionOnly]
         public ActionResult JavaScriptDisabledWarning()
         {
             if (!_commonSettings.DisplayJavaScriptDisabledWarning)
-                return Content("");
-
-            return PartialView();
-        }
-
-        //header links
-        [ChildActionOnly]
-        public ActionResult HeaderLinks()
-        {
-			var customer = _services.WorkContext.CurrentCustomer;
-
-            var unreadMessageCount = GetUnreadPrivateMessages();
-            var unreadMessage = string.Empty;
-            var alertMessage = string.Empty;
-            if (unreadMessageCount > 0)
             {
-                unreadMessage = T("PrivateMessages.TotalUnread", unreadMessageCount);
-
-                //notifications here
-				var notifiedAboutNewPrivateMessagesAttributeKey = string.Format(SystemCustomerAttributeNames.NotifiedAboutNewPrivateMessages, _services.StoreContext.CurrentStore.Id);
-				if (_forumSettings.ShowAlertForPM &&
-					!customer.GetAttribute<bool>(SystemCustomerAttributeNames.NotifiedAboutNewPrivateMessages, _services.StoreContext.CurrentStore.Id))
-                {
-					_genericAttributeService.SaveAttribute(customer, SystemCustomerAttributeNames.NotifiedAboutNewPrivateMessages, true, _services.StoreContext.CurrentStore.Id);
-					alertMessage = T("PrivateMessages.YouHaveUnreadPM", unreadMessageCount);
-                }
+                return new EmptyResult();
             }
 
-            var model = new HeaderLinksModel()
-            {
-                IsAuthenticated = customer.IsRegistered(),
-                CustomerEmailUsername = customer.IsRegistered() ? (_customerSettings.UsernamesEnabled ? customer.Username : customer.Email) : "",
-				IsCustomerImpersonated = _services.WorkContext.OriginalCustomerIfImpersonated != null,
-                DisplayAdminLink = _services.Permissions.Authorize(StandardPermissionProvider.AccessAdminPanel),
-				ShoppingCartEnabled = _services.Permissions.Authorize(StandardPermissionProvider.EnableShoppingCart),
-				ShoppingCartItems = customer.CountProductsInCart(ShoppingCartType.ShoppingCart, _services.StoreContext.CurrentStore.Id),
-				WishlistEnabled = _services.Permissions.Authorize(StandardPermissionProvider.EnableWishlist),
-				WishlistItems = customer.CountProductsInCart(ShoppingCartType.Wishlist, _services.StoreContext.CurrentStore.Id),
-                AllowPrivateMessages = _forumSettings.AllowPrivateMessages,
-                UnreadPrivateMessages = unreadMessage,
-                AlertMessage = alertMessage,
-            };
-
-            return PartialView(model);
+            return PartialView();
         }
 
         [ChildActionOnly]
         public ActionResult ShopBar()
         {
 			var customer = _services.WorkContext.CurrentCustomer;
-
-            var unreadMessageCount = GetUnreadPrivateMessages();
-            var unreadMessage = string.Empty;
-            var alertMessage = string.Empty;
-            if (unreadMessageCount > 0)
+			var isAdmin = customer.IsAdmin();
+			var isRegistered = isAdmin || customer.IsRegistered();
+            
+            var model = new ShopBarModel
             {
-                unreadMessage = T("PrivateMessages.TotalUnread");
-
-                //notifications here
-                if (_forumSettings.ShowAlertForPM &&
-					!customer.GetAttribute<bool>(SystemCustomerAttributeNames.NotifiedAboutNewPrivateMessages, _services.StoreContext.CurrentStore.Id))
-                {
-					_genericAttributeService.SaveAttribute(customer, SystemCustomerAttributeNames.NotifiedAboutNewPrivateMessages, true, _services.StoreContext.CurrentStore.Id);
-                    alertMessage = T("PrivateMessages.YouHaveUnreadPM", unreadMessageCount);
-                }
-            }
-
-            //subtotal
-			decimal subtotal = 0;
-			var cart = _services.WorkContext.CurrentCustomer.GetCartItems(ShoppingCartType.ShoppingCart, _services.StoreContext.CurrentStore.Id);
-
-            if (cart.Count > 0)
-            {
-                decimal subtotalBase = decimal.Zero;
-                decimal orderSubTotalDiscountAmountBase = decimal.Zero;
-                Discount orderSubTotalAppliedDiscount = null;
-                decimal subTotalWithoutDiscountBase = decimal.Zero;
-                decimal subTotalWithDiscountBase = decimal.Zero;
-
-                _orderTotalCalculationService.GetShoppingCartSubTotal(cart,
-                    out orderSubTotalDiscountAmountBase, out orderSubTotalAppliedDiscount, out subTotalWithoutDiscountBase, out subTotalWithDiscountBase);
-
-                subtotalBase = subTotalWithoutDiscountBase;
-				subtotal = _currencyService.ConvertFromPrimaryStoreCurrency(subtotalBase, _services.WorkContext.WorkingCurrency);
-            }
-            var model = new ShopBarModel()
-            {
-                IsAuthenticated = customer.IsRegistered(),
-                CustomerEmailUsername = customer.IsRegistered() ? (_customerSettings.UsernamesEnabled ? customer.Username : customer.Email) : "",
+                IsAuthenticated = isRegistered,
+                CustomerEmailUsername = isRegistered ? (_customerSettings.CustomerLoginType != CustomerLoginType.Email ? customer.Username : customer.Email) : "",
 				IsCustomerImpersonated = _services.WorkContext.OriginalCustomerIfImpersonated != null,
-				DisplayAdminLink = _services.Permissions.Authorize(StandardPermissionProvider.AccessAdminPanel),
-				ShoppingCartEnabled = _services.Permissions.Authorize(StandardPermissionProvider.EnableShoppingCart),
-                ShoppingCartAmount = _priceFormatter.FormatPrice(subtotal, true, false),
-				WishlistEnabled = _services.Permissions.Authorize(StandardPermissionProvider.EnableWishlist),
-                AllowPrivateMessages = _forumSettings.AllowPrivateMessages,
-                UnreadPrivateMessages = unreadMessage,
-                AlertMessage = alertMessage,
-                CompareProductsEnabled = _catalogSettings.CompareProductsEnabled            
-            };
+				DisplayAdminLink = _services.Permissions.Authorize(Permissions.System.AccessBackend),
+				ShoppingCartEnabled = _services.Permissions.Authorize(Permissions.Cart.AccessShoppingCart) && _shoppingCartSettings.MiniShoppingCartEnabled,
+				WishlistEnabled = _services.Permissions.Authorize(Permissions.Cart.AccessWishlist),
+                CompareProductsEnabled = _catalogSettings.CompareProductsEnabled,
+				PublicStoreNavigationAllowed = _services.Permissions.Authorize(Permissions.System.AccessShop)
+			};
 
-            if (model.ShoppingCartEnabled || model.WishlistEnabled)
-            {
-				if (model.ShoppingCartEnabled)
-					model.ShoppingCartItems = cart.GetTotalProducts();
-
-                if (model.WishlistEnabled)
-					model.WishlistItems = customer.CountProductsInCart(ShoppingCartType.Wishlist, _services.StoreContext.CurrentStore.Id);
-            }
-
-            if (_catalogSettings.CompareProductsEnabled)
-            {
-                model.CompareItems = EngineContext.Current.Resolve<ICompareProductsService>().GetComparedProductsCount();
-            }
-
-            return PartialView(model);
+			return PartialView(model);
         }
 
-        [ChildActionOnly]
-        public ActionResult Footer()
+		[ChildActionOnly]
+		[GdprConsent]
+		public ActionResult Footer()
         {
-			string taxInfo = (_services.WorkContext.GetTaxDisplayTypeFor(_services.WorkContext.CurrentCustomer, _services.StoreContext.CurrentStore.Id) == TaxDisplayType.IncludingTax)
-                ? T("Tax.InclVAT") 
-                : T("Tax.ExclVAT");
-
-            string shippingInfoLink = Url.RouteUrl("Topic", new { SystemName = "shippinginfo" });
 			var store = _services.StoreContext.CurrentStore;
+			var taxDisplayType = _services.WorkContext.GetTaxDisplayTypeFor(_services.WorkContext.CurrentCustomer, store.Id);
 
-            var AvailableStoreThemes = _themeRegistry.GetThemeManifests()
-                .Where(x => !x.MobileTheme)
-                .Select(x =>
-                {
-                    return new StoreThemeModel()
+			var taxInfo = T(taxDisplayType == TaxDisplayType.IncludingTax ? "Tax.InclVAT" : "Tax.ExclVAT");
+
+			var availableStoreThemes = !_themeSettings.AllowCustomerToSelectTheme 
+                ? new List<StoreThemeModel>() 
+                : _themeRegistry.Value.GetThemeManifests()
+                    .Select(x =>
                     {
-                        Name = x.ThemeName,
-                        Title = x.ThemeTitle
-                    };
-                })
-                .ToList();
+                        return new StoreThemeModel
+                        {
+                            Name = x.ThemeName,
+                            Title = x.ThemeTitle
+                        };
+                    })
+                    .ToList();
 
-            var model = new FooterModel()
+            var model = new FooterModel
             {
 				StoreName = store.Name,
-				LegalInfo = T("Tax.LegalInfoFooter", taxInfo, shippingInfoLink),
                 ShowLegalInfo = _taxSettings.ShowLegalHintsInFooter,
-                ShowThemeSelector = _themeSettings.AllowCustomerToSelectTheme && AvailableStoreThemes.Count > 1,          
-                BlogEnabled = _blogSettings.Enabled,                          
-                ForumEnabled = _forumSettings.ForumsEnabled,
-                HideNewsletterBlock = _customerSettings.HideNewsletterBlock,
+                ShowThemeSelector = availableStoreThemes.Count > 1,          
+                HideNewsletterBlock = _customerSettings.HideNewsletterBlock
             };
+
+			var shippingInfoUrl = Url.Topic("shippinginfo").ToString();
+			if (shippingInfoUrl.HasValue())
+			{
+				model.LegalInfo = T("Tax.LegalInfoFooter", taxInfo, shippingInfoUrl);
+			}
+			else
+			{
+				model.LegalInfo = T("Tax.LegalInfoFooter2", taxInfo);
+			}
 
 			var hint = _services.Settings.GetSettingByKey<string>("Rnd_SmCopyrightHint", string.Empty, store.Id);
 			if (hint.IsEmpty())
 			{
-				hint = s_hints[new Random().Next(s_hints.Length)];
+				hint = s_hints[CommonHelper.GenerateRandomInteger(0, s_hints.Length - 1)];
+				
 				_services.Settings.SetSetting<string>("Rnd_SmCopyrightHint", hint, store.Id);
 			}
 
-            var topics = new string[] { "paymentinfo", "imprint", "disclaimer" };
-            foreach (var t in topics)
-            {
-				//load by store
-				var topic = _topicService.GetTopicBySystemName(t, store.Id);
-				if (topic == null)
-					//not found. let's find topic assigned to all stores
-					topic = _topicService.GetTopicBySystemName(t, 0);
-
-                if (topic != null)
-                {
-                    model.Topics.Add(t, topic.Title);
-                }
-            }
-
-            var socialSettings = EngineContext.Current.Resolve<SocialSettings>();
-
-            model.ShowSocialLinks = socialSettings.ShowSocialLinksInFooter;
-            model.FacebookLink = socialSettings.FacebookLink;
-            model.GooglePlusLink = socialSettings.GooglePlusLink;
-            model.TwitterLink = socialSettings.TwitterLink;
-            model.PinterestLink = socialSettings.PinterestLink;
-            model.YoutubeLink = socialSettings.YoutubeLink;
-			model.SmartStoreHint = "<a href='http://www.smartstore.com/net' class='sm-hint' target='_blank'><strong>{0}</strong></a> by SmartStore AG &copy; {1}".FormatCurrent(hint, DateTime.Now.Year);
+            model.ShowSocialLinks = _socialSettings.Value.ShowSocialLinksInFooter;
+            model.FacebookLink = _socialSettings.Value.FacebookLink;
+            model.TwitterLink = _socialSettings.Value.TwitterLink;
+            model.PinterestLink = _socialSettings.Value.PinterestLink;
+            model.YoutubeLink = _socialSettings.Value.YoutubeLink;
+			model.InstagramLink = _socialSettings.Value.InstagramLink;
+			
+			model.SmartStoreHint = "<a href='https://www.smartstore.com/' class='sm-hint' target='_blank'><strong>{0}</strong></a> by SmartStore AG &copy; {1}"
+				.FormatCurrent(hint, DateTime.Now.Year);
 
             return PartialView(model);
         }
 
         [ChildActionOnly]
-        public ActionResult Menu()
+        public ActionResult TopBar()
         {
 			var customer = _services.WorkContext.CurrentCustomer;
 
-            var model = new MenuModel()
+            var model = new MenuBarModel
             {
                 RecentlyAddedProductsEnabled = _catalogSettings.RecentlyAddedProductsEnabled,
+				NewsEnabled = _newsSettings.Enabled,
                 BlogEnabled = _blogSettings.Enabled,
                 ForumEnabled = _forumSettings.ForumsEnabled,
-				AllowPrivateMessages = _forumSettings.AllowPrivateMessages && customer.IsRegistered(),
-                UnreadPrivateMessages = GetUnreadPrivateMessages(),
-                CustomerEmailUsername = customer.IsRegistered() ? (_customerSettings.UsernamesEnabled ? customer.Username : customer.Email) : "",
+                CustomerEmailUsername = customer.IsRegistered() ? (_customerSettings.CustomerLoginType != CustomerLoginType.Email ? customer.Username : customer.Email) : "",
 				IsCustomerImpersonated = _services.WorkContext.OriginalCustomerIfImpersonated != null,
                 IsAuthenticated = customer.IsRegistered(),
-				DisplayAdminLink = _services.Permissions.Authorize(StandardPermissionProvider.AccessAdminPanel),
+				DisplayAdminLink = _services.Permissions.Authorize(Permissions.System.AccessBackend),
+				HasContactUsPage = Url.Topic("ContactUs").ToString().HasValue(),
+                DisplayLoginLink = _customerSettings.UserRegistrationType != UserRegistrationType.Disabled
             };
-
+            
             return PartialView(model);
         }
 
-        //info block
-        [ChildActionOnly]
-        public ActionResult InfoBlock()
+		[ChildActionOnly]
+		public ActionResult Menu(string name, string template = null)
+		{
+			var menu = _menuService.GetMenu(name);
+
+			if (menu == null)
+				return new EmptyResult();
+
+            var model = menu.CreateModel(template, ControllerContext);
+
+            return Menu(model);
+		}
+
+        [ChildActionOnly, ActionName("MenuFromModel")]
+        public ActionResult Menu(MenuModel model)
         {
-            var model = new InfoBlockModel()
+            Guard.NotNull(model, nameof(model));
+            
+            var viewName = (model.Template ?? model.Name);
+            if (viewName[0] != '~' && !viewName.StartsWith("Menus/", StringComparison.OrdinalIgnoreCase))
             {
-                RecentlyAddedProductsEnabled = _catalogSettings.RecentlyAddedProductsEnabled,
-                RecentlyViewedProductsEnabled = _catalogSettings.RecentlyViewedProductsEnabled,
-                CompareProductsEnabled = _catalogSettings.CompareProductsEnabled,
-                BlogEnabled = _blogSettings.Enabled,
-                SitemapEnabled = _commonSettings.SitemapEnabled,
-                ForumEnabled = _forumSettings.ForumsEnabled,
-                AllowPrivateMessages = _forumSettings.AllowPrivateMessages,
-            };
+                viewName = "Menus/" + viewName;
+            }
 
-            return PartialView(model);
+            return this.RootActionPartialView(viewName, model);
         }
+
+        [ChildActionOnly]
+		public ActionResult Breadcrumb()
+		{
+			if (_breadcrumb.Trail == null || _breadcrumb.Trail.Count == 0)
+			{
+				return new EmptyResult();
+			}
+
+			return PartialView(_breadcrumb.Trail);
+		}
 
         [ChildActionOnly]
         public ActionResult StoreThemeSelector()
@@ -681,54 +525,44 @@ namespace SmartStore.Web.Controllers
                 return Content("");
 
             var model = new StoreThemeSelectorModel();
-            var currentTheme = _themeRegistry.GetThemeManifest(_themeContext.WorkingDesktopTheme);
+            var currentTheme = _themeRegistry.Value.GetThemeManifest(_themeContext.WorkingThemeName);
             model.CurrentStoreTheme = new StoreThemeModel()
             {
                 Name = currentTheme.ThemeName,
                 Title = currentTheme.ThemeTitle
             };
-            model.AvailableStoreThemes = _themeRegistry.GetThemeManifests()
-                //do not display themes for mobile devices
-                .Where(x => !x.MobileTheme)
+			model.AvailableStoreThemes = _themeRegistry.Value
+				.GetThemeManifests()
                 .Select(x =>
                 {
-                    return new StoreThemeModel()
+                    return new StoreThemeModel
                     {
                         Name = x.ThemeName,
                         Title = x.ThemeTitle
                     };
                 })
                 .ToList();
+
             return PartialView(model);
         }
 
-        public ActionResult StoreThemeSelected(string themeName)
+		public ActionResult ChangeTheme(string themeName, string returnUrl = null)
         {
-            _themeContext.WorkingDesktopTheme = themeName;
+			if (!_themeSettings.AllowCustomerToSelectTheme || (themeName.HasValue() && !_themeRegistry.Value.ThemeManifestExists(themeName)))
+			{
+				return HttpNotFound();
+			}
 
-            var model = new StoreThemeSelectorModel();
-            var currentTheme = _themeRegistry.GetThemeManifest(_themeContext.WorkingDesktopTheme);
-            model.CurrentStoreTheme = new StoreThemeModel()
-            {
-                Name = currentTheme.ThemeName,
-                Title = currentTheme.ThemeTitle
-            };
-            model.AvailableStoreThemes = _themeRegistry.GetThemeManifests()
-                //do not display themes for mobile devices
-                .Where(x => !x.MobileTheme)
-                .Select(x =>
-                {
-                    return new StoreThemeModel()
-                    {
-                        Name = x.ThemeName,
-                        Title = x.ThemeTitle
-                    };
-                })
-                .ToList();
-            return PartialView("StoreThemeSelector", model);
+			_themeContext.WorkingThemeName = themeName;
+
+			if (HttpContext.Request.IsAjaxRequest())
+			{
+				return Json(new { Success = true });
+			}
+
+			return RedirectToReferrer(returnUrl);
         }
 
-        //favicon
         [ChildActionOnly]
         [OutputCache(Duration=3600, VaryByCustom="Theme_Store")]
         public ActionResult Favicon()
@@ -764,101 +598,78 @@ namespace SmartStore.Web.Controllers
             return PartialView(model);
         }
 
-        /// <summary>
-        /// Change presentation layer (desktop or mobile version)
-        /// </summary>
-        /// <param name="dontUseMobileVersion">True - use desktop version; false - use version for mobile devices</param>
-        /// <returns>Action result</returns>
-        public ActionResult ChangeDevice(bool dontUseMobileVersion)
-        {
-			_genericAttributeService.SaveAttribute(_services.WorkContext.CurrentCustomer,
-				SystemCustomerAttributeNames.DontUseMobileVersion, dontUseMobileVersion, _services.StoreContext.CurrentStore.Id);
-
-			string returnurl = _services.WebHelper.GetUrlReferrer();
-            if (String.IsNullOrEmpty(returnurl))
-                returnurl = Url.RouteUrl("HomePage");
-            return Redirect(returnurl);
-        }
-
-        [ChildActionOnly]
-        public ActionResult ChangeDeviceBlock()
-        {
-            if (!_mobileDeviceHelper.MobileDevicesSupported())
-                //mobile devices support is disabled
-                return Content("");
-
-            if (!_mobileDeviceHelper.IsMobileDevice())
-                //request is made by a desktop computer
-                return Content("");
-
-            return View();
-        }
-
         public ActionResult RobotsTextFile()
         {
             var disallowPaths = new List<string>()
             {
                 "/bin/",
-                "/Content/files/",
-                "/Content/files/exportimport/",
-                "/country/getstatesbycountryid",
-                "/install",
-                "/product/setreviewhelpfulness",
+				"/Exchange/",
+                "/Country/GetStatesByCountryId",
+                "/Install$",
+                "/Product/SetReviewHelpfulness",
             };
             var localizableDisallowPaths = new List<string>()
             {
-                "/boards/forumwatch",
-                "/boards/postedit",
-                "/boards/postdelete",
-                "/boards/postcreate",
-                "/boards/topicedit",
-                "/boards/topicdelete",
-                "/boards/topiccreate",
-                "/boards/topicmove",
-                "/boards/topicwatch",
-                "/cart",
-                "/checkout",
-                "/product/clearcomparelist",
-                "/compareproducts",
-                "/customer/avatar",
-                "/customer/activation",
-                "/customer/addresses",
-                "/customer/backinstocksubscriptions",
-                "/customer/changepassword",
-                "/customer/checkusernameavailability",
-                "/customer/downloadableproducts",
-                "/customer/forumsubscriptions",
-				"/customer/deleteforumsubscriptions",
-                "/customer/info",
-                "/customer/orders",
-                "/customer/returnrequests",
-                "/customer/rewardpoints",
-                "/privatemessages",
-                "/newsletter/subscriptionactivation",
-                "/onepagecheckout",
-                "/order",
-                "/passwordrecovery",
-                "/poll/vote",
-                "/privatemessages",
-                "/returnrequest",
-                "/newsletter/subscribe",
-                "/topic/authenticate",
-                "/wishlist",
-                "/product/askquestion",
-                "/product/emailafriend"
-            };
+                "/Boards/ForumWatch",
+                "/Boards/PostEdit",
+                "/Boards/PostDelete",
+                "/Boards/PostCreate",
+                "/Boards/TopicEdit",
+                "/Boards/TopicDelete",
+                "/Boards/TopicCreate",
+                "/Boards/TopicMove",
+                "/Boards/TopicWatch",
+                "/Cart$",
+                "/Checkout",
+                "/Product/ClearCompareList",
+                "/CompareProducts",
+                "/Customer/Avatar",
+                "/Customer/Activation",
+                "/Customer/Addresses",
+                "/Customer/BackInStockSubscriptions",
+                "/Customer/ChangePassword",
+                "/Customer/CheckUsernameAvailability",
+                "/Customer/DownloadableProducts",
+                "/Customer/ForumSubscriptions",
+				"/Customer/DeleteForumSubscriptions",
+                "/Customer/Info",
+                "/Customer/Orders",
+                "/Customer/ReturnRequests",
+                "/Customer/RewardPoints",
+                "/PrivateMessages",
+                "/Newsletter/SubscriptionActivation",
+                "/Order$",
+                "/PasswordRecovery",
+                "/Poll/Vote",
+                "/ReturnRequest",
+                "/Newsletter/Subscribe",
+                "/Topic/Authenticate",
+                "/Wishlist",
+                "/Product/AskQuestion",
+                "/Product/EmailAFriend",
+				//"/Search",
+				"/Config$",
+				"/Settings$",
+				"/Login$",
+				"/Login?*",
+				"/Register$",
+				"/Register?*"
+			};
 
 
             const string newLine = "\r\n"; //Environment.NewLine
-            var sb = new StringBuilder();
+            var sb = PooledStringBuilder.Rent();
             sb.Append("User-agent: *");
             sb.Append(newLine);
+			sb.AppendFormat("Sitemap: {0}", Url.RouteUrl("XmlSitemap", (object)null, _services.StoreContext.CurrentStore.ForceSslForAllPages ? "https" : "http"));
+			sb.AppendLine();
 
-            var disallows = disallowPaths.Concat(localizableDisallowPaths);
+			var disallows = disallowPaths.Concat(localizableDisallowPaths);
+
             if (_localizationSettings.SeoFriendlyUrlsForLanguagesEnabled)
             {
                 // URLs are localizable. Append SEO code
-				foreach (var language in _languageService.GetAllLanguages(storeId: _services.StoreContext.CurrentStore.Id))
+				foreach (var language in _languageService.Value.GetAllLanguages(storeId: _services.StoreContext.CurrentStore.Id))
                 {
                     disallows = disallows.Concat(localizableDisallowPaths.Select(x => "/{0}{1}".FormatInvariant(language.UniqueSeoCode, x)));
                 }
@@ -869,6 +680,9 @@ namespace SmartStore.Web.Controllers
             // append extra disallows
             disallows = disallows.Concat(seoSettings.ExtraRobotsDisallows.Select(x => x.Trim()));
 
+			// Append all lowercase variants (at least Google is case sensitive)
+			disallows = disallows.Concat(GetLowerCaseVariants(disallows));
+
             foreach (var disallow in disallows)
             {
                 sb.AppendFormat("Disallow: {0}", disallow);
@@ -876,9 +690,25 @@ namespace SmartStore.Web.Controllers
             }
 
             Response.ContentType = "text/plain";
-            Response.Write(sb.ToString());
+            Response.Write(sb.ToStringAndReturn());
+
             return null;
         }
+
+		private IEnumerable<string> GetLowerCaseVariants(IEnumerable<string> disallows)
+		{
+			var other = new List<string>();
+			foreach (var item in disallows)
+			{
+				var lower = item.ToLower();
+				if (lower != item)
+				{
+					other.Add(lower);
+				}
+			}
+
+			return other;
+		}
 
         public ActionResult GenericUrl()
         {
@@ -900,21 +730,21 @@ namespace SmartStore.Web.Controllers
 
                 //notifications here
                 if (_forumSettings.ShowAlertForPM &&
-					!customer.GetAttribute<bool>(SystemCustomerAttributeNames.NotifiedAboutNewPrivateMessages, _services.StoreContext.CurrentStore.Id))
+                    !customer.GetAttribute<bool>(SystemCustomerAttributeNames.NotifiedAboutNewPrivateMessages, _services.StoreContext.CurrentStore.Id))
                 {
-					_genericAttributeService.SaveAttribute(customer, SystemCustomerAttributeNames.NotifiedAboutNewPrivateMessages, true, _services.StoreContext.CurrentStore.Id);
-					alertMessage = T("PrivateMessages.YouHaveUnreadPM", unreadMessageCount);
+                    _genericAttributeService.Value.SaveAttribute(customer, SystemCustomerAttributeNames.NotifiedAboutNewPrivateMessages, true, _services.StoreContext.CurrentStore.Id);
+                    alertMessage = T("PrivateMessages.YouHaveUnreadPM", unreadMessageCount);
                 }
             }
 
             var model = new AccountDropdownModel
             {
                 IsAuthenticated = customer.IsRegistered(),
-				DisplayAdminLink = _services.Permissions.Authorize(StandardPermissionProvider.AccessAdminPanel),
-				ShoppingCartEnabled = _services.Permissions.Authorize(StandardPermissionProvider.EnableShoppingCart),
-				ShoppingCartItems = customer.CountProductsInCart(ShoppingCartType.ShoppingCart, _services.StoreContext.CurrentStore.Id),
-				WishlistEnabled = _services.Permissions.Authorize(StandardPermissionProvider.EnableWishlist),
-				WishlistItems = customer.CountProductsInCart(ShoppingCartType.Wishlist, _services.StoreContext.CurrentStore.Id),
+				DisplayAdminLink = _services.Permissions.Authorize(Permissions.System.AccessBackend),
+				ShoppingCartEnabled = _services.Permissions.Authorize(Permissions.Cart.AccessShoppingCart),
+				//ShoppingCartItems = customer.CountProductsInCart(ShoppingCartType.ShoppingCart, _services.StoreContext.CurrentStore.Id),
+				WishlistEnabled = _services.Permissions.Authorize(Permissions.Cart.AccessWishlist),
+				//WishlistItems = customer.CountProductsInCart(ShoppingCartType.Wishlist, _services.StoreContext.CurrentStore.Id),
                 AllowPrivateMessages = _forumSettings.AllowPrivateMessages,
                 UnreadPrivateMessages = unreadMessage,
                 AlertMessage = alertMessage
@@ -923,17 +753,46 @@ namespace SmartStore.Web.Controllers
             return PartialView(model);
         }
 
-		public ActionResult PdfReceiptHeader(PdfHeaderFooterVariables vars, int storeId = 0)
+        [NonAction]
+        protected int GetUnreadPrivateMessages()
+        {
+            var result = 0;
+            var customer = _services.WorkContext.CurrentCustomer;
+            if (_forumSettings.AllowPrivateMessages && !customer.IsGuest())
+            {
+                var privateMessages = _forumService.Value.GetAllPrivateMessages(_services.StoreContext.CurrentStore.Id, 0, customer.Id, false, null, false, 0, 1);
+                if (privateMessages.TotalCount > 0)
+                {
+                    result = privateMessages.TotalCount;
+                }
+            }
+
+            return result;
+        }
+
+        [OverrideActionFilters, OverrideAuthorization]
+		public ActionResult PdfReceiptHeader(PdfHeaderFooterVariables vars, int storeId = 0, bool isPartial = false)
 		{
 			var model = PreparePdfReceiptHeaderFooterModel(storeId);
 			model.Variables = vars;
+
+			ViewBag.IsPartial = isPartial;
+
+			if (isPartial)
+				return PartialView(model);
 			return View(model);
 		}
 
-		public ActionResult PdfReceiptFooter(PdfHeaderFooterVariables vars, int storeId = 0)
+        [OverrideActionFilters, OverrideAuthorization]
+		public ActionResult PdfReceiptFooter(PdfHeaderFooterVariables vars, int storeId = 0, bool isPartial = false)
 		{
 			var model = PreparePdfReceiptHeaderFooterModel(storeId);
 			model.Variables = vars;
+
+			ViewBag.IsPartial = isPartial;
+
+			if (isPartial)
+				return PartialView(model);
 			return View(model);
 		}
 
@@ -942,7 +801,6 @@ namespace SmartStore.Web.Controllers
 			return _services.Cache.Get("PdfReceiptHeaderFooterModel-{0}".FormatInvariant(storeId), () =>
 			{
 				var model = new PdfReceiptHeaderFooterModel { StoreId = storeId };
-
 				var store = _services.StoreService.GetStoreById(model.StoreId) ?? _services.StoreContext.CurrentStore;
 
 				var companyInfoSettings = _services.Settings.LoadSetting<CompanyInformationSettings>(store.Id);
@@ -961,15 +819,79 @@ namespace SmartStore.Web.Controllers
 
 				if (logoPicture != null)
 				{
-					model.LogoUrl = _pictureService.Value.GetPictureUrl(logoPicture, showDefaultPicture: false);
+					model.LogoUrl = _pictureService.Value.GetUrl(logoPicture, 0, false);
 				}
 
 				model.MerchantCompanyInfo = companyInfoSettings;
 				model.MerchantBankAccount = bankSettings;
 				model.MerchantContactData = contactSettings;
+				model.MerchantFormattedAddress = Services.Resolve<IAddressService>().FormatAddress(companyInfoSettings, true);
 
 				return model;			
-			}, 1 /* 1 min. (just for the duration of pdf processing) */);
+			}, TimeSpan.FromMinutes(1) /* 1 min. (just for the duration of pdf processing) */);
+		}
+
+		[ChildActionOnly]
+		public ActionResult CookieConsentBadge()
+		{
+			if (!_privacySettings.EnableCookieConsent)
+			{
+				return new EmptyResult();
+			}
+			
+			var model = new CookieConsentModel();
+
+			if (!_privacySettings.CookieConsentBadgetext.HasValue())
+			{
+				// loads default value if it's empty (must be done this way as localized values can't be initial values of settings)
+				model.BadgeText = T("CookieConsent.BadgeText", _services.StoreContext.CurrentStore.Name, Url.Topic("PrivacyInfo"));
+			}
+			else
+			{
+				model.BadgeText = _privacySettings.GetLocalized(x => x.CookieConsentBadgetext).Value.FormatWith(_services.StoreContext.CurrentStore.Name, Url.Topic("PrivacyInfo"));
+			}
+			
+			var consentCookie = this.Request.Cookies[CookieConsent.CONSENT_COOKIE_NAME];
+			if (consentCookie != null && consentCookie.Value == "true")
+				return new EmptyResult();
+
+			return PartialView(model);
+		}
+
+		[HttpPost]
+		public ActionResult SetCookieConsentBadge(CookieConsentModel model)
+		{
+			CookieConsent.SetCookieConsent(Response, true);
+
+			if (!HttpContext.Request.IsAjaxRequest() && !ControllerContext.IsChildAction)
+			{
+				return RedirectToReferrer();
+			}
+
+            return Json(new { Success = true });
+        }
+
+		[ChildActionOnly]
+		public ActionResult GdprConsent(bool isSmall)
+		{
+			if (!_privacySettings.DisplayGdprConsentOnForms)
+			{
+				return new EmptyResult();
+			}
+
+			var customer = _services.WorkContext.CurrentCustomer;
+			var hasConsentedToGdpr = customer.GetAttribute<bool>(SystemCustomerAttributeNames.HasConsentedToGdpr);
+
+			if (hasConsentedToGdpr)
+			{
+				return new EmptyResult();
+			}
+
+			var model = new GdprConsentModel();
+			model.GdprConsent = false;
+			model.SmallDisplay = isSmall;
+
+			return PartialView(model);
 		}
 
         #endregion

@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using SmartStore.Core;
 using SmartStore.Core.Infrastructure;
 using SmartStore.Services.Localization;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Web.Framework
 {
@@ -26,8 +26,7 @@ namespace SmartStore.Web.Framework
             {
                 string value = null;
                 var langId = EngineContext.Current.Resolve<IWorkContext>().WorkingLanguage.Id;
-                value = EngineContext.Current.Resolve<ILocalizationService>()
-                        .GetResource(ResourceKey, langId, true, "" /* ResourceKey */, true);
+                value = EngineContext.Current.Resolve<ILocalizationService>().GetResource(ResourceKey, langId, true, "" /* ResourceKey */, true);
 
                 if (value.IsEmpty() && _callerPropertyName.HasValue())
                 {

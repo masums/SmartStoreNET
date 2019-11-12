@@ -2,14 +2,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Linq.Dynamic;
-using System.ComponentModel;
 using System.Reflection;
 using SmartStore.Utilities;
 
 namespace SmartStore.Linq
 {
-
     public class LambdaPathExpander : IPathExpander
     {
         private readonly IList<LambdaExpression> _expands;
@@ -34,7 +31,7 @@ namespace SmartStore.Linq
 
         public virtual void Expand<T, TTarget>(Expression<Func<TTarget, object>> path)
         {
-            Guard.ArgumentNotNull(path, "path");
+            Guard.NotNull(path, "path");
             _expands.Add(path);
         }
 
@@ -45,8 +42,8 @@ namespace SmartStore.Linq
 
         public virtual void Expand(Type type, string path)
         {
-            Guard.ArgumentNotNull(type, "type");
-            Guard.ArgumentNotEmpty(path, "path");
+            Guard.NotNull(type, "type");
+            Guard.NotEmpty(path, "path");
 
             Type t = type;
 
@@ -57,16 +54,14 @@ namespace SmartStore.Linq
             var tokenizer = new StringTokenizer(path, ".", false);
             foreach (string member in tokenizer)
             {
-                // Property oder Field des Members ermitteln
-                MemberInfo prop = t.GetFieldOrProperty(member, true);
-                //MemberInfo prop = t.GetProperty(member);
+                // Property ermitteln
+                //MemberInfo prop = t.GetFieldOrProperty(member, true);
+                var prop = t.GetProperty(member, BindingFlags.Public | BindingFlags.IgnoreCase | BindingFlags.Instance);
 
                 if (prop == null)
                     throw new ArgumentException("The property or member '{0}' does not exist in type '{1}'.".FormatInvariant(member, t.FullName));
 
-                Type memberType = (prop.MemberType == MemberTypes.Property)
-                                  ? ((PropertyInfo)prop).PropertyType
-                                  : ((FieldInfo)prop).FieldType;
+				Type memberType = prop.PropertyType;
 
                 DoExpand(t, member);
 
@@ -120,8 +115,8 @@ namespace SmartStore.Linq
         #region Old
         //public virtual void Expand(Type type, string path)
         //{
-        //    Guard.ArgumentNotNull(type, "type");
-        //    Guard.ArgumentNotEmpty(path, "path");
+        //    Guard.NotNull(type, "type");
+        //    Guard.NotEmpty(path, "path");
 
         //    Type t = type;
         //    IDictionary<Type, string> paths = new Dictionary<Type, string>();
@@ -213,7 +208,7 @@ namespace SmartStore.Linq
 
     //    public PathExpressionParser(string path)
     //    {
-    //        Guard.ArgumentNotEmpty(path, "path");
+    //        Guard.NotEmpty(path, "path");
 
     //        Path = path;
     //        SetPos(0);

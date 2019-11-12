@@ -4,19 +4,19 @@ using System.Web.Mvc;
 using SmartStore.Core;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Forums;
+using SmartStore.Core.Logging;
 using SmartStore.Services.Customers;
 using SmartStore.Services.Forums;
 using SmartStore.Services.Helpers;
-using SmartStore.Services.Localization;
 using SmartStore.Web.Framework.Controllers;
+using SmartStore.Web.Framework.Filters;
 using SmartStore.Web.Framework.Security;
 using SmartStore.Web.Models.Common;
 using SmartStore.Web.Models.PrivateMessages;
-using SmartStore.Core.Logging;
 
 namespace SmartStore.Web.Controllers
 {
-    [RequireHttpsByConfigAttribute(SslRequirement.Yes)]
+	[RewriteUrl(SslRequirement.Yes)]
     public partial class PrivateMessagesController : PublicControllerBase
     {
         #region Fields
@@ -24,7 +24,6 @@ namespace SmartStore.Web.Controllers
         private readonly IForumService _forumService;
         private readonly ICustomerService _customerService;
         private readonly ICustomerActivityService _customerActivityService;
-        private readonly ILocalizationService _localizationService;
         private readonly IWorkContext _workContext;
 		private readonly IStoreContext _storeContext;
         private readonly IDateTimeHelper _dateTimeHelper;
@@ -36,16 +35,17 @@ namespace SmartStore.Web.Controllers
         #region Constructors
 
         public PrivateMessagesController(IForumService forumService,
-            ICustomerService customerService, ICustomerActivityService customerActivityService,
-            ILocalizationService localizationService,
-			IWorkContext workContext, IStoreContext storeContext,
+            ICustomerService customerService,
+			ICustomerActivityService customerActivityService,
+			IWorkContext workContext,
+			IStoreContext storeContext,
             IDateTimeHelper dateTimeHelper,
-            ForumSettings forumSettings, CustomerSettings customerSettings)
+            ForumSettings forumSettings,
+			CustomerSettings customerSettings)
         {
             this._forumService = forumService;
             this._customerService = customerService;
             this._customerActivityService = customerActivityService;
-            this._localizationService = localizationService;
             this._workContext = workContext;
 			this._storeContext = storeContext;
             this._dateTimeHelper = dateTimeHelper;
@@ -102,7 +102,7 @@ namespace SmartStore.Web.Controllers
                     break;
             }
 
-            var model = new PrivateMessageIndexModel()
+            var model = new PrivateMessageIndexModel
             {
                 InboxPage = inboxPage,
                 SentItemsPage = sentItemsPage,
@@ -122,15 +122,12 @@ namespace SmartStore.Web.Controllers
             }
 
             var pageSize = _forumSettings.PrivateMessagesPageSize;
-
-			var list = _forumService.GetAllPrivateMessages(_storeContext.CurrentStore.Id,
-				 0, _workContext.CurrentCustomer.Id, null, null, false, string.Empty, page, pageSize);
-
+			var list = _forumService.GetAllPrivateMessages(_storeContext.CurrentStore.Id, 0, _workContext.CurrentCustomer.Id, null, null, false, page, pageSize);
             var inbox = new List<PrivateMessageModel>();
 
             foreach (var pm in list)
             {
-                inbox.Add(new PrivateMessageModel()
+                inbox.Add(new PrivateMessageModel
                 {
                     Id = pm.Id,
                     FromCustomerId = pm.FromCustomer.Id,
@@ -146,13 +143,11 @@ namespace SmartStore.Web.Controllers
                 });
             }
 
-            // codehint: sm-edit
             ViewData["PagerRouteValues"] = new PrivateMessageRouteValues { page = page, tab = tab };
 
             var model = new PrivateMessageListModel(list)
             {
                 Messages = inbox
-                // codehint: sm-delete
             };
 
             return PartialView(model);
@@ -168,15 +163,12 @@ namespace SmartStore.Web.Controllers
             }
 
             var pageSize = _forumSettings.PrivateMessagesPageSize;
-
-			var list = _forumService.GetAllPrivateMessages(_storeContext.CurrentStore.Id,
-				_workContext.CurrentCustomer.Id, 0, null, false, null, string.Empty, page, pageSize);
-
+			var list = _forumService.GetAllPrivateMessages(_storeContext.CurrentStore.Id, _workContext.CurrentCustomer.Id, 0, null, false, null, page, pageSize);
             var sentItems = new List<PrivateMessageModel>();
 
             foreach (var pm in list)
             {
-                sentItems.Add(new PrivateMessageModel()
+                sentItems.Add(new PrivateMessageModel
                 {
                     Id = pm.Id,
                     FromCustomerId = pm.FromCustomer.Id,
@@ -192,13 +184,11 @@ namespace SmartStore.Web.Controllers
                 });
             }
 
-            // codehint: sm-edit
             ViewData["PagerRouteValues"] = new PrivateMessageRouteValues { page = page, tab = tab };
 
             var model = new PrivateMessageListModel(list)
             {
                 Messages = sentItems
-                // codehint: sm-delete
             };
 
             return PartialView(model);
@@ -230,8 +220,8 @@ namespace SmartStore.Web.Controllers
                     }
                 }
             }
-            return RedirectToRoute("PrivateMessages");
-        }
+			return RedirectToAction("Index");
+		}
 
         [HttpPost, FormValueRequired("mark-unread"), ActionName("InboxUpdate")]
         public ActionResult MarkUnread(FormCollection formCollection)
@@ -259,7 +249,7 @@ namespace SmartStore.Web.Controllers
                     }
                 }
             }
-            return RedirectToRoute("PrivateMessages");
+			return RedirectToAction("Index");
         }
 
         //updates sent items (deletes PrivateMessages)
@@ -309,8 +299,8 @@ namespace SmartStore.Web.Controllers
 
             if (customerTo == null || customerTo.IsGuest())
             {
-                return RedirectToRoute("PrivateMessages");
-            }
+				return RedirectToAction("Index");
+			}
 
             var model = new SendPrivateMessageModel();
             model.ToCustomerId = customerTo.Id;
@@ -322,8 +312,8 @@ namespace SmartStore.Web.Controllers
                 var replyToPM = _forumService.GetPrivateMessageById(replyToMessageId.Value);
                 if (replyToPM == null)
                 {
-                    return RedirectToRoute("PrivateMessages");
-                }
+					return RedirectToAction("Index");
+				}
 
                 if (replyToPM.ToCustomerId == _workContext.CurrentCustomer.Id || replyToPM.FromCustomerId == _workContext.CurrentCustomer.Id)
                 {
@@ -332,10 +322,10 @@ namespace SmartStore.Web.Controllers
                 }
                 else
                 {
-                    return RedirectToRoute("PrivateMessages");
-                }
+					return RedirectToAction("Index");
+				}
             }
-            return View(model);
+			return View(model);
         }
 
         [HttpPost]
@@ -361,8 +351,8 @@ namespace SmartStore.Web.Controllers
                 }
                 else
                 {
-                    return RedirectToRoute("PrivateMessages");
-                }
+					return RedirectToAction("Index");
+				}
             }
             else
             {
@@ -371,8 +361,8 @@ namespace SmartStore.Web.Controllers
 
             if (toCustomer == null || toCustomer.IsGuest())
             {
-                return RedirectToRoute("PrivateMessages");
-            }
+				return RedirectToAction("Index");
+			}
             model.ToCustomerId = toCustomer.Id;
             model.CustomerToName = toCustomer.FormatUserName();
             model.AllowViewingToProfile = _customerSettings.AllowViewingProfiles && !toCustomer.IsGuest();
@@ -411,9 +401,9 @@ namespace SmartStore.Web.Controllers
                     _forumService.InsertPrivateMessage(privateMessage);
 
                     //activity log
-                    _customerActivityService.InsertActivity("PublicStore.SendPM", _localizationService.GetResource("ActivityLog.PublicStore.SendPM"), toCustomer.Email);
+                    _customerActivityService.InsertActivity("PublicStore.SendPM", T("ActivityLog.PublicStore.SendPM", toCustomer.Email));
 
-                    return RedirectToRoute("PrivateMessages", new { tab = "sent" });
+					return RedirectToAction("Index", new { tab = "sent" });
                 }
                 catch (Exception ex)
                 {
@@ -441,8 +431,8 @@ namespace SmartStore.Web.Controllers
             {
                 if (pm.ToCustomerId != _workContext.CurrentCustomer.Id && pm.FromCustomerId != _workContext.CurrentCustomer.Id)
                 {
-                    return RedirectToRoute("PrivateMessages");
-                }
+					return RedirectToAction("Index");
+				}
 
                 if (!pm.IsRead && pm.ToCustomerId == _workContext.CurrentCustomer.Id)
                 {
@@ -452,10 +442,10 @@ namespace SmartStore.Web.Controllers
             }
             else
             {
-                return RedirectToRoute("PrivateMessages");
-            }
+				return RedirectToAction("Index");
+			}
 
-            var model = new PrivateMessageModel()
+            var model = new PrivateMessageModel
             {
                 Id = pm.Id,
                 FromCustomerId = pm.FromCustomer.Id,
@@ -500,8 +490,8 @@ namespace SmartStore.Web.Controllers
                     _forumService.UpdatePrivateMessage(pm);
                 }
             }
-            return RedirectToRoute("PrivateMessages");
-        }
+			return RedirectToAction("Index");
+		}
 
         #endregion
     }

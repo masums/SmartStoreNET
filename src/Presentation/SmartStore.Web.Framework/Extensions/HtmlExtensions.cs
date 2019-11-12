@@ -1,29 +1,31 @@
 ﻿using System;
-using System.Web;
-using System.Threading;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
+using System.Web;
 using System.Web.Mvc;
-using System.Web.Routing;
 using System.Web.Mvc.Html;
+using System.Web.Routing;
 using System.Web.WebPages;
 using SmartStore.Core;
+using SmartStore.Core.Domain.Catalog;
+using SmartStore.Core.Domain.Localization;
 using SmartStore.Core.Infrastructure;
 using SmartStore.Services.Localization;
-using SmartStore.Web.Framework.Localization;
-using SmartStore.Web.Framework.Mvc;
-using SmartStore.Web.Framework.UI;
-using SmartStore.Web.Framework.Settings;
 using SmartStore.Utilities;
-using SmartStore.Core.Domain.Catalog;
+using SmartStore.Utilities.ObjectPools;
+using SmartStore.Web.Framework.Localization;
+using SmartStore.Web.Framework.Modelling;
+using SmartStore.Web.Framework.Settings;
+using SmartStore.Web.Framework.UI;
 
 namespace SmartStore.Web.Framework
 {
-
-    public enum InputEditorType
+	public enum InputEditorType
     {   TextBox,
         Password,
         Hidden,
@@ -35,8 +37,13 @@ namespace SmartStore.Web.Framework
     {
         public static MvcHtmlString Hint(this HtmlHelper helper, string value)
         {
-            // create a
-            var a = new TagBuilder("a");
+			if (String.IsNullOrEmpty(value))
+			{
+				return MvcHtmlString.Empty;
+			}
+
+			// create a
+			var a = new TagBuilder("a");
             a.MergeAttribute("href", "#");
             a.MergeAttribute("onclick", "return false;");
             //a.MergeAttribute("rel", "tooltip");
@@ -54,57 +61,71 @@ namespace SmartStore.Web.Framework
             return MvcHtmlString.Create(a.ToString());
         }
 
-        public static HelperResult LocalizedEditor<T, TLocalizedModelLocal>(this HtmlHelper<T> helper, string name,
-             Func<int, HelperResult> localizedTemplate,
-             Func<T, HelperResult> standardTemplate)
+        public static HelperResult LocalizedEditor<T, TLocalizedModelLocal>(this HtmlHelper<T> helper, string name, Func<int, HelperResult> localizedTemplate, Func<T, HelperResult> standardTemplate)
             where T : ILocalizedModel<TLocalizedModelLocal>
             where TLocalizedModelLocal : ILocalizedModelLocal
         {
-            return new HelperResult(writer =>
+			return new HelperResult(writer =>
             {
                 if (helper.ViewData.Model.Locales.Count > 1)
                 {
-                    writer.Write("<div class='well well-small'>");
-                    var tabStrip = helper.SmartStore().TabStrip().Name(name).SmartTabSelection(false).Style(TabsStyle.Pills).Items(x =>
+					var languageService = EngineContext.Current.Resolve<ILanguageService>();
+
+					writer.Write("<div class='locale-editor'>");
+                    var tabStrip = helper.SmartStore().TabStrip().Name(name).SmartTabSelection(false).Style(TabsStyle.Tabs).AddCssClass("nav-locales").Items(x =>
                     {
-                        x.Add().Text("Standard").Content(standardTemplate(helper.ViewData.Model).ToHtmlString()).Selected(true);
+						if (standardTemplate != null)
+						{
+							var masterLanguage = languageService.GetLanguageById(languageService.GetDefaultLanguageId());
+							x.Add().Text(EngineContext.Current.Resolve<ILocalizationService>().GetResource("Admin.Common.Standard"))
+								.ContentHtmlAttributes(new { @class = "locale-editor-content", data_lang = masterLanguage.LanguageCulture, data_rtl = masterLanguage.Rtl.ToString().ToLower() })
+								.Content(standardTemplate(helper.ViewData.Model).ToHtmlString())
+								.Selected(true);
+						}
+
                         for (int i = 0; i < helper.ViewData.Model.Locales.Count; i++)
                         {
                             var locale = helper.ViewData.Model.Locales[i];
-                            var language = EngineContext.Current.Resolve<ILanguageService>().GetLanguageById(locale.LanguageId);
-                            x.Add().Text(language.Name)
-                                .Content(localizedTemplate(i).ToHtmlString())
-                                .ImageUrl("~/Content/images/flags/" + language.FlagImageFileName);
+                            var language = languageService.GetLanguageById(locale.LanguageId);
+
+ 							x.Add().Text(language.Name)
+								.LinkHtmlAttributes(new { title = language.Name })
+								.ContentHtmlAttributes(new { @class = "locale-editor-content", data_lang = language.LanguageCulture, data_rtl = language.Rtl.ToString().ToLower() })
+								.Content(localizedTemplate(i))
+								.ImageUrl("~/Content/images/flags/" + language.FlagImageFileName)
+								.Selected(i == 0 && standardTemplate == null);
                         }
                     }).ToHtmlString();
                     writer.Write(tabStrip);
                     writer.Write("</div>");
                 }
-                else
+                else if (standardTemplate != null)
                 {
                     standardTemplate(helper.ViewData.Model).WriteTo(writer);
                 }
             });
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static MvcHtmlString DeleteConfirmation<T>(this HtmlHelper<T> helper, string buttonsSelector = null) where T : EntityModelBase
         {
             return DeleteConfirmation<T>(helper, "", buttonsSelector);
         }
 
-        // Adds an action name parameter for using other delete action names
-        public static MvcHtmlString DeleteConfirmation<T>(this HtmlHelper<T> helper, string actionName, string buttonsSelector = null) where T : EntityModelBase
+		/// <summary>
+		/// Adds an action name parameter for using other delete action names		
+		/// </summary>
+		/// <typeparam name="T"></typeparam>
+		/// <param name="helper"></param>
+		/// <param name="actionName"></param>
+		/// <param name="buttonsSelector"></param>
+		/// <returns></returns>
+		public static MvcHtmlString DeleteConfirmation<T>(this HtmlHelper<T> helper, string actionName, string buttonsSelector = null) where T : EntityModelBase
         {
             if (String.IsNullOrEmpty(actionName))
                 actionName = "Delete";
 
             var modalId = MvcHtmlString.Create(helper.ViewData.ModelMetadata.ModelType.Name.ToLower() + "-delete-confirmation").ToHtmlString();
-
-            string script = "";
-            if (!string.IsNullOrEmpty(buttonsSelector))
-            {
-                script = "<script>$(function() { $('#" + modalId + "').modal({show:false}); $('#" + buttonsSelector + "').click( function(e){e.preventDefault();openModalWindow('" + modalId + "');} );  });</script>\n";
-            }
 
             var deleteConfirmationModel = new DeleteConfirmationModel
             {
@@ -116,54 +137,115 @@ namespace SmartStore.Web.Framework
                 EntityType = buttonsSelector.Replace("-delete", "")
             };
 
-            var window = helper.SmartStore().Window().Name(modalId)
-                .Title(EngineContext.Current.Resolve<ILocalizationService>().GetResource("Admin.Common.AreYouSure"))
-                .Modal(true)
-                .Visible(false)
-                .Content(helper.Partial("Delete", deleteConfirmationModel).ToHtmlString())
-                .ToHtmlString();
+			var script = string.Empty;
+			if (buttonsSelector.HasValue())
+			{
+				script = "<script>$(function() { $('#" + modalId + "').modal(); $('#" + buttonsSelector + "').on('click', function(e){e.preventDefault();openModalWindow('" + modalId + "');} );  });</script>\n";
+			}
 
-            return MvcHtmlString.Create(script + window);
+			helper.SmartStore().Window().Name(modalId)
+				.Title(EngineContext.Current.Resolve<ILocalizationService>().GetResource("Admin.Common.AreYouSure"))
+				.Content(helper.Partial("Delete", deleteConfirmationModel).ToHtmlString())
+				.Show(false)
+				.Render();
+
+            return new MvcHtmlString(script);
         }
 
-        public static MvcHtmlString SmartLabelFor<TModel, TValue>(this HtmlHelper<TModel> helper, Expression<Func<TModel, TValue>> expression, bool displayHint = true, object htmlAttributes = null)
+		public static MvcHtmlString SmartLabel(this HtmlHelper helper, string expression, string labelText, string hint = null, object htmlAttributes = null)
+		{
+			var result = PooledStringBuilder.Rent();
+
+			result.Append("<div class='ctl-label'>");
+
+            if (expression.IsEmpty() && labelText.IsEmpty())
+            {
+                result.Append("<label>&nbsp;</label>");
+            }
+            else
+            {
+                var labelAttrs = new RouteValueDictionary(htmlAttributes);
+                var label = helper.Label(expression, labelText, labelAttrs);
+
+                result.Append(label.ToHtmlString());
+            }
+
+            if (hint.HasValue())
+            {
+                result.Append(helper.Hint(hint).ToHtmlString());
+            }
+
+            result.Append("</div>");
+
+			return MvcHtmlString.Create(result.ToStringAndReturn());
+		}
+
+        public static MvcHtmlString SmartLabelFor<TModel, TValue>(
+			this HtmlHelper<TModel> helper, 
+			Expression<Func<TModel, TValue>> expression, 
+			bool displayHint = true, 
+			object htmlAttributes = null)
         {
-            var result = new StringBuilder();
-            var metadata = ModelMetadata.FromLambdaExpression(expression, helper.ViewData);
-            string labelText = null;
-            string hint = null;
-            
-            SmartResourceDisplayName resourceDisplayName;
-            object value = null;
+			var metadata = ModelMetadata.FromLambdaExpression(expression, helper.ViewData);
+			metadata.AdditionalValues.TryGetValue("SmartResourceDisplayName", out object resourceDisplayName);
 
-            if (metadata.AdditionalValues.TryGetValue("SmartResourceDisplayName", out value))
-            {
-                resourceDisplayName = value as SmartResourceDisplayName;
-                if (resourceDisplayName != null)
-                {
-                    // resolve label display name
-                    labelText = resourceDisplayName.DisplayName.NullEmpty();
-                    if (labelText == null)
-                    {
-                        // take reskey as absolute fallback
-                        labelText = resourceDisplayName.ResourceKey;
-                    }
+			return SmartLabelFor(helper, expression, resourceDisplayName as SmartResourceDisplayName, metadata, displayHint, htmlAttributes);
+        }
 
-                    // resolve hint
-                    if (displayHint)
-                    {
-                        var langId = EngineContext.Current.Resolve<IWorkContext>().WorkingLanguage.Id;
-                        hint = EngineContext.Current.Resolve<ILocalizationService>().GetResource(resourceDisplayName.ResourceKey + ".Hint", langId, false, "", true);
-                    }
-                }
-            }
+		public static MvcHtmlString SmartLabelFor<TModel, TValue>(
+			this HtmlHelper<TModel> helper,
+			Expression<Func<TModel, TValue>> expression,
+			string resourceKey,
+			bool displayHint = true,
+			object htmlAttributes = null)
+		{
+			Guard.NotEmpty(resourceKey, nameof(resourceKey));
+			
+			var metadata = ModelMetadata.FromLambdaExpression(expression, helper.ViewData);
+			var resourceDisplayName = new SmartResourceDisplayName(resourceKey, metadata.PropertyName);
 
-            if (labelText == null)
-            {
-                labelText = metadata.PropertyName.SplitPascalCase();
-            }
+			return SmartLabelFor(helper, expression, resourceDisplayName, metadata, displayHint, htmlAttributes);
+		}
 
-			var label = helper.LabelFor(expression, labelText, htmlAttributes);
+		private static MvcHtmlString SmartLabelFor<TModel, TValue>(
+			this HtmlHelper<TModel> helper, 
+			Expression<Func<TModel, TValue>> expression,
+			SmartResourceDisplayName resourceDisplayName, 
+			ModelMetadata metadata,
+			bool displayHint = true, 
+			object htmlAttributes = null)
+		{
+			var result = PooledStringBuilder.Rent();
+			string labelText = null;
+			string hint = null;
+
+			if (resourceDisplayName != null)
+			{
+				// resolve label display name
+				labelText = resourceDisplayName.DisplayName.NullEmpty();
+				if (labelText == null)
+				{
+					// take reskey as absolute fallback
+					labelText = resourceDisplayName.ResourceKey;
+				}
+
+				// resolve hint
+				if (displayHint)
+				{
+					var langId = EngineContext.Current.Resolve<IWorkContext>().WorkingLanguage.Id;
+					hint = EngineContext.Current.Resolve<ILocalizationService>().GetResource(resourceDisplayName.ResourceKey + ".Hint", langId, false, "", true);
+				}
+			}
+
+			if (labelText == null)
+			{
+				labelText = metadata.PropertyName.SplitPascalCase();
+			}
+
+			var labelAttrs = new RouteValueDictionary(htmlAttributes);
+			//labelAttrs.AppendCssClass("col-form-label");
+
+			var label = helper.LabelFor(expression, labelText, labelAttrs);
 
 			if (displayHint)
 			{
@@ -182,29 +264,10 @@ namespace SmartStore.Web.Framework
 				result.Append(label);
 			}
 
-            return MvcHtmlString.Create(result.ToString());
-        }
+			return MvcHtmlString.Create(result.ToStringAndReturn());
+		}
 
-        public static MvcHtmlString SmartLabel<TModel>(this HtmlHelper<TModel> helper, string resourceKey, bool displayHint = true)
-        {
-            return null;
-        }
-
-        public static MvcHtmlString RequiredHint(this HtmlHelper helper, string additionalText = null)
-        {
-            // Create tag builder
-            var builder = new TagBuilder("span");
-            builder.AddCssClass("required");
-            var innerText = "*";
-            //add additinal text if specified
-            if (!String.IsNullOrEmpty(additionalText))
-                innerText += " " + additionalText;
-            builder.SetInnerText(innerText);
-            // Render tag
-            return MvcHtmlString.Create(builder.ToString());
-        }
-
-
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static string FieldNameFor<T, TResult>(this HtmlHelper<T> html, Expression<Func<T, TResult>> expression)
         {
             return html.ViewData.TemplateInfo.GetFullHtmlFieldName(ExpressionHelper.GetExpressionText(expression));
@@ -237,24 +300,37 @@ namespace SmartStore.Web.Framework
             int? beginYear = null, int? endYear = null,
             int? selectedDay = null, int? selectedMonth = null, int? selectedYear = null, bool localizeLabels = true, bool disabled = false)
         {
-            var daysList = new TagBuilder("select");
-            daysList.MergeAttribute("style", "width: 70px");
+			var row = new TagBuilder("div");
+			row.AddCssClass("row xs-gutters");
+
+			var daysCol = new TagBuilder("div");
+			daysCol.AddCssClass("col");
+
+			var monthsCol = new TagBuilder("div");
+			monthsCol.AddCssClass("col");
+
+			var yearsCol = new TagBuilder("div");
+			yearsCol.AddCssClass("col");
+
+			var daysList = new TagBuilder("select");
             var monthsList = new TagBuilder("select");
-			monthsList.MergeAttribute("style", "width: 130px");
             var yearsList = new TagBuilder("select");
-			yearsList.MergeAttribute("style", "width: 90px");
+
+            daysList.Attributes.Add("data-native-menu", "false");
+            monthsList.Attributes.Add("data-native-menu", "false");
+            yearsList.Attributes.Add("data-native-menu", "false");
 
             daysList.Attributes.Add("name", dayName);
             monthsList.Attributes.Add("name", monthName);
             yearsList.Attributes.Add("name", yearName);
             
-            daysList.Attributes.Add("class", "date-part");
-            monthsList.Attributes.Add("class", "date-part");
-            yearsList.Attributes.Add("class", "date-part");
+            daysList.Attributes.Add("class", "date-part form-control noskin");
+            monthsList.Attributes.Add("class", "date-part form-control noskin");
+            yearsList.Attributes.Add("class", "date-part form-control noskin");
 
-			daysList.Attributes.Add("data-select-min-results-for-search", "100");
-			monthsList.Attributes.Add("data-select-min-results-for-search", "100");
-			//yearsList.Attributes.Add("data-select-min-results-for-search", "100");
+			daysList.Attributes.Add("data-minimum-results-for-search", "100");
+			monthsList.Attributes.Add("data-minimum-results-for-search", "100");
+			//yearsList.Attributes.Add("data-minimum-results-for-search", "100");
 
 			if (disabled)
 			{
@@ -282,13 +358,13 @@ namespace SmartStore.Web.Framework
                 yearLocale = "Year";
             }
 
-            days.AppendFormat("<option>{0}</option>", dayLocale);
+            days.AppendFormat("<option value=''>{0}</option>", dayLocale);
             for (int i = 1; i <= 31; i++)
                 days.AppendFormat("<option value='{0}'{1}>{0}</option>", i,
                     (selectedDay.HasValue && selectedDay.Value == i) ? " selected=\"selected\"" : null);
 
 
-            months.AppendFormat("<option>{0}</option>", monthLocale);
+            months.AppendFormat("<option value=''>{0}</option>", monthLocale);
             for (int i = 1; i <= 12; i++)
             {
                 months.AppendFormat("<option value='{0}'{1}>{2}</option>",
@@ -298,7 +374,7 @@ namespace SmartStore.Web.Framework
             }
 
 
-            years.AppendFormat("<option>{0}</option>", yearLocale);
+            years.AppendFormat("<option value=''>{0}</option>", yearLocale);
 
             if (beginYear == null)
                 beginYear = DateTime.UtcNow.Year - 90;
@@ -313,7 +389,13 @@ namespace SmartStore.Web.Framework
             monthsList.InnerHtml = months.ToString();
             yearsList.InnerHtml = years.ToString();
 
-            return MvcHtmlString.Create(string.Concat(daysList, monthsList, yearsList));
+			daysCol.InnerHtml = daysList.ToString();
+			monthsCol.InnerHtml = monthsList.ToString();
+			yearsCol.InnerHtml = yearsList.ToString();
+
+			row.InnerHtml = string.Concat(daysCol, monthsCol, yearsCol);
+
+			return MvcHtmlString.Create(row.ToString());
         }
 
         #region DropDownList Extensions
@@ -338,7 +420,7 @@ namespace SmartStore.Web.Framework
             IDictionary<string, object> attrs = null;
             if (htmlAttributes != null)
             {
-                attrs = CollectionHelper.ObjectToDictionary(htmlAttributes);
+                attrs = CommonHelper.ObjectToDictionary(htmlAttributes);
             }
 
             return htmlHelper.DropDownListForEnum(expression, attrs, optionLabel);
@@ -378,6 +460,7 @@ namespace SmartStore.Web.Framework
 
         #endregion
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static MvcHtmlString Widget(this HtmlHelper helper, string widgetZone)
         {
 			return helper.Widget(widgetZone, null);
@@ -385,75 +468,167 @@ namespace SmartStore.Web.Framework
 
 		public static MvcHtmlString Widget(this HtmlHelper helper, string widgetZone, object model)
 		{ 
+			var routeValues = GetWidgetsByZoneRouteValues(helper, widgetZone, model);
+			if (routeValues != null)
+			{
+				return helper.Action("WidgetsByZone", "Widget", routeValues);
+			}
+
+			return MvcHtmlString.Empty;
+		}
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void RenderWidget(this HtmlHelper helper, string widgetZone)
+		{
+			helper.RenderWidget(widgetZone, null);
+		}
+
+		public static void RenderWidget(this HtmlHelper helper, string widgetZone, object model)
+		{
+			var routeValues = GetWidgetsByZoneRouteValues(helper, widgetZone, model);
+			if (routeValues != null)
+			{
+				helper.RenderAction("WidgetsByZone", "Widget", routeValues);
+			}
+		}
+
+		private static object GetWidgetsByZoneRouteValues(HtmlHelper helper, string widgetZone, object model)
+		{
 			if (widgetZone.HasValue())
 			{
 				model = model ?? helper.ViewData.Model;
 				var widgetSelector = EngineContext.Current.Resolve<IWidgetSelector>();
-				var widgets = widgetSelector.GetWidgets(widgetZone, model).ToArray();
+				var widgets = widgetSelector.GetWidgets(widgetZone, model).ToList();
 				if (widgets.Any())
 				{
-					var result = helper.Action("WidgetsByZone", "Widget", new { widgets = widgets, model = model, area = "" });
-					return result;
+					var zoneModel = new WidgetZoneModel { Widgets = widgets, WidgetZone = widgetZone, Model = model };
+					return new { zoneModel = zoneModel, model = model, area = "" };
 				}
 			}
 
-			return MvcHtmlString.Create("");
+			return null;
 		}
 
-        public static IHtmlString MetaAcceptLanguage(this HtmlHelper html)
+		public static IHtmlString MetaAcceptLanguage(this HtmlHelper html)
         {
             var acceptLang = HttpUtility.HtmlAttributeEncode(Thread.CurrentThread.CurrentUICulture.ToString());
-            return new HtmlString(string.Format("<meta name=\"accept-language\" content=\"{0}\"/>", acceptLang));
+            return new MvcHtmlString(string.Format("<meta name=\"accept-language\" content=\"{0}\"/>", acceptLang));
         }
 
-        public static MvcHtmlString ControlGroupFor<TModel, TValue>(
+		public static IHtmlString LanguageAttributes(this HtmlHelper html, bool omitLTR = false)
+		{
+			return LanguageAttributes(html, EngineContext.Current.Resolve<IWorkContext>().WorkingLanguage, omitLTR);
+		}
+
+		public static IHtmlString LanguageAttributes<T>(this HtmlHelper html, LocalizedValue<T> localizedValue)
+		{
+			if (localizedValue == null || !localizedValue.BidiOverride)
+			{
+				return MvcHtmlString.Empty;
+			}
+
+			return LanguageAttributes(html, localizedValue.CurrentLanguage, false);
+		}
+
+		public static IHtmlString LanguageAttributes(this HtmlHelper html, Language currentLanguage, bool omitLTR = false)
+		{
+			Guard.NotNull(currentLanguage, nameof(currentLanguage));
+
+			var code = currentLanguage.GetTwoLetterISOLanguageName();
+			var rtl = currentLanguage.Rtl;
+
+			var result = "lang=\"" + code + "\"";
+			if (rtl || !omitLTR)
+			{
+				result += " dir=\"" + (rtl ? "rtl" : "ltr") + "\"";
+			}
+
+			return new MvcHtmlString(result);
+		}
+
+		public static IHtmlString LanguageAttributes(this HtmlHelper html, bool currentRtl, Language pageLanguage)
+		{
+			Guard.NotNull(pageLanguage, nameof(pageLanguage));
+
+			if (currentRtl == pageLanguage.Rtl)
+			{
+				return MvcHtmlString.Empty;
+			}
+
+			var result = "dir=\"" + (currentRtl ? "rtl" : "ltr") + "\"";
+			return new MvcHtmlString(result);
+		}
+
+		public static MvcHtmlString ControlGroupFor<TModel, TValue>(
             this HtmlHelper<TModel> html, 
             Expression<Func<TModel, TValue>> expression, 
             InputEditorType editorType = InputEditorType.TextBox,
             bool required = false,
-            string helpHint = null)
+            string helpHint = null,
+			string breakpoint = "md")
         {
             if (editorType == InputEditorType.Hidden)
             {
                 return html.HiddenFor(expression);
             }
-            
-            var sb = new StringBuilder("<div class='control-group'>");
+
+			string inputHtml = "";
+			var htmlAttributes = new RouteValueDictionary();
+			var metadata = ModelMetadata.FromLambdaExpression(expression, html.ViewData);
+			var dataTypeName = metadata.DataTypeName.EmptyNull();
+            var groupClass = "form-group row";
+            var labelClass = "col-{0}-3 col-form-label".FormatInvariant(breakpoint.NullEmpty() ?? "md");
+            var controlsClass = "col-{0}-9".FormatInvariant(breakpoint.NullEmpty() ?? "md");
+            var sb = new StringBuilder("<div class='{0}'>".FormatWith(groupClass));
 
             if (editorType != InputEditorType.Checkbox)
             {
-                var className = "control-label" + (required ? " required" : "");
+                var className = labelClass + (required ? " required" : "");
                 var fieldId = html.IdFor(expression).ToString();
                 sb.AppendLine(html.LabelFor(expression, new { @class = className, @for = fieldId }).ToString());
             }
 
-            sb.AppendLine("<div class='controls'>");
-            string inputHtml = "";
-            object attrs = null;
+            sb.AppendLine("<div class='{0}'>".FormatWith(controlsClass));
+
             if (!required && (editorType == InputEditorType.TextBox || editorType == InputEditorType.Password))
             {
-                attrs = new { placeholder = "Optional" /* TODO: Loc */  };
+				htmlAttributes.Add("placeholder", EngineContext.Current.Resolve<ILocalizationService>().GetResource("Common.Optional"));
             }
-            //var x = ModelMetadata.FromLambdaExpression(expression, html.ViewData).DisplayName;
+
+			switch (dataTypeName)
+			{
+				case "EmailAddress":
+					htmlAttributes.Add("type", "email");
+					break;
+				case "PhoneNumber":
+					htmlAttributes.Add("type", "tel");
+					break;
+			}
+            
+            htmlAttributes.Add("class", "form-control");
+            
             switch (editorType)
             {
                 case InputEditorType.Checkbox:
-                    inputHtml = string.Format("<label class='checkbox'>{0} {1}</label>",
-                        html.EditorFor(expression).ToString(),
-                        ModelMetadata.FromLambdaExpression(expression, html.ViewData).DisplayName); // TBD: ist das OK so?
+					CommonHelper.TryConvert<bool>(metadata.Model, out var isChecked);
+                    inputHtml = string.Format("<div class='form-check'>{0}<label class='form-check-label' for='{1}'>{2}</label></div>",
+                        html.CheckBox(ExpressionHelper.GetExpressionText(expression), isChecked, new { @class = "form-check-input" }).ToString(),
+						html.IdFor(expression),
+						metadata.DisplayName);
                     break;
                 case InputEditorType.Password:
-                    inputHtml = html.PasswordFor(expression, attrs).ToString();
+                    inputHtml = html.PasswordFor(expression, htmlAttributes).ToString();
                     break;
                 default:
-                    inputHtml = html.TextBoxFor(expression, attrs).ToString();
+                    inputHtml = html.TextBoxFor(expression, htmlAttributes).ToString();
                     break;
             }
+			
             sb.AppendLine(inputHtml);
             sb.AppendLine(html.ValidationMessageFor(expression).ToString());
             if (helpHint.HasValue())
             {
-                sb.AppendLine(string.Format("<div class='help-block muted'>{0}</div>", helpHint));
+                sb.AppendLine(string.Format("<div class='form-text text-muted'>{0}</div>", helpHint));
             }
             sb.AppendLine("</div>"); // div.controls
 
@@ -462,31 +637,27 @@ namespace SmartStore.Web.Framework
             return MvcHtmlString.Create(sb.ToString());
         }
 
-		public static MvcHtmlString ColorBox(this HtmlHelper html, string name, string color)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static MvcHtmlString ColorBox(this HtmlHelper html, string name, string color)
 		{
 			return ColorBox(html, name, color, null);
 		}
 
         public static MvcHtmlString ColorBox(this HtmlHelper html, string name, string color, string defaultColor)
         {
-            var sb = new StringBuilder();
+			var sb = PooledStringBuilder.Rent();
 
 			defaultColor = defaultColor.EmptyNull();
 			var isDefault = color.IsCaseInsensitiveEqual(defaultColor);
 
-            sb.AppendFormat("<span class='input-append color sm-colorbox' data-color='{0}' data-color-format='hex'>", color);
+            sb.Append("<div class='input-group colorpicker-component sm-colorbox' data-fallback-color='{0}'>".FormatInvariant(defaultColor));
 
-            sb.AppendFormat(html.TextBox(name, isDefault ? "" : color, new { @class = "span2 colorval", placeholder = defaultColor }).ToHtmlString());
-            sb.AppendFormat("<span class='add-on'><i style='background-color:{0}; border:1px solid #bbb'></i></span>", color);
+            sb.AppendFormat(html.TextBox(name, isDefault ? "" : color, new { @class = "form-control colorval", placeholder = defaultColor }).ToHtmlString());
+            sb.AppendFormat("<div class='input-group-append input-group-addon'><div class='input-group-text'><i class='thecolor' style='{0}'>&nbsp;</i></div></div>", defaultColor.HasValue() ? "background-color: " + defaultColor : "");
 
-            sb.Append("</span>");
+            sb.Append("</div>");
 
-            var bootstrapJsRoot = "~/Content/bootstrap/js/";
-            html.AppendScriptParts(false,
-                bootstrapJsRoot + "custom/bootstrap-colorpicker.js",
-                bootstrapJsRoot + "custom/bootstrap-colorpicker-globalinit.js");
-
-            return MvcHtmlString.Create(sb.ToString());
+            return MvcHtmlString.Create(sb.ToStringAndReturn());
         }
 
 		public static MvcHtmlString TableFormattedVariantAttributes(this HtmlHelper helper, string formattedVariantAttributes, string separatorLines = "<br />", string separatorValues = ": ") {
@@ -515,53 +686,108 @@ namespace SmartStore.Web.Framework
 			return MvcHtmlString.Create(sb.ToString());
 		}
 
-		public static MvcHtmlString SettingOverrideCheckbox<TModel, TValue>(this HtmlHelper<TModel> helper,
-			Expression<Func<TModel, TValue>> expression, string parentSelector = null)
+		public static MvcHtmlString SettingEditorFor<TModel, TValue>(
+			this HtmlHelper<TModel> helper,
+			Expression<Func<TModel, TValue>> expression,
+			string parentSelector = null,
+			object additionalViewData = null)
 		{
-			var data = helper.ViewData[StoreDependingSettingHelper.ViewDataKey] as StoreDependingSettingData;
-
-			if (data != null && data.ActiveStoreScopeConfiguration > 0)
-			{
-				var settingKey = ExpressionHelper.GetExpressionText(expression);
-				var localizeService = EngineContext.Current.Resolve<ILocalizationService>();
-
-				if (!settingKey.Contains("."))
-					settingKey = data.RootSettingClass + "." + settingKey;
-
-				var overrideForStore = (data.OverrideSettingKeys.FirstOrDefault(x => x.IsCaseInsensitiveEqual(settingKey)) != null);
-				var fieldId = settingKey + (settingKey.EndsWith("_OverrideForStore") ? "" : "_OverrideForStore");
-
-				var sb = new StringBuilder();
-				sb.Append("<div class=\"onoffswitch-container\"><div class=\"onoffswitch\">");
-
-				sb.AppendFormat("<input type=\"checkbox\" id=\"{0}\" name=\"{0}\" class=\"onoffswitch-checkbox multi-store-override-option\"", fieldId);
-				sb.AppendFormat(" onclick=\"Admin.checkOverriddenStoreValue(this)\" data-parent-selector=\"{0}\"{1} />", parentSelector.EmptyNull(), overrideForStore ? " checked=\"checked\"" : "");
-
-				sb.AppendFormat("<label class=\"onoffswitch-label\" for=\"{0}\">", fieldId);
-				sb.AppendFormat("<span class=\"onoffswitch-on\">{0}</span>", localizeService.GetResource("Common.On").Truncate(3).ToUpper());
-				sb.AppendFormat("<span class=\"onoffswitch-off\">{0}</span>", localizeService.GetResource("Common.Off").Truncate(3).ToUpper());
-				sb.Append("<span class=\"onoffswitch-switch\"></span>");
-				sb.Append("<span class=\"onoffswitch-inner\"></span>");
-				sb.Append("</label>");
-				sb.Append("</div></div>\r\n");		// controls are not floating, so line-break prevents different distances between them
-
-				return MvcHtmlString.Create(sb.ToString());
-			}
-			return MvcHtmlString.Empty;
+			return SettingEditorFor(
+				helper, 
+				expression, 
+				helper.EditorFor(expression, additionalViewData), 
+				parentSelector);
 		}
 
-		public static MvcHtmlString SettingEditorFor<TModel, TValue>(this HtmlHelper<TModel> helper,
-			Expression<Func<TModel, TValue>> expression, string parentSelector = null)
+		public static MvcHtmlString SettingEditorFor<TModel, TValue>(
+			this HtmlHelper<TModel> helper,
+			Expression<Func<TModel, TValue>> expression,
+			Func<TModel, HelperResult> editor,
+			string parentSelector = null)
 		{
-			var checkbox = helper.SettingOverrideCheckbox(expression, parentSelector);
-			var editor = helper.EditorFor(expression);
+			return SettingEditorFor(
+				helper,
+				expression,
+				new MvcHtmlString(editor(helper.ViewData.Model).ToHtmlString()),
+				parentSelector);
+		}
 
-			return MvcHtmlString.Create(checkbox.ToString() + editor.ToString());
+		public static MvcHtmlString EnumSettingEditorFor<TModel, TValue>(
+			this HtmlHelper<TModel> helper,
+			Expression<Func<TModel, TValue>> expression,
+			string parentSelector = null,
+			object htmlAttributes = null,
+			string optionLabel = null) where TValue : struct
+		{
+			return SettingEditorFor(
+				helper,
+				expression,
+				helper.DropDownListForEnum(expression, htmlAttributes, optionLabel),
+				parentSelector);
+		}
+
+		public static MvcHtmlString SettingEditorFor<TModel, TValue>(
+			this HtmlHelper<TModel> helper,
+			Expression<Func<TModel, TValue>> expression,
+			MvcHtmlString editor,
+			string parentSelector = null)
+		{
+			Guard.NotNull(expression, nameof(expression));
+			Guard.NotNull(editor, nameof(editor));
+
+			var data = helper.ViewData[StoreDependingSettingHelper.ViewDataKey] as StoreDependingSettingData;
+			if (data == null || data.ActiveStoreScopeConfiguration <= 0)
+				return editor; // CONTROL
+
+			var sb = PooledStringBuilder.Rent("<div class='form-row flex-nowrap multi-store-setting-group'>");
+			sb.Append("<div class='col-auto'><div class='form-control-plaintext'>");
+			sb.Append(helper.SettingOverrideCheckboxInternal(expression, data, parentSelector)); // CHECK
+			sb.Append("</div></div>");
+			sb.Append("<div class='col multi-store-setting-control'>");
+			sb.Append(editor.ToHtmlString()); // CONTROL
+			sb.Append("</div></div>");
+
+			return MvcHtmlString.Create(sb.ToStringAndReturn());
+		}
+
+		private static MvcHtmlString SettingOverrideCheckboxInternal<TModel, TValue>(
+			this HtmlHelper<TModel> helper,
+			Expression<Func<TModel, TValue>> expression,
+			StoreDependingSettingData data,
+			string parentSelector = null)
+		{
+			var fieldPrefix = helper.ViewData.TemplateInfo.HtmlFieldPrefix;
+			var settingKey = ExpressionHelper.GetExpressionText(expression);
+			var localizeService = EngineContext.Current.Resolve<ILocalizationService>();
+
+			if (fieldPrefix.HasValue())
+				settingKey = string.Concat(fieldPrefix, ".", settingKey);
+			else if (!settingKey.Contains("."))
+				settingKey = string.Concat(data.RootSettingClass, ".", settingKey);
+
+			var overrideForStore = (data.OverrideSettingKeys.FirstOrDefault(x => x.IsCaseInsensitiveEqual(settingKey)) != null);
+			var fieldId = settingKey + (settingKey.EndsWith("_OverrideForStore") ? "" : "_OverrideForStore");
+
+			var sb = PooledStringBuilder.Rent();
+			sb.Append("<label class='switch switch-blue multi-store-override-switch'>");
+
+			sb.AppendFormat("<input type='checkbox' id='{0}' name='{0}' class='multi-store-override-option'", fieldId);
+			sb.AppendFormat(" onclick='SmartStore.Admin.checkOverriddenStoreValue(this)' data-parent-selector='{0}'{1} />",
+				parentSelector.EmptyNull(), overrideForStore ? " checked" : "");
+
+			sb.AppendFormat("<span class='switch-toggle' data-on='{0}' data-off='{1}'></span>",
+				localizeService.GetResource("Common.On").Truncate(3),
+				localizeService.GetResource("Common.Off").Truncate(3));
+			//sb.Append("</label>");
+			// Controls are not floating, so line-break prevents different distances between them.
+			sb.Append("</label>\r\n");
+
+			return MvcHtmlString.Create(sb.ToStringAndReturn());
 		}
 
 		public static MvcHtmlString CollapsedText(this HtmlHelper helper, string text)
 		{
-			if (text.IsNullOrEmpty())
+			if (text.IsEmpty())
 				return MvcHtmlString.Empty;
 
 			var catalogSettings = EngineContext.Current.Resolve<CatalogSettings>();
@@ -569,16 +795,133 @@ namespace SmartStore.Web.Framework
 			if (!catalogSettings.EnableHtmlTextCollapser)
 				return MvcHtmlString.Create(text);
 
-			string options = "{{\"adjustheight\":{0}}}".FormatWith(
-				catalogSettings.HtmlTextCollapsedHeight
-			);
-
-			string result = "<div class='more-less' data-options='{0}'><div class='more-block'>{1}</div></div>".FormatWith(
-				options, text
+			string result = "<div class='more-less' data-max-height='{0}'><div class='more-block'>{1}</div></div>".FormatWith(
+				catalogSettings.HtmlTextCollapsedHeight, text
 			);
 
 			return MvcHtmlString.Create(result);
 		}
-    }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static MvcHtmlString IconForFileExtension(this HtmlHelper helper, string fileExtension, bool renderLabel = false)
+		{
+			return IconForFileExtension(helper, fileExtension, null, renderLabel);
+		}
+
+		public static MvcHtmlString IconForFileExtension(this HtmlHelper helper, string fileExtension, string extraCssClasses = null, bool renderLabel = false)
+		{
+			Guard.NotNull(helper, nameof(helper));
+			Guard.NotEmpty(fileExtension, nameof(fileExtension));
+
+			var icon = "far fa-file";
+			var ext = fileExtension;
+
+			if (ext != null && ext.StartsWith("."))
+			{
+				ext = ext.Substring(1);
+			}
+
+			if (ext.HasValue())
+			{
+				switch (ext.ToLowerInvariant())
+				{
+					case "pdf":
+						icon = "far fa-file-pdf";
+						break;
+					case "doc":
+					case "docx":
+					case "docm":
+					case "odt":
+					case "dot":
+					case "dotx":
+					case "dotm":
+						icon = "far fa-file-word";
+						break;
+					case "xls":
+					case "xlsx":
+					case "xlsm":
+					case "xlsb":
+					case "ods":
+						icon = "far fa-file-excel";
+						break;
+					case "csv":
+					case "tab":
+						icon = "fa fa-file-csv";
+						break;
+					case "ppt":
+					case "pptx":
+					case "pptm":
+					case "ppsx":
+					case "odp":
+					case "potx":
+					case "pot":
+					case "potm":
+					case "pps":
+					case "ppsm":
+						icon = "far fa-file-powerpoint";
+						break;
+					case "zip":
+					case "rar":
+					case "7z":
+						icon = "far fa-file-archive";
+						break;
+					case "png":
+					case "jpg":
+					case "jpeg":
+					case "bmp":
+					case "psd":
+						icon = "far fa-file-image";
+						break;
+					case "mp3":
+					case "wav":
+					case "ogg":
+					case "wma":
+						icon = "far fa-file-audio";
+						break;
+					case "mp4":
+					case "mkv":
+					case "wmv":
+					case "avi":
+					case "asf":
+					case "mpg":
+					case "mpeg":
+						icon = "far fa-file-video";
+						break;
+					case "txt":
+						icon = "far fa-file-alt";
+						break;
+					case "exe":
+						icon = "fa fa-cog";
+						break;
+					case "xml":
+					case "html":
+					case "htm":
+						icon = "far fa-file-code";
+						break;
+				}
+			}
+
+			var label = ext.NaIfEmpty().ToUpper();
+
+			var result = "<i class='fa-fw {0}{1}' title='{2}'></i>".FormatInvariant(
+				icon, 
+				extraCssClasses.HasValue() ? " " + extraCssClasses : "",
+				label);
+
+			if (renderLabel)
+			{
+				if (ext.IsEmpty())
+				{
+					result = "<span class='text-muted'>{0}</span>".FormatInvariant("".NaIfEmpty());
+				}
+				else
+				{
+					result = result + "<span class='ml-1'>{0}</span>".FormatInvariant(label);
+				}	
+			}
+
+			return MvcHtmlString.Create(result);
+		}
+	}
 }
 

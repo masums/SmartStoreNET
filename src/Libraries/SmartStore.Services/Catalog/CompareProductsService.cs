@@ -1,8 +1,9 @@
 using System;
-using System.Linq;
 using System.Collections.Generic;
+using System.Linq;
 using System.Web;
 using SmartStore.Core.Domain.Catalog;
+using SmartStore.Services.Search;
 
 namespace SmartStore.Services.Catalog
 {
@@ -11,33 +12,21 @@ namespace SmartStore.Services.Catalog
     /// </summary>
     public partial class CompareProductsService : ICompareProductsService
     {
-        #region Constants
-
         private const string COMPARE_PRODUCTS_COOKIE_NAME = "sm.CompareProducts";
-
-        #endregion
-        
-        #region Fields
 
         private readonly HttpContextBase _httpContext;
         private readonly IProductService _productService;
+		private readonly ICatalogSearchService _catalogSearchService;
 
-        #endregion
-
-        #region Ctor
-
-        /// <summary>
-        /// Ctor
-        /// </summary>
-        /// <param name="httpContext">HTTP context</param>
-        /// <param name="productService">Product service</param>
-        public CompareProductsService(HttpContextBase httpContext, IProductService productService)
+		public CompareProductsService(
+			HttpContextBase httpContext,
+			IProductService productService,
+			ICatalogSearchService catalogSearchService)
         {
-            this._httpContext = httpContext;
-            this._productService = productService;
+            _httpContext = httpContext;
+            _productService = productService;
+			_catalogSearchService = catalogSearchService;
         }
-
-        #endregion
 
         #region Utilities
 
@@ -45,23 +34,22 @@ namespace SmartStore.Services.Catalog
         /// Gets a "compare products" identifier list
         /// </summary>
         /// <returns>"compare products" identifier list</returns>
-        protected List<int> GetComparedProductIds()
+        protected virtual HashSet<int> GetComparedProductIds()
         {
-            var productIds = new List<int>();
-            HttpCookie compareCookie = _httpContext.Request.Cookies.Get(COMPARE_PRODUCTS_COOKIE_NAME);
+            var compareCookie = _httpContext.Request.Cookies.Get(COMPARE_PRODUCTS_COOKIE_NAME);
             if ((compareCookie == null) || (compareCookie.Values == null))
-                return productIds;
-            string[] values = compareCookie.Values.GetValues("CompareProductIds");
-            if (values == null)
-                return productIds;
-            foreach (string productId in values)
             {
-                int prodId = int.Parse(productId);
-                if (!productIds.Contains(prodId))
-                    productIds.Add(prodId);
+                return new HashSet<int>();
             }
 
-            return productIds;
+            var values = compareCookie.Values.GetValues("CompareProductIds");
+            if (values == null)
+            {
+                return new HashSet<int>();
+            }
+
+            var result = new HashSet<int>(values.Select(x => x.ToInt()));
+            return result;
         }
 
         #endregion
@@ -88,30 +76,26 @@ namespace SmartStore.Services.Catalog
         /// <returns>"Compare products" list</returns>
         public virtual IList<Product> GetComparedProducts()
         {
-            var products = new List<Product>();
             var productIds = GetComparedProductIds();
-            foreach (int productId in productIds)
-            {
-                var product = _productService.GetProductById(productId);
-                if (product != null && product.Published && !product.Deleted)
-                    products.Add(product);
-            }
-            return products;
+            var products = _productService.GetProductsByIds(productIds.ToArray());
+            var result = products.Where(x => !x.Deleted && x.Published && !x.IsSystemProduct).ToList();
+
+            return result;
         }
 
         public virtual int GetComparedProductsCount()
         {
-			var searchContext = new ProductSearchContext()
-			{
-				ProductIds = GetComparedProductIds()
-			};
-
-			if (searchContext.ProductIds.Count <= 0)
+			var productIds = GetComparedProductIds();
+			if (productIds.Count == 0)
 				return 0;
 
-			var query = _productService.PrepareProductSearchQuery(searchContext);
+			var searchQuery = new CatalogSearchQuery()
+				.VisibleOnly()
+				.WithProductIds(productIds.ToArray())
+				.BuildHits(false);
 
-            return query.Count();
+			var result = _catalogSearchService.Search(searchQuery);
+            return result.TotalHitsCount;
         }
 
 

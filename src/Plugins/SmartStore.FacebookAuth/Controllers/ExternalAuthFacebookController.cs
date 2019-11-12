@@ -1,129 +1,75 @@
 ﻿using System.Web.Mvc;
-using SmartStore.Core;
+using SmartStore.ComponentModel;
 using SmartStore.Core.Domain.Customers;
+using SmartStore.Core.Security;
 using SmartStore.FacebookAuth.Core;
 using SmartStore.FacebookAuth.Models;
 using SmartStore.Services.Authentication.External;
-using SmartStore.Services.Configuration;
-using SmartStore.Services.Security;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Controllers;
+using SmartStore.Web.Framework.Security;
+using SmartStore.Web.Framework.Settings;
 
 namespace SmartStore.FacebookAuth.Controllers
 {
-    //[UnitOfWork]
-	public class ExternalAuthFacebookController : PluginControllerBase
+    public class ExternalAuthFacebookController : PluginControllerBase
     {
-        private readonly ISettingService _settingService;
-        private readonly FacebookExternalAuthSettings _facebookExternalAuthSettings;
         private readonly IOAuthProviderFacebookAuthorizer _oAuthProviderFacebookAuthorizer;
         private readonly IOpenAuthenticationService _openAuthenticationService;
         private readonly ExternalAuthenticationSettings _externalAuthenticationSettings;
-		private readonly IStoreContext _storeContext;
-		private readonly IPermissionService _permissionService;
 
-        public ExternalAuthFacebookController(ISettingService settingService,
-            FacebookExternalAuthSettings facebookExternalAuthSettings,
+        public ExternalAuthFacebookController(
             IOAuthProviderFacebookAuthorizer oAuthProviderFacebookAuthorizer,
             IOpenAuthenticationService openAuthenticationService,
-            ExternalAuthenticationSettings externalAuthenticationSettings,
-			IStoreContext storeContext,
-			IPermissionService permissionService)
+            ExternalAuthenticationSettings externalAuthenticationSettings)
         {
-            this._settingService = settingService;
-            this._facebookExternalAuthSettings = facebookExternalAuthSettings;
-            this._oAuthProviderFacebookAuthorizer = oAuthProviderFacebookAuthorizer;
-            this._openAuthenticationService = openAuthenticationService;
-            this._externalAuthenticationSettings = externalAuthenticationSettings;
-			this._storeContext = storeContext;
-			this._permissionService = permissionService;
+            _oAuthProviderFacebookAuthorizer = oAuthProviderFacebookAuthorizer;
+            _openAuthenticationService = openAuthenticationService;
+            _externalAuthenticationSettings = externalAuthenticationSettings;
         }
         
-        [AdminAuthorize]
-        [ChildActionOnly]
-        public ActionResult Configure()
+		[LoadSetting, AdminAuthorize, ChildActionOnly]
+        [Permission(Permissions.Configuration.Authentication.Read)]
+        public ActionResult Configure(FacebookExternalAuthSettings settings)
         {
-			if (!_permissionService.Authorize(StandardPermissionProvider.ManageExternalAuthenticationMethods))
-				return Content("Access denied");
-
             var model = new ConfigurationModel();
-            model.ClientKeyIdentifier = _facebookExternalAuthSettings.ClientKeyIdentifier;
-            model.ClientSecret = _facebookExternalAuthSettings.ClientSecret;
-            
-            return View(model);
+			MiniMapper.Map(settings, model);
+
+			var host = Services.StoreContext.CurrentStore.GetHost(true);
+			model.RedirectUrl = $"{host}Plugins/SmartStore.FacebookAuth/logincallback/";
+
+			return View(model);
         }
 
-        [HttpPost]
-        [AdminAuthorize]
-        [ChildActionOnly]
-        public ActionResult Configure(ConfigurationModel model)
+		[SaveSetting, HttpPost, AdminAuthorize, ChildActionOnly]
+        [Permission(Permissions.Configuration.Authentication.Update)]
+		public ActionResult Configure(FacebookExternalAuthSettings settings, ConfigurationModel model)
         {
-			if (!_permissionService.Authorize(StandardPermissionProvider.ManageExternalAuthenticationMethods))
-				return Content("Access denied");
-
             if (!ModelState.IsValid)
-                return Configure();
-            
-            //save settings
-            _facebookExternalAuthSettings.ClientKeyIdentifier = model.ClientKeyIdentifier;
-            _facebookExternalAuthSettings.ClientSecret = model.ClientSecret;
-            _settingService.SaveSetting(_facebookExternalAuthSettings);
-            
-            return View(model);
+            {
+                return Configure(settings);
+            }
+
+			MiniMapper.Map(model, settings);
+			settings.ClientKeyIdentifier = model.ClientKeyIdentifier.TrimSafe();
+			settings.ClientSecret = model.ClientSecret.TrimSafe();
+
+			NotifySuccess(T("Admin.Common.DataSuccessfullySaved"));
+
+			return RedirectToConfiguration(FacebookExternalAuthMethod.SystemName, true);
         }
 
         [ChildActionOnly]
         public ActionResult PublicInfo()
         {
-            return View();
-        }
+            var settings = Services.Settings.LoadSetting<FacebookExternalAuthSettings>(Services.StoreContext.CurrentStore.Id);
 
-		[NonAction]
-		private ActionResult LoginInternal(string returnUrl, bool verifyResponse)
-        {
-			var processor = _openAuthenticationService.LoadExternalAuthenticationMethodBySystemName("SmartStore.FacebookAuth", _storeContext.CurrentStore.Id);
-			if (processor == null || !processor.IsMethodActive(_externalAuthenticationSettings))
-			{
-				throw new SmartException("Facebook module cannot be loaded");
-			}
-
-            var viewModel = new LoginModel();
-            TryUpdateModel(viewModel);
-
-			var result = _oAuthProviderFacebookAuthorizer.Authorize(returnUrl, verifyResponse);
-            switch (result.AuthenticationStatus)
+            if (settings.ClientKeyIdentifier.HasValue() && settings.ClientSecret.HasValue())
             {
-                case OpenAuthenticationStatus.Error:
-                    {
-                        if (!result.Success)
-                            foreach (var error in result.Errors)
-								NotifyError(error);
-
-                        return new RedirectResult(Url.LogOn(returnUrl));
-                    }
-                case OpenAuthenticationStatus.AssociateOnLogon:
-                    {
-                        return new RedirectResult(Url.LogOn(returnUrl));
-                    }
-                case OpenAuthenticationStatus.AutoRegisteredEmailValidation:
-                    {
-                        //result
-                        return RedirectToRoute("RegisterResult", new { resultId = (int)UserRegistrationType.EmailValidation });
-                    }
-                case OpenAuthenticationStatus.AutoRegisteredAdminApproval:
-                    {
-                        return RedirectToRoute("RegisterResult", new { resultId = (int)UserRegistrationType.AdminApproval });
-                    }
-                case OpenAuthenticationStatus.AutoRegisteredStandard:
-                    {
-                        return RedirectToRoute("RegisterResult", new { resultId = (int)UserRegistrationType.Standard });
-                    }
-                default:
-                    break;
+                return View();
             }
 
-            if (result.Result != null) return result.Result;
-            return HttpContext.Request.IsAuthenticated ? new RedirectResult(!string.IsNullOrEmpty(returnUrl) ? returnUrl : "~/") : new RedirectResult(Url.LogOn(returnUrl));
+            return new EmptyResult();
         }
 
 		public ActionResult Login(string returnUrl)
@@ -134,6 +80,61 @@ namespace SmartStore.FacebookAuth.Controllers
 		public ActionResult LoginCallback(string returnUrl)
 		{
 			return LoginInternal(returnUrl, true);
+		}
+
+		[NonAction]
+		private ActionResult LoginInternal(string returnUrl, bool verifyResponse)
+		{
+			var processor = _openAuthenticationService.LoadExternalAuthenticationMethodBySystemName(FacebookExternalAuthMethod.SystemName, Services.StoreContext.CurrentStore.Id);
+			if (processor == null || !processor.IsMethodActive(_externalAuthenticationSettings))
+			{
+                NotifyError(T("Plugins.CannotLoadModule", T("Plugins.FriendlyName.SmartStore.FacebookAuth")));
+                return new RedirectResult(Url.LogOn(returnUrl));
+			}
+
+			var viewModel = new LoginModel();
+			TryUpdateModel(viewModel);
+
+			var result = _oAuthProviderFacebookAuthorizer.Authorize(returnUrl, verifyResponse);
+			switch (result.AuthenticationStatus)
+			{
+				case OpenAuthenticationStatus.Error:
+					{
+						if (!result.Success)
+						{
+							result.Errors.Each(x => NotifyError(x));
+						}
+
+						return new RedirectResult(Url.LogOn(returnUrl));
+					}
+				case OpenAuthenticationStatus.AssociateOnLogon:
+					{
+						return new RedirectResult(Url.LogOn(returnUrl));
+					}
+				case OpenAuthenticationStatus.AutoRegisteredEmailValidation:
+					{
+						return RedirectToRoute("RegisterResult", new { resultId = (int)UserRegistrationType.EmailValidation, returnUrl });
+					}
+				case OpenAuthenticationStatus.AutoRegisteredAdminApproval:
+					{
+						return RedirectToRoute("RegisterResult", new { resultId = (int)UserRegistrationType.AdminApproval, returnUrl });
+					}
+				case OpenAuthenticationStatus.AutoRegisteredStandard:
+					{
+						return RedirectToRoute("RegisterResult", new { resultId = (int)UserRegistrationType.Standard, returnUrl });
+					}
+				default:
+					break;
+			}
+
+            if (result.Result != null)
+            {
+                return result.Result;
+            }
+
+			return HttpContext.Request.IsAuthenticated ?
+				RedirectToReferrer(returnUrl, "~/") :
+				new RedirectResult(Url.LogOn(returnUrl));
 		}
 	}
 }

@@ -1,15 +1,24 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Web.Mvc;
+using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Validators.Directory;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Localization;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Directory
 {
     [Validator(typeof(MeasureDimensionValidator))]
-    public class MeasureDimensionModel : EntityModelBase
+    public class MeasureDimensionModel : EntityModelBase, ILocalizedModel<MeasureDimensionLocalizedModel>
     {
+        public MeasureDimensionModel()
+        {
+            Locales = new List<MeasureDimensionLocalizedModel>();
+        }
+
+        public IList<MeasureDimensionLocalizedModel> Locales { get; set; }
+
         [SmartResourceDisplayName("Admin.Configuration.Measures.Dimensions.Fields.Name")]
         [AllowHtml]
         public string Name { get; set; }
@@ -22,10 +31,27 @@ namespace SmartStore.Admin.Models.Directory
         [UIHint("Decimal8")]
         public decimal Ratio { get; set; }
 
-        [SmartResourceDisplayName("Admin.Configuration.Measures.Dimensions.Fields.DisplayOrder")]
+        [SmartResourceDisplayName("Common.DisplayOrder")]
         public int DisplayOrder { get; set; }
 
         [SmartResourceDisplayName("Admin.Configuration.Measures.Dimensions.Fields.IsPrimaryWeight")]
         public bool IsPrimaryDimension { get; set; }
+    }
+
+    public class MeasureDimensionLocalizedModel : ILocalizedModelLocal
+    {
+        public int LanguageId { get; set; }
+
+        [AllowHtml, SmartResourceDisplayName("Admin.Configuration.Measures.Weights.Fields.Name")]
+        public string Name { get; set; }
+    }
+
+    public partial class MeasureDimensionValidator : AbstractValidator<MeasureDimensionModel>
+    {
+        public MeasureDimensionValidator()
+        {
+            RuleFor(x => x.Name).NotEmpty();
+            RuleFor(x => x.SystemKeyword).NotEmpty();
+        }
     }
 }

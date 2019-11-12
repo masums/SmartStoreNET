@@ -1,15 +1,15 @@
-﻿@model ForumGroupModel
-@using SmartStore.Web.Models.Boards;
+﻿@using SmartStore.Web.Models.Boards;
+@model ForumGroupModel
 @{
-    Layout = "~/Views/Shared/_ColumnsOne.cshtml";
+    Layout = "_Layout";
 
     Html.AddTitleParts(Model.Name);
 }
 <div class="page forum-group-page">
-    @Html.Action("ForumBreadcrumb", new { forumGroupId = Model.Id })
-    
-    @Html.Partial("_SearchBox")
+    <div class="mt-2 mb-4 w-75">
+        @{ Html.RenderAction("SearchBox", "Boards"); }
+    </div>
     <div class="forum-group">
-        @Html.Partial("_ForumGroupPartial", Model)
+        @{ Html.RenderPartial("ForumGroup", Model); }
     </div>
 </div>

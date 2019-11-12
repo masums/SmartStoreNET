@@ -1,5 +1,4 @@
-﻿
-using SmartStore.Core.Configuration;
+﻿using SmartStore.Core.Configuration;
 
 namespace SmartStore.Core.Domain.Tax
 {
@@ -13,9 +12,11 @@ namespace SmartStore.Core.Domain.Tax
 			DisplayTaxSuffix = true;
 			PricesIncludeTax = true;
 			EuVatAllowVatExemption = true;
-			ShowLegalHintsInFooter = true; 
+            ShippingPriceIncludesTax = true;
+            ShowLegalHintsInFooter = true; 
 			ShowLegalHintsInProductDetails = true;
 			ShowLegalHintsInProductList = true;
+			AuxiliaryServicesTaxingType = AuxiliaryServicesTaxType.SpecifiedTaxCategory;
 		}
 		
 		/// <summary>
@@ -113,10 +114,15 @@ namespace SmartStore.Core.Domain.Tax
         /// </summary>
         public int PaymentMethodAdditionalFeeTaxClassId { get; set; }
 
-        /// <summary>
-        /// Gets or sets a value indicating whether EU VAT (Eupore Union Value Added Tax) is enabled
-        /// </summary>
-        public bool EuVatEnabled { get; set; }
+		/// <summary>
+		/// Taxing type for auxiliary services like shipping and payment fees
+		/// </summary>
+		public AuxiliaryServicesTaxType AuxiliaryServicesTaxingType { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether EU VAT (Eupore Union Value Added Tax) is enabled
+		/// </summary>
+		public bool EuVatEnabled { get; set; }
 
         /// <summary>
         /// Gets or sets a shop country identifier
@@ -137,5 +143,10 @@ namespace SmartStore.Core.Domain.Tax
         /// Gets or sets a value indicating whether we should notify a store owner when a new VAT number is submitted
         /// </summary>
         public bool EuVatEmailAdminWhenNewVatSubmitted { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether a VAT-ID is required
+        /// </summary>
+        public bool VatRequired { get; set; }
     }
 }

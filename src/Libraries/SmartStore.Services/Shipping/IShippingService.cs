@@ -6,10 +6,10 @@ using SmartStore.Core.Plugins;
 
 namespace SmartStore.Services.Shipping
 {
-    /// <summary>
-    /// Shipping service interface
-    /// </summary>
-    public partial interface IShippingService
+	/// <summary>
+	/// Shipping service interface
+	/// </summary>
+	public partial interface IShippingService
     {
         /// <summary>
         /// Load active shipping rate computation methods
@@ -49,12 +49,13 @@ namespace SmartStore.Services.Shipping
         ShippingMethod GetShippingMethodById(int shippingMethodId);
 
 
-        /// <summary>
-        /// Gets all shipping methods
-        /// </summary>
-        /// <param name="filterByCountryId">The country indentifier to filter by</param>
-        /// <returns>Shipping method collection</returns>
-        IList<ShippingMethod> GetAllShippingMethods(int? filterByCountryId = null);
+		/// <summary>
+		/// Gets all shipping methods
+		/// </summary>
+		/// <param name="request">Shipping option request to filter out shipping methods. <c>null</c> to load all shipping methods.</param>
+		/// <param name="storeId">Whether to filter methods by store identifier.</param>
+		/// <returns>Shipping method collection</returns>
+		IList<ShippingMethod> GetAllShippingMethods(GetShippingOptionRequest request = null, int storeId = 0);
 
         /// <summary>
         /// Inserts a shipping method
@@ -76,7 +77,6 @@ namespace SmartStore.Services.Shipping
         /// <returns>Shopping cart item weight</returns>
 		decimal GetShoppingCartItemWeight(OrganizedShoppingCartItem shoppingCartItem);
 
-
         /// <summary>
         /// Gets shopping cart item total weight
         /// </summary>
@@ -88,16 +88,19 @@ namespace SmartStore.Services.Shipping
         /// Gets shopping cart weight
         /// </summary>
         /// <param name="cart">Cart</param>
+		/// <param name="includeFreeShippingProducts">Whether to include free shipping products</param>
         /// <returns>Shopping cart weight</returns>
-		decimal GetShoppingCartTotalWeight(IList<OrganizedShoppingCartItem> cart);
+		decimal GetShoppingCartTotalWeight(IList<OrganizedShoppingCartItem> cart, bool includeFreeShippingProducts = true);
+
         
         /// <summary>
         /// Create shipment package from shopping cart
         /// </summary>
         /// <param name="cart">Shopping cart</param>
         /// <param name="shippingAddress">Shipping address</param>
+		/// <param name="storeId">Store identifier</param>
         /// <returns>Shipment package</returns>
-		GetShippingOptionRequest CreateShippingOptionRequest(IList<OrganizedShoppingCartItem> cart, Address shippingAddress);
+		GetShippingOptionRequest CreateShippingOptionRequest(IList<OrganizedShoppingCartItem> cart, Address shippingAddress, int storeId);
 
         /// <summary>
         ///  Gets available shipping options
@@ -109,5 +112,11 @@ namespace SmartStore.Services.Shipping
         /// <returns>Shipping options</returns>
 		GetShippingOptionResponse GetShippingOptions(IList<OrganizedShoppingCartItem> cart, Address shippingAddress,
 			string allowedShippingRateComputationMethodSystemName = "", int storeId = 0);
+
+		/// <summary>
+		/// Gets all shipping method filters
+		/// </summary>
+		/// <returns>List of shipping method filters</returns>
+		IList<IShippingMethodFilter> GetAllShippingMethodFilters();
     }
 }

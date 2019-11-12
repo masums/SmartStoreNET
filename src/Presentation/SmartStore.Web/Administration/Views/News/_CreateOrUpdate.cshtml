@@ -6,25 +6,17 @@
 @Html.ValidationSummary(false)
 @Html.HiddenFor(model => model.Id)
 
-@Html.SmartStore().TabStrip().Name("news-edit").Style(TabsStyle.Tabs).Position(TabsPosition.Top).Items(x =>
+@Html.SmartStore().TabStrip().Name("news-edit").Style(TabsStyle.Material).Position(TabsPosition.Top).Items(x =>
 {
 	x.Add().Text(T("Admin.Common.Info").Text).Content(TabInfo()).Selected(true);
-	x.Add().Text(T("Admin.Common.Stores").Text).Content(TabStores());
+    x.Add().Text(T("Admin.Common.SEO").Text).Content(TabSeo());
 
-    //generate an event
 	EngineContext.Current.Resolve<IEventPublisher>().Publish(new TabStripCreated(x, "news-edit", this.Html, this.Model));
 })
+
 @helper TabInfo()
 {
     <table class="adminContent">
-        <tr>
-            <td class="adminTitle">
-                @Html.SmartLabelFor(model => model.LanguageId)
-            </td>
-            <td class="adminData">
-                @Html.DropDownListFor(model => model.LanguageId, new SelectList(ViewBag.AllLanguages, "Id", "Name"))
-            </td>
-        </tr>
         <tr>
             <td class="adminTitle">
                 @Html.SmartLabelFor(model => model.Title)
@@ -39,26 +31,68 @@
                 @Html.SmartLabelFor(model => model.Short)
             </td>
             <td class="adminData">
-                @Html.TextAreaFor(model => model.Short, new { style = "Width: 500px; Height: 150px;" })
+                @Html.TextAreaFor(model => model.Short)
                 @Html.ValidationMessageFor(model => model.Short)
+            </td>
+        </tr>
+        <tr>
+            <td class="adminTitle">
+                @Html.SmartLabelFor(model => model.PictureId)
+            </td>
+            <td class="adminData">
+                @Html.EditorFor(model => model.PictureId, new { transientUpload = true })
+                @Html.ValidationMessageFor(model => model.PictureId)
+            </td>
+        </tr>
+        <tr>
+            <td class="adminTitle">
+                @Html.SmartLabelFor(model => model.PreviewPictureId)
+            </td>
+            <td class="adminData">
+                @Html.EditorFor(model => model.PreviewPictureId, new { transientUpload = true })
+                @Html.ValidationMessageFor(model => model.PreviewPictureId)
             </td>
         </tr>
         <tr>
             <td class="adminTitle">
                 @Html.SmartLabelFor(model => model.Full)
             </td>
-            <td class="adminData">
-                @Html.EditorFor(x => x.Full, Html.RichEditorFlavor())
+            <td class="adminData wide">
+                @Html.EditorFor(x => x.Full, "Html")
                 @Html.ValidationMessageFor(model => model.Full)
             </td>
         </tr>
         <tr>
+            <td colspan="2">
+                <div class="admin-config-group">
+                    <div class="head">@T("Admin.ContentManagement.News.Heading.Publish")</div>
+                </div>
+            </td>
+        </tr>
+        <tr>
             <td class="adminTitle">
-                @Html.SmartLabelFor(model => model.AllowComments)
+                @Html.SmartLabelFor(model => model.Published)
             </td>
             <td class="adminData">
-                @Html.EditorFor(model => model.AllowComments)
-                @Html.ValidationMessageFor(model => model.AllowComments)
+                @Html.EditorFor(model => model.Published)
+                @Html.ValidationMessageFor(model => model.Published)
+            </td>
+        </tr>
+        <tr>
+            <td class="adminTitle">
+                @Html.SmartLabelFor(model => model.LanguageId)
+            </td>
+            <td class="adminData">
+                @Html.DropDownListFor(model => model.LanguageId, new SelectList(ViewBag.AllLanguages, "Id", "Name"))
+            </td>
+        </tr>
+        <tr>
+            <td class="adminTitle">
+                @Html.SmartLabelFor(model => model.SelectedStoreIds)
+            </td>
+            <td class="adminData">
+                @Html.EditorFor(model => model.SelectedStoreIds)
+                @Html.ValidationMessageFor(model => model.SelectedStoreIds)
             </td>
         </tr>
         <tr>
@@ -80,103 +114,64 @@
             </td>
         </tr>
         <tr>
-            <td class="adminTitle">
-                @Html.SmartLabelFor(model => model.Published)
-            </td>
-            <td class="adminData">
-                @Html.EditorFor(model => model.Published)
-                @Html.ValidationMessageFor(model => model.Published)
+            <td colspan="2">
+                <hr />
             </td>
         </tr>
-		<tr>
-			<td class="adminTitle">
-				@Html.SmartLabelFor(model => model.MetaKeywords)
-			</td>
-			<td class="adminData">
-				@Html.EditorFor(x => x.MetaKeywords)
-				@Html.ValidationMessageFor(model => model.MetaKeywords)
-			</td>
-		</tr>
-		<tr>
-			<td class="adminTitle">
-				@Html.SmartLabelFor(model => model.MetaDescription)
-			</td>
-			<td class="adminData">
-				@Html.EditorFor(x => x.MetaDescription)
-				@Html.ValidationMessageFor(model => model.MetaDescription)
-			</td>
-		</tr>
-		<tr>
-			<td class="adminTitle">
-				@Html.SmartLabelFor(model => model.MetaTitle)
-			</td>
-			<td class="adminData">
-				@Html.EditorFor(x => x.MetaTitle)
-				@Html.ValidationMessageFor(model => model.MetaTitle)
-			</td>
-		</tr>
+        <tr>
+            <td class="adminTitle">
+                @Html.SmartLabelFor(model => model.AllowComments)
+            </td>
+            <td class="adminData">
+                @Html.EditorFor(model => model.AllowComments)
+                @Html.ValidationMessageFor(model => model.AllowComments)
+            </td>
+        </tr>
+    </table>
+}
+
+@helper TabSeo()
+{
+    <table class="adminContent">
+        <tr>
+            <td class="adminTitle">
+                @Html.SmartLabelFor(model => model.MetaKeywords)
+            </td>
+            <td class="adminData">
+                @Html.EditorFor(x => x.MetaKeywords)
+                @Html.ValidationMessageFor(model => model.MetaKeywords)
+            </td>
+        </tr>
+        <tr>
+            <td class="adminTitle">
+                @Html.SmartLabelFor(model => model.MetaDescription)
+            </td>
+            <td class="adminData">
+                @Html.EditorFor(x => x.MetaDescription)
+                @Html.ValidationMessageFor(model => model.MetaDescription)
+            </td>
+        </tr>
+        <tr>
+            <td class="adminTitle">
+                @Html.SmartLabelFor(model => model.MetaTitle)
+            </td>
+            <td class="adminData">
+                @Html.EditorFor(x => x.MetaTitle)
+                @Html.ValidationMessageFor(model => model.MetaTitle)
+            </td>
+        </tr>
         <tr>
             <td class="adminTitle">
                 @Html.SmartLabelFor(model => model.SeName)
             </td>
             <td class="adminData">
                 @Html.EditorFor(model => model.SeName)
+				@if (Model.Id != 0)
+                {
+                    @Html.Action("NamesPerEntity", "UrlRecord", new { entityName = "NewsItem", entityId = Model.Id })
+                }
                 @Html.ValidationMessageFor(model => model.SeName)
             </td>
         </tr>
     </table>
 }
-@helper TabStores()
-{
-    <script type="text/javascript">
-        $(document).ready(function () {
-
-            $("#@Html.FieldIdFor(model => model.LimitedToStores)").click(toggleStoreMapping);
-
-            toggleStoreMapping();
-        });
-
-
-        function toggleStoreMapping() {
-            if ($('#@Html.FieldIdFor(model => model.LimitedToStores)').is(':checked')) {
-                $('#pnl-available-stores').show();
-            }
-            else {
-                $('#pnl-available-stores').hide();
-            }
-        }
-
-    </script>
-    <table class="adminContent">
-        <tr>
-            <td class="adminTitle">
-                @Html.SmartLabelFor(model => model.LimitedToStores)
-            </td>
-            <td class="adminData">
-                @Html.EditorFor(model => model.LimitedToStores)
-                @Html.ValidationMessageFor(model => model.LimitedToStores)
-            </td>
-        </tr>
-        <tr id="pnl-available-stores">
-            <td class="adminTitle">
-                @Html.SmartLabelFor(model => model.AvailableStores)
-            </td>
-            <td class="adminData">
-                @if (Model.AvailableStores != null && Model.AvailableStores.Count > 0)
-                {
-                    foreach (var store in Model.AvailableStores)
-                    {
-					<label class="checkbox">
-						<input type="checkbox" name="SelectedStoreIds" value="@store.Id" checked="@(Model.SelectedStoreIds != null && Model.SelectedStoreIds.Contains(store.Id))" />
-						<span>@store.Name</span>
-					</label>
-                    }
-                }
-                else
-                {
-                    <div>@T("Admin.Configuration.Stores.NoStoresDefined")</div>
-                }</td>
-        </tr>
-    </table>
-}
-

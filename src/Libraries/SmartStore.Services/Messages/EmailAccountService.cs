@@ -1,37 +1,31 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using SmartStore.Core;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Messages;
 using SmartStore.Core.Events;
+using SmartStore.Data.Caching;
 
 namespace SmartStore.Services.Messages
 {
-    public partial class EmailAccountService:IEmailAccountService
+    public partial class EmailAccountService : IEmailAccountService
     {
-        private readonly IRepository<EmailAccount> _emailAccountRepository;
+		private readonly IRepository<EmailAccount> _emailAccountRepository;
         private readonly EmailAccountSettings _emailAccountSettings;
         private readonly IEventPublisher _eventPublisher;
 
-        /// <summary>
-        /// Ctor
-        /// </summary>
-        /// <param name="emailAccountRepository">Email account repository</param>
-        /// <param name="emailAccountSettings"></param>
-        /// <param name="eventPublisher">Event published</param>
-        public EmailAccountService(IRepository<EmailAccount> emailAccountRepository,
-            EmailAccountSettings emailAccountSettings, IEventPublisher eventPublisher)
+		private EmailAccount _defaultEmailAccount;
+
+        public EmailAccountService(
+			IRepository<EmailAccount> emailAccountRepository, 
+			EmailAccountSettings emailAccountSettings, 
+			IEventPublisher eventPublisher)
         {
-            _emailAccountRepository = emailAccountRepository;
-            _emailAccountSettings = emailAccountSettings;
-            _eventPublisher = eventPublisher;
+            this._emailAccountRepository = emailAccountRepository;
+            this._emailAccountSettings = emailAccountSettings;
+            this._eventPublisher = eventPublisher;
         }
 
-        /// <summary>
-        /// Inserts an email account
-        /// </summary>
-        /// <param name="emailAccount">Email account</param>
         public virtual void InsertEmailAccount(EmailAccount emailAccount)
         {
             if (emailAccount == null)
@@ -57,14 +51,9 @@ namespace SmartStore.Services.Messages
 
             _emailAccountRepository.Insert(emailAccount);
 
-            //event notification
-            _eventPublisher.EntityInserted(emailAccount);
+			_defaultEmailAccount = null;
         }
 
-        /// <summary>
-        /// Updates an email account
-        /// </summary>
-        /// <param name="emailAccount">Email account</param>
         public virtual void UpdateEmailAccount(EmailAccount emailAccount)
         {
             if (emailAccount == null)
@@ -90,14 +79,9 @@ namespace SmartStore.Services.Messages
 
             _emailAccountRepository.Update(emailAccount);
 
-            //event notification
-            _eventPublisher.EntityUpdated(emailAccount);
+			_defaultEmailAccount = null;
         }
 
-        /// <summary>
-        /// Deletes an email account
-        /// </summary>
-        /// <param name="emailAccount">Email account</param>
         public virtual void DeleteEmailAccount(EmailAccount emailAccount)
         {
             if (emailAccount == null)
@@ -108,28 +92,31 @@ namespace SmartStore.Services.Messages
 
             _emailAccountRepository.Delete(emailAccount);
 
-            //event notification
-            _eventPublisher.EntityDeleted(emailAccount);
+			_defaultEmailAccount = null;
         }
 
-        /// <summary>
-        /// Gets an email account by identifier
-        /// </summary>
-        /// <param name="emailAccountId">The email account identifier</param>
-        /// <returns>Email account</returns>
         public virtual EmailAccount GetEmailAccountById(int emailAccountId)
         {
             if (emailAccountId == 0)
                 return null;
-            
-            var emailAccount = _emailAccountRepository.GetById(emailAccountId);
-            return emailAccount;
-        }
 
-        /// <summary>
-        /// Gets all email accounts
-        /// </summary>
-        /// <returns>Email accounts list</returns>
+			return _emailAccountRepository.GetByIdCached(emailAccountId, "db.emailaccount.id-" + emailAccountId);
+		}
+
+		public virtual EmailAccount GetDefaultEmailAccount()
+		{
+			if (_defaultEmailAccount == null)
+			{
+				_defaultEmailAccount = GetEmailAccountById(_emailAccountSettings.DefaultEmailAccountId);
+				if (_defaultEmailAccount == null)
+				{
+					_defaultEmailAccount = GetAllEmailAccounts().FirstOrDefault();
+				}
+			}
+
+			return _defaultEmailAccount;
+		}
+
         public virtual IList<EmailAccount> GetAllEmailAccounts()
         {
             var query = from ea in _emailAccountRepository.Table

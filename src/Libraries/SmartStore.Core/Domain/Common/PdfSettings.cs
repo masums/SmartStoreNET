@@ -9,7 +9,6 @@ namespace SmartStore.Core.Domain.Common
 		{
 			Enabled = true;
 			RenderOrderNotes = true;
-			FontFileName = "OpenSans-Regular.ttf";
 		}
 		
 		/// <summary>
@@ -32,9 +31,14 @@ namespace SmartStore.Core.Domain.Common
         /// </summary>
         public bool RenderOrderNotes { get; set; }
 
-        /// <summary>
-        /// Gets or sets the font file name that will be used
-        /// </summary>
-        public string FontFileName { get; set; }
+		/// <summary>
+		/// Gets or sets a value indicating whether to attach the order PDF to 'Order Placed (customer)' email
+		/// </summary>
+		public bool AttachOrderPdfToOrderPlacedEmail { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether to attach the order PDF to 'Order Completed (customer)' email
+		/// </summary>
+		public bool AttachOrderPdfToOrderCompletedEmail { get; set; }
     }
 }

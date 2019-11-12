@@ -1,7 +1,7 @@
-﻿using System.Web.Mvc;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Web.Mvc;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
-using Telerik.Web.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Catalog
 {
@@ -11,10 +11,14 @@ namespace SmartStore.Admin.Models.Catalog
         [AllowHtml]
         public string SearchCategoryName { get; set; }
 
-		/// <remarks>codehint: sm-add</remarks>
 		[SmartResourceDisplayName("Admin.Catalog.Categories.List.SearchAlias")]
 		public string SearchAlias { get; set; }
 
-        public GridModel<CategoryModel> Categories { get; set; }
+        [UIHint("Stores")]
+        [SmartResourceDisplayName("Admin.Common.Store.SearchFor")]
+		public int SearchStoreId { get; set; }
+
+        public bool IsSingleStoreMode { get; set; }
+        public int GridPageSize { get; set; }
     }
 }

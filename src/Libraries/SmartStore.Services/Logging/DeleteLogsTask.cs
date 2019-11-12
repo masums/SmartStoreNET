@@ -1,31 +1,31 @@
 ﻿using System;
-using SmartStore.Core.Domain.Logging;
+using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Logging;
 using SmartStore.Services.Tasks;
 
 namespace SmartStore.Services.Logging
 {
     /// <summary>
-    /// Represents a task for deleting log entries
+    /// Represents a task for deleting log entries.
     /// </summary>
     public partial class DeleteLogsTask : ITask
     {
-        private readonly ILogger _logger;
+        private readonly ILogService _logService;
+        private readonly CommonSettings _commonSettings;
 
-        public DeleteLogsTask(ILogger logger)
+        public DeleteLogsTask(
+            ILogService logService,
+            CommonSettings commonSettings)
         {
-            this._logger = logger;
+            _logService = logService;
+            _commonSettings = commonSettings;
         }
 
-        /// <summary>
-        /// Executes a task
-        /// </summary>
 		public void Execute(TaskExecutionContext ctx)
         {
-            var olderThanDays = 7; // TODO: move to settings
-            var toUtc = DateTime.UtcNow.AddDays(-olderThanDays);
+            var toUtc = DateTime.UtcNow.AddDays(-_commonSettings.MaxLogAgeInDays);
 
-			_logger.ClearLog(toUtc, LogLevel.Error);
+			_logService.ClearLog(toUtc, LogLevel.Error);
         }
     }
 }

@@ -1,16 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
+using NUnit.Framework;
+using Rhino.Mocks;
 using SmartStore.Core;
+using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Stores;
-using SmartStore.Core.Domain.Common;
+using SmartStore.Services.Common;
 using SmartStore.Services.Configuration;
 using SmartStore.Services.Customers;
 using SmartStore.Services.Helpers;
-using SmartStore.Services.Common;
 using SmartStore.Tests;
-using NUnit.Framework;
-using Rhino.Mocks;
 
 namespace SmartStore.Services.Tests.Helpers
 {
@@ -21,6 +21,7 @@ namespace SmartStore.Services.Tests.Helpers
 		IStoreContext _storeContext;
 		IGenericAttributeService _genericAttributeService;
         ISettingService _settingService;
+        ICustomerService _customerService;
         DateTimeSettings _dateTimeSettings;
         IDateTimeHelper _dateTimeHelper;
 		Store _store;
@@ -30,21 +31,20 @@ namespace SmartStore.Services.Tests.Helpers
         {
 			_genericAttributeService = MockRepository.GenerateMock<IGenericAttributeService>();
             _settingService = MockRepository.GenerateMock<ISettingService>();
+            _customerService = MockRepository.GenerateMock<ICustomerService>();
+            _workContext = MockRepository.GenerateMock<IWorkContext>();
 
-			_workContext = MockRepository.GenerateMock<IWorkContext>();
-
-			_store = new Store() { Id = 1 };
+			_store = new Store { Id = 1 };
 			_storeContext = MockRepository.GenerateMock<IStoreContext>();
 			_storeContext.Expect(x => x.CurrentStore).Return(_store);
 
-            _dateTimeSettings = new DateTimeSettings()
+            _dateTimeSettings = new DateTimeSettings
             {
                 AllowCustomersToSetTimeZone = false,
                 DefaultStoreTimeZoneId = ""
             };
 
-			_dateTimeHelper = new DateTimeHelper(_workContext, _genericAttributeService,
-                _settingService, _dateTimeSettings);
+			_dateTimeHelper = new DateTimeHelper(_workContext, _genericAttributeService, _settingService, _dateTimeSettings, _customerService);
         }
 
         [Test]
@@ -67,26 +67,15 @@ namespace SmartStore.Services.Tests.Helpers
         public void Can_get_customer_timeZone_with_customTimeZones_enabled()
         {
             _dateTimeSettings.AllowCustomersToSetTimeZone = true;
-            _dateTimeSettings.DefaultStoreTimeZoneId = "E. Europe Standard Time"; //(GMT+02:00) Minsk;
+            _dateTimeSettings.DefaultStoreTimeZoneId = "E. Europe Standard Time"; // (GMT+02:00) Minsk;
 
-            var customer = new Customer()
+            var customer = new Customer
             {
 				Id = 10
             };
 
-			_genericAttributeService.Expect(x => x.GetAttributesForEntity(customer.Id, "Customer"))
-				 .Return(new List<GenericAttribute>()
-                            {
-                                new GenericAttribute()
-                                    {
-                                        StoreId = 0,
-                                        EntityId = customer.Id,
-                                        Key = SystemCustomerAttributeNames.TimeZoneId,
-                                        KeyGroup = "Customer",
-                                        Value = "Russian Standard Time" //(GMT+03:00) Moscow, St. Petersburg, Volgograd
-                                    }
-                            });
-
+            customer.Expect(x => x.TimeZoneId).Return("Russian Standard Time");   // (GMT+03:00) Moscow, St. Petersburg, Volgograd
+            
             var timeZone = _dateTimeHelper.GetCustomerTimeZone(customer);
             timeZone.ShouldNotBeNull();
             timeZone.Id.ShouldEqual("Russian Standard Time");
@@ -103,18 +92,7 @@ namespace SmartStore.Services.Tests.Helpers
 				Id = 10
             };
 
-			_genericAttributeService.Expect(x => x.GetAttributesForEntity(customer.Id, "Customer"))
-				 .Return(new List<GenericAttribute>()
-                            {
-                                new GenericAttribute()
-                                    {
-                                        StoreId = _store.Id,
-                                        EntityId = customer.Id,
-                                        Key = SystemCustomerAttributeNames.TimeZoneId,
-                                        KeyGroup = "Customer",
-                                        Value = "Russian Standard Time" //(GMT+03:00) Moscow, St. Petersburg, Volgograd
-                                    }
-                            });
+            customer.Expect(x => x.TimeZoneId).Return("Russian Standard Time");   // (GMT+03:00) Moscow, St. Petersburg, Volgograd
 
             var timeZone = _dateTimeHelper.GetCustomerTimeZone(customer);
             timeZone.ShouldNotBeNull();
@@ -124,19 +102,26 @@ namespace SmartStore.Services.Tests.Helpers
         [Test]
         public void Can_convert_dateTime_to_userTime()
         {
-            var sourceDateTime = TimeZoneInfo.FindSystemTimeZoneById("E. Europe Standard Time"); //(GMT+02:00) Minsk;
+			var sourceDateTime = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time"); // (GMT+01:00) Berlin;
             sourceDateTime.ShouldNotBeNull();
 
-            var destinationDateTime = TimeZoneInfo.FindSystemTimeZoneById("North Asia Standard Time"); //(GMT+08:00) Krasnoyarsk;
+			var destinationDateTime = TimeZoneInfo.FindSystemTimeZoneById("GTB Standard Time"); // (GMT+02:00) Istanbul;
             destinationDateTime.ShouldNotBeNull();
 
-            //summer time
-            _dateTimeHelper.ConvertToUserTime(new DateTime(2010, 06, 01, 0, 0, 0), sourceDateTime, destinationDateTime)
-                .ShouldEqual(new DateTime(2010, 06, 01, 6, 0, 0));
+            // Berlin > Istanbul
+            _dateTimeHelper
+				.ConvertToUserTime(new DateTime(2015, 06, 1, 0, 0, 0), sourceDateTime, destinationDateTime)
+                .ShouldEqual(new DateTime(2015, 06, 1, 1, 0, 0));
 
-            //winter time
-            _dateTimeHelper.ConvertToUserTime(new DateTime(2010, 01, 01, 0, 0, 0), sourceDateTime, destinationDateTime)
-                .ShouldEqual(new DateTime(2010, 01, 01, 6, 0, 0));
+			// UTC > Istanbul (summer)
+			_dateTimeHelper
+				.ConvertToUserTime(new DateTime(2015, 06, 1, 0, 0, 0), TimeZoneInfo.Utc, destinationDateTime)
+				.ShouldEqual(new DateTime(2015, 06, 1, 3, 0, 0));
+
+			// UTC > Istanbul (winter)
+			_dateTimeHelper
+				.ConvertToUserTime(new DateTime(2015, 01, 01, 0, 0, 0), TimeZoneInfo.Utc, destinationDateTime)
+				.ShouldEqual(new DateTime(2015, 01, 1, 2, 0, 0));
         }
 
         [Test]

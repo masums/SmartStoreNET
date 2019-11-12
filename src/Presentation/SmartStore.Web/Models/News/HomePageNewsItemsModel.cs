@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Web.Models.News
 {
@@ -16,7 +16,7 @@ namespace SmartStore.Web.Models.News
 
         public object Clone()
         {
-            //we use a shallow copy (deep clone is not required here)
+            // We use a shallow copy (deep clone is not required here)
             return this.MemberwiseClone();
         }
     }

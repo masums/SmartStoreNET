@@ -1,18 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Web;
 using System.Web.Routing;
 using System.Globalization;
 using System.Dynamic;
+using SmartStore.Utilities;
+using System.Runtime.CompilerServices;
 
 namespace SmartStore
 {
-    
     public static class DictionaryExtensions
     {
-
-        public static void AddRange<T, U>(this IDictionary<T, U> values, IEnumerable<KeyValuePair<T, U>> other)
+        public static void AddRange<TKey, TValue>(this IDictionary<TKey, TValue> values, IEnumerable<KeyValuePair<TKey, TValue>> other)
         {
             foreach (var kvp in other)
             {
@@ -32,63 +33,68 @@ namespace SmartStore
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Merge(this IDictionary<string, object> instance, object values, bool replaceExisting = true)
         {
-            instance.Merge(new RouteValueDictionary(values), replaceExisting);
+			instance.Merge(CommonHelper.ObjectToDictionary(values), replaceExisting);
         }
 
-        public static void Merge<T, U>(this IDictionary<T, U> instance, IDictionary<T, U> from, bool replaceExisting = true)
+        public static void Merge<TKey, TValue>(this IDictionary<TKey, TValue> instance, IDictionary<TKey, TValue> from, bool replaceExisting = true)
         {
-            foreach (KeyValuePair<T, U> keyValuePair in from)
+            foreach (var kvp in from)
             {
-                if (replaceExisting || !instance.ContainsKey(keyValuePair.Key))
+                if (replaceExisting || !instance.ContainsKey(kvp.Key))
                 {
-                    instance[keyValuePair.Key] = keyValuePair.Value;
+                    instance[kvp.Key] = kvp.Value;
                 }
             }
         }
 
-        public static void AppendInValue(this IDictionary<string, object> instance, string key, string separator, object value)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void AppendInValue(this IDictionary<string, object> instance, string key, string separator, string value)
         {
-            instance[key] = !instance.ContainsKey(key) ? value.ToString() : (instance[key] + separator + value);
-        }
-
-        public static void PrependInValue(this IDictionary<string, object> instance, string key, string separator, object value)
-        {
-            instance[key] = !instance.ContainsKey(key) ? value.ToString() : (value + separator + instance[key]);
-        }
-
-        public static string ToAttributeString(this IDictionary<string, object> instance)
-        {
-            StringBuilder builder = new StringBuilder();
-            foreach (KeyValuePair<string, object> pair in instance)
-            {
-                object[] args = new object[] { HttpUtility.HtmlAttributeEncode(pair.Key), HttpUtility.HtmlAttributeEncode(pair.Value.ToString()) };
-                builder.Append(" {0}=\"{1}\"".FormatWith(args));
-            }
-            return builder.ToString();
-        }
-
-		public static T GetValue<K, T>(this IDictionary<K, object> instance, K key)
-		{
-			try
-			{
-				object val;
-				if (instance != null && instance.TryGetValue(key, out val) && val != null)
-					return (T)Convert.ChangeType(val, typeof(T), CultureInfo.InvariantCulture);
-			}
-			catch (Exception exc)
-			{
-				exc.Dump();
-			}
-			return default(T);
+			AddInValue(instance, key, separator, value, false);
 		}
 
-        public static ExpandoObject ToExpandoObject(this IDictionary<string, object> source, bool castIfPossible = false)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void PrependInValue(this IDictionary<string, object> instance, string key, string separator, string value)
         {
-            Guard.ArgumentNotNull(source, "source");
+			AddInValue(instance, key, separator, value, true);
+        }
 
-            if (castIfPossible && source is ExpandoObject)
+		private static void AddInValue(IDictionary<string, object> instance, string key, string separator, string value, bool prepend = false)
+		{
+			if (!instance.TryGetValue(key, out var obj))
+			{
+				instance[key] = value;
+			}
+			else
+			{
+				var arr = obj.ToString().Trim().Split(new[] { separator }, StringSplitOptions.RemoveEmptyEntries).AsEnumerable();
+				var arrValue = value.Trim().Split(new[] { separator }, StringSplitOptions.RemoveEmptyEntries).AsEnumerable();
+
+				arr = prepend ? arrValue.Union(arr) : arr.Union(arrValue);
+
+				instance[key] = string.Join(separator, arr);
+			}
+		}
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static TValue Get<TKey, TValue>(this IDictionary<TKey, TValue> instance, TKey key)
+		{
+			if (instance == null)
+				throw new ArgumentNullException(nameof(instance));
+
+			instance.TryGetValue(key, out var val);
+			return val;
+		}
+
+		public static ExpandoObject ToExpandoObject(this IDictionary<string, object> source, bool castIfPossible = false)
+        {
+			if (source == null)
+				throw new ArgumentNullException(nameof(source));
+
+			if (castIfPossible && source is ExpandoObject)
             {
                 return source as ExpandoObject;
             }
@@ -99,6 +105,43 @@ namespace SmartStore
             return result;
         }
 
+
+		public static bool TryAdd<TKey, TValue>(this Dictionary<TKey, TValue> source, TKey key, TValue value, bool updateIfExists = false)
+		{
+			if (source == null || key == null)
+			{
+				return false;
+			}
+
+			if (source.ContainsKey(key))
+			{
+				if (updateIfExists)
+				{
+					source[key] = value;
+					return true;
+				}
+			}
+			else
+			{
+				source.Add(key, value);
+				return true;
+			}
+
+			return false;
+		}
+
+		public static bool TryRemove<TKey, TValue>(this Dictionary<TKey, TValue> source, TKey key, out TValue value)
+		{
+			value = default(TValue);
+
+			if (source != null && key != null && source.TryGetValue(key, out value))
+			{
+				source.Remove(key);
+				return true;
+			}
+
+			return false;
+		}
     }
 
 }

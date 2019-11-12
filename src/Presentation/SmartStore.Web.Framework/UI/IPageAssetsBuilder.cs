@@ -4,15 +4,18 @@ using System.Web.Routing;
 
 namespace SmartStore.Web.Framework.UI
 {
-    
     public partial interface IPageAssetsBuilder
     {
+        IDictionary<string, object> BodyAttributes { get; }
+
         void AddTitleParts(IEnumerable<string> parts, bool append = false);
         void AddMetaDescriptionParts(IEnumerable<string> parts, bool append = false);
         void AddMetaKeywordParts(IEnumerable<string> parts, bool append = false);
         void AddCanonicalUrlParts(IEnumerable<string> parts, bool append = false);
 		void AddCustomHeadParts(IEnumerable<string> parts, bool append = false);
+        void AddBodyAttribute(string name, object value);
         void AddBodyCssClass(string className);
+        void SetHtmlId(string htmlId);
         void AddScriptParts(ResourceLocation location, IEnumerable<string> parts, bool excludeFromBundling = false, bool append = false);
         void AddCssFileParts(ResourceLocation location, IEnumerable<string> parts, bool excludeFromBundling = false, bool append = false);
 		void AddLinkPart(string rel, string href, RouteValueDictionary htmlAttributes);
@@ -22,10 +25,11 @@ namespace SmartStore.Web.Framework.UI
         string GenerateMetaKeywords();
         string GenerateCanonicalUrls();
 		string GenerateCustomHead();
-        string GenerateBodyCssClasses();
         string GenerateScripts(UrlHelper urlHelper, ResourceLocation location, bool? enableBundling = null);
         string GenerateCssFiles(UrlHelper urlHelper, ResourceLocation location, bool? enableBundling = null);
 		string GenerateLinkRels();
+		string GenerateMetaRobots();
+        string GenerateHtmlId();
     }
 
     public static class PageAssetsBuilderExtensions

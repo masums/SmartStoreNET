@@ -14,6 +14,7 @@ using SmartStore.Core.Domain.Themes;
 using SmartStore.Utilities;
 using System.Web.Hosting;
 using System.Web.Routing;
+using SmartStore.Utilities.ObjectPools;
 
 namespace SmartStore.Web.Framework.UI
 {
@@ -27,7 +28,7 @@ namespace SmartStore.Web.Framework.UI
         private readonly List<string> _metaKeywordParts;
         private readonly List<string> _canonicalUrlParts;
 		private readonly List<string> _customHeadParts;
-        private readonly List<string> _bodyCssClasses;
+        private string _htmlId;
         private readonly Dictionary<ResourceLocation, List<WebAssetDescriptor>> _scriptParts;
         private readonly Dictionary<ResourceLocation, List<WebAssetDescriptor>> _cssParts;
 		private readonly List<RouteValueDictionary> _linkParts;
@@ -43,20 +44,25 @@ namespace SmartStore.Web.Framework.UI
 			IStoreContext storeContext,
             IBundleBuilder bundleBuilder)
         {
-            this._httpContext = httpContext;
-            this._seoSettings = seoSettings;
-            this._themeSettings = themeSettings;
-            this._titleParts = new List<string>();
-            this._metaDescriptionParts = new List<string>();
-            this._metaKeywordParts = new List<string>();
-            this._scriptParts = new Dictionary<ResourceLocation, List<WebAssetDescriptor>>();
-            this._cssParts = new Dictionary<ResourceLocation, List<WebAssetDescriptor>>();
-            this._canonicalUrlParts = new List<string>();
-			this._customHeadParts = new List<string>();
-            this._bodyCssClasses = new List<string>();
-			this._linkParts = new List<RouteValueDictionary>();
-			this._storeContext = storeContext;
-            this._bundleBuilder = bundleBuilder;
+            _httpContext = httpContext;
+            _seoSettings = seoSettings;
+            _themeSettings = themeSettings;
+            _titleParts = new List<string>();
+            _metaDescriptionParts = new List<string>();
+            _metaKeywordParts = new List<string>();
+            _scriptParts = new Dictionary<ResourceLocation, List<WebAssetDescriptor>>();
+            _cssParts = new Dictionary<ResourceLocation, List<WebAssetDescriptor>>();
+            _canonicalUrlParts = new List<string>();
+			_customHeadParts = new List<string>();
+            _linkParts = new List<RouteValueDictionary>();
+			_storeContext = storeContext;
+            _bundleBuilder = bundleBuilder;
+
+            var bodyHtmlId = storeContext.CurrentStore.HtmlBodyId;
+            if (bodyHtmlId.HasValue())
+            {
+                BodyAttributes["id"] = bodyHtmlId;
+            }
         }
 
         private bool IsValidPart<T>(T part)
@@ -88,20 +94,37 @@ namespace SmartStore.Web.Framework.UI
             }
         }
 
-        public void AddBodyCssClass(string className)
+        public IDictionary<string, object> BodyAttributes { get; } = new RouteValueDictionary();
+
+        public void AddBodyAttribute(string name, object value)
         {
-            if (className.HasValue())
-            {
-                _bodyCssClasses.Insert(0, className);
-            }
+            Guard.NotEmpty(name, nameof(name));
+
+            BodyAttributes[name] = value;
         }
 
-        public string GenerateBodyCssClasses()
+        public void AddBodyCssClass(string className)
         {
-            if (_bodyCssClasses.Count == 0)
+			if (className.IsEmpty())
+				return;
+
+            if (className.HasValue())
+            {
+                BodyAttributes.PrependCssClass(className);
+            }           
+        }
+
+        public void SetHtmlId(string htmlId)
+        {
+            _htmlId = htmlId;
+        }
+
+        public string GenerateHtmlId()
+        {
+            if (!_htmlId.HasValue())
                 return null;
 
-            return String.Join(" ", _bodyCssClasses);
+            return _htmlId;
         }
 
         public void AddTitleParts(IEnumerable<string> parts, bool append = false)
@@ -109,7 +132,7 @@ namespace SmartStore.Web.Framework.UI
             AddPartsCore(_titleParts, parts, append);
         }
 
-        public string GenerateTitle(bool addDefaultTitle)
+        public virtual string GenerateTitle(bool addDefaultTitle)
         {
             string result = "";
             var specificTitle = string.Join(_seoSettings.PageTitleSeparator, _titleParts.AsEnumerable().Reverse().ToArray());
@@ -154,7 +177,7 @@ namespace SmartStore.Web.Framework.UI
             AddPartsCore(_metaDescriptionParts, parts, append);
         }
 
-        public string GenerateMetaDescription()
+        public virtual string GenerateMetaDescription()
         {
             var metaDescription = string.Join(", ", _metaDescriptionParts.AsEnumerable().Reverse().ToArray());
             var result = !String.IsNullOrEmpty(metaDescription) ? metaDescription : _seoSettings.DefaultMetaDescription;
@@ -167,7 +190,7 @@ namespace SmartStore.Web.Framework.UI
             AddPartsCore(_metaKeywordParts, parts, append);
         }
 
-        public string GenerateMetaKeywords()
+        public virtual string GenerateMetaKeywords()
         {
             var metaKeyword = string.Join(", ", _metaKeywordParts.AsEnumerable().Reverse().ToArray());
             var result = !String.IsNullOrEmpty(metaKeyword) ? metaKeyword : _seoSettings.DefaultMetaKeywords;
@@ -181,14 +204,14 @@ namespace SmartStore.Web.Framework.UI
 
         public string GenerateCanonicalUrls()
         {
-            var result = new StringBuilder();
+            var result = PooledStringBuilder.Rent();
 			var parts = _canonicalUrlParts.Distinct();
 			foreach (var part in parts)
             {
                 result.AppendFormat("<link rel=\"canonical\" href=\"{0}\" />", part);
                 result.AppendLine();
             }
-            return result.ToString();
+            return result.ToStringAndReturn();
         }
 
 		public void AddCustomHeadParts(IEnumerable<string> parts, bool append = false)
@@ -198,13 +221,13 @@ namespace SmartStore.Web.Framework.UI
 
 		public string GenerateCustomHead()
 		{
-			var result = new StringBuilder();
+			var result = PooledStringBuilder.Rent();
 			var parts = _customHeadParts.Distinct();
 			foreach (var part in parts)
 			{
 				result.AppendLine(part);
 			}
-			return result.ToString();
+			return result.ToStringAndReturn();
 		}
 
         public void AddScriptParts(ResourceLocation location, IEnumerable<string> parts, bool excludeFromBundling = false, bool append = false)
@@ -239,7 +262,7 @@ namespace SmartStore.Web.Framework.UI
             var bundledParts = parts.Where(x => !x.ExcludeFromBundling).Select(x => x.Part).Distinct();
             var nonBundledParts = parts.Where(x => x.ExcludeFromBundling).Select(x => x.Part).Distinct();
             
-            var sb = new StringBuilder();
+            var sb = PooledStringBuilder.Rent();
 
             if (bundledParts.Any())
             {
@@ -257,7 +280,7 @@ namespace SmartStore.Web.Framework.UI
 
             BundleTable.EnableOptimizations = prevEnableOptimizations;
 
-            return sb.ToString();
+            return sb.ToStringAndReturn();
         }
 
 		private string TryFindMinFile(string path)
@@ -341,7 +364,7 @@ namespace SmartStore.Web.Framework.UI
             var bundledParts = parts.Where(x => !x.ExcludeFromBundling).Select(x => x.Part).Distinct();
             var nonBundledParts = parts.Where(x => x.ExcludeFromBundling).Select(x => x.Part).Distinct();
 
-            var sb = new StringBuilder();
+            var sb = PooledStringBuilder.Rent();
 
             if (bundledParts.Any())
             {
@@ -359,7 +382,7 @@ namespace SmartStore.Web.Framework.UI
 
             BundleTable.EnableOptimizations = prevEnableOptimizations;
 
-            return sb.ToString();
+            return sb.ToStringAndReturn();
         }
 
         private bool BundlingEnabled
@@ -377,8 +400,8 @@ namespace SmartStore.Web.Framework.UI
 
 		public void AddLinkPart(string rel, string href, RouteValueDictionary htmlAttributes)
 		{
-			Guard.ArgumentNotEmpty(() => rel);
-			Guard.ArgumentNotEmpty(() => href);
+			Guard.NotEmpty(rel, nameof(rel));
+			Guard.NotEmpty(href, nameof(href));
 
 			if (htmlAttributes == null)
 			{
@@ -393,7 +416,7 @@ namespace SmartStore.Web.Framework.UI
 
 		public string GenerateLinkRels()
 		{
-			var sb = new StringBuilder();
+			var sb = PooledStringBuilder.Rent();
 			
 			foreach (var part in _linkParts)
 			{
@@ -403,10 +426,19 @@ namespace SmartStore.Web.Framework.UI
 				sb.AppendLine(tag.ToString(TagRenderMode.SelfClosing));
 			}
 
-			return sb.ToString();
+			return sb.ToStringAndReturn();
 		}
 
-        public class WebAssetDescriptor
+		public string GenerateMetaRobots()
+		{
+			if (_seoSettings.MetaRobotsContent.HasValue())
+			{
+				return "<meta name=\"robots\" content=\"{0}\" />".FormatInvariant(_seoSettings.MetaRobotsContent);
+			}
+			return null;
+		}
+
+		public class WebAssetDescriptor
         {
             public bool ExcludeFromBundling { get; set; }
             public string Part { get; set; }

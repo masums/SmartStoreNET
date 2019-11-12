@@ -1,38 +1,32 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
-using System.Xml.Linq;
 using SmartStore.Core;
 using SmartStore.Core.Caching;
 using SmartStore.Core.Data;
-using SmartStore.Core.Domain.Common;
+using SmartStore.Core.Domain.DataExchange;
 using SmartStore.Core.Domain.Localization;
 using SmartStore.Core.Events;
-using SmartStore.Data;
 using SmartStore.Core.Logging;
 using SmartStore.Core.Plugins;
-using System.Text.RegularExpressions;
-using System.Collections.Concurrent;
-using System.Web.Mvc;
-using System.Collections;
+using SmartStore.Core.Localization;
+using System.Globalization;
 
 namespace SmartStore.Services.Localization
 {
-    /// <summary>
-    /// Provides information about localization
-    /// </summary>
-    public partial class LocalizationService : ILocalizationService
+	public partial class LocalizationService : ILocalizationService
     {
-        #region Constants
-        private const string LOCALESTRINGRESOURCES_ALL_KEY = "SmartStore.lsr.all-{0}";
-        private const string LOCALESTRINGRESOURCES_PATTERN_KEY = "SmartStore.lsr.";
-        #endregion
-
-        #region Fields
+		/// <summary>
+		/// 0 = segment (first 3 chars of key), 1 = language id
+		/// </summary>
+		const string LOCALESTRINGRESOURCES_SEGMENT_KEY = "localization:{0}-lang-{1}";
+		const string LOCALESTRINGRESOURCES_SEGMENT_PATTERN = "localization:{0}*";
 
         private readonly IRepository<LocaleStringResource> _lsrRepository;
         private readonly IWorkContext _workContext;
@@ -40,99 +34,60 @@ namespace SmartStore.Services.Localization
         private readonly ILanguageService _languageService;
         private readonly ICacheManager _cacheManager;
         private readonly IDbContext _dbContext;
-        private readonly LocalizationSettings _localizationSettings;
         private readonly IEventPublisher _eventPublisher;
 
-        #endregion
+		private int _notFoundLogCount = 0;
+		private int? _defaultLanguageId;
 
-        #region Ctor
-
-        /// <summary>
-        /// Ctor
-        /// </summary>
-        /// <param name="cacheManager">Cache manager</param>
-        /// <param name="logger">Logger</param>
-        /// <param name="workContext">Work context</param>
-        /// <param name="lsrRepository">Locale string resource repository</param>
-        /// <param name="languageService">Language service</param>
-        /// <param name="dataProvider">Data provider</param>
-        /// <param name="dbContext">Database Context</param>
-        /// <param name="commonSettings">Common settings</param>
-        /// <param name="localizationSettings">Localization settings</param>
-        /// <param name="eventPublisher">Event published</param>
-        public LocalizationService(ICacheManager cacheManager,
-            ILogger logger, IWorkContext workContext,
+        public LocalizationService(
+			ICacheManager cacheManager,
+            ILogger logger, 
+			IWorkContext workContext,
             IRepository<LocaleStringResource> lsrRepository, 
             ILanguageService languageService,
-            LocalizationSettings localizationSettings, IEventPublisher eventPublisher)
+			IEventPublisher eventPublisher)
         {
-            this._cacheManager = cacheManager;
-            this._logger = logger;
-            this._workContext = workContext;
-            this._lsrRepository = lsrRepository;
-            this._languageService = languageService;
-			this._dbContext = lsrRepository.Context;
-            this._localizationSettings = localizationSettings;
-            this._eventPublisher = eventPublisher;
+            _cacheManager = cacheManager;
+            _logger = logger;
+            _workContext = workContext;
+            _lsrRepository = lsrRepository;
+            _languageService = languageService;
+			_dbContext = lsrRepository.Context;
+            _eventPublisher = eventPublisher;
         }
 
-        #endregion
-
-        #region Methods
-
-		public virtual void ClearCache()
-		{
-			_cacheManager.RemoveByPattern(LOCALESTRINGRESOURCES_PATTERN_KEY);
-		}
-
-        /// <summary>
-        /// Deletes a locale string resource
-        /// </summary>
-        /// <param name="localeStringResource">Locale string resource</param>
-        public virtual void DeleteLocaleStringResource(LocaleStringResource localeStringResource)
+        public virtual void DeleteLocaleStringResource(LocaleStringResource resource)
         {
-            if (localeStringResource == null)
-                throw new ArgumentNullException("localeStringResource");
+			Guard.NotNull(resource, nameof(resource));
 
             // cache
-            this.GetResourceValues(localeStringResource.LanguageId).Remove(localeStringResource.ResourceName);
-
+			ClearCacheSegment(resource.ResourceName, resource.LanguageId);
+			
             // db
-            _lsrRepository.Delete(localeStringResource);
-
-            //event notification
-            _eventPublisher.EntityDeleted(localeStringResource);
+            _lsrRepository.Delete(resource);
         }
 
-		/// <summary>
-		/// Deletes all string resources with its key beginning with rootKey.
-		/// </summary>
-		/// <param name="key">e.g. Plugins.Import.Biz</param>
-		/// <returns>Number of deleted string resources</returns>
 		public virtual int DeleteLocaleStringResources(string key, bool keyIsRootKey = true) {
 			int result = 0;
+
 			if (key.HasValue()) 
             {
 				try 
                 {
-					string sqlDelete = "Delete From LocaleStringResource Where ResourceName Like '{0}%'".FormatWith(key.EndsWith(".") || !keyIsRootKey ? key : key + ".");
+					var sqlDelete = "Delete From LocaleStringResource Where ResourceName Like '{0}%'".FormatWith(key.EndsWith(".") || !keyIsRootKey ? key : key + ".");
 					result = _dbContext.ExecuteSqlCommand(sqlDelete);
 
-                    _cacheManager.RemoveByPattern(LOCALESTRINGRESOURCES_PATTERN_KEY);
+					ClearCacheSegment(key);
 				}
 				catch (Exception exc) 
                 {
 					exc.Dump();
 				}
 			}
+
 			return result;
 		}
 
-        /// <summary>
-        /// Gets a locale string resource
-        /// </summary>
-        /// <param name="localeStringResourceId">Locale string resource identifier</param>
-        /// <returns>Locale string resource</returns>
         public virtual LocaleStringResource GetLocaleStringResourceById(int localeStringResourceId)
         {
             if (localeStringResourceId == 0)
@@ -142,11 +97,6 @@ namespace SmartStore.Services.Localization
             return localeStringResource;
         }
 
-        /// <summary>
-        /// Gets a locale string resource
-        /// </summary>
-        /// <param name="resourceName">A string representing a resource name</param>
-        /// <returns>Locale string resource</returns>
         public virtual LocaleStringResource GetLocaleStringResourceByName(string resourceName)
         {
             if (_workContext.WorkingLanguage != null)
@@ -155,13 +105,6 @@ namespace SmartStore.Services.Localization
             return null;
         }
 
-        /// <summary>
-        /// Gets a locale string resource
-        /// </summary>
-        /// <param name="resourceName">A string representing a resource name</param>
-        /// <param name="languageId">Language identifier</param>
-        /// <param name="logIfNotFound">A value indicating whether to log error if locale string resource is not found</param>
-        /// <returns>Locale string resource</returns>
         public virtual LocaleStringResource GetLocaleStringResourceByName(string resourceName, int languageId, bool logIfNotFound = true)
         {
             var query = from lsr in _lsrRepository.Table
@@ -171,178 +114,140 @@ namespace SmartStore.Services.Localization
             var localeStringResource = query.FirstOrDefault();
 
             if (localeStringResource == null && logIfNotFound)
-                _logger.Warning(string.Format("Resource string ({0}) not found. Language ID = {1}", resourceName, languageId));
+                _logger.Warn(string.Format("Resource string ({0}) not found. Language ID = {1}", resourceName, languageId));
+
             return localeStringResource;
         }
 
-        /// <summary>
-        /// Gets all locale string resources by language identifier
-        /// </summary>
-        /// <param name="languageId">Language identifier</param>
-        /// <returns>Locale string resources</returns>
-        public virtual IList<LocaleStringResource> GetAllResources(int languageId)
+        public virtual IQueryable<LocaleStringResource> All(int languageId)
         {
-            var query = from l in _lsrRepository.Table
-                        orderby l.ResourceName
-                        where l.LanguageId == languageId
-                        select l;
-            var locales = query.ToList();
-            return locales;
+            var query = from lsr in _lsrRepository.Table
+                        orderby lsr.ResourceName
+                        where lsr.LanguageId == languageId
+                        select lsr;
+
+			return query;
         }
 
-        /// <summary>
-        /// Inserts a locale string resource
-        /// </summary>
-        /// <param name="localeStringResource">Locale string resource</param>
-        public virtual void InsertLocaleStringResource(LocaleStringResource localeStringResource)
+		public virtual IList<LocaleStringResource> GetResourcesByPattern(string pattern, int languageId)
+		{
+			Guard.NotEmpty(pattern, nameof(pattern));
+
+			var query = from l in _lsrRepository.Table
+						where l.ResourceName.StartsWith(pattern) && l.LanguageId == languageId
+						select l;
+
+			var resources = query.ToList();
+			return resources;
+		}
+
+		public virtual void InsertLocaleStringResource(LocaleStringResource resource)
         {
-            if (localeStringResource == null)
-                throw new ArgumentNullException("localeStringResource");
-            
-            _lsrRepository.Insert(localeStringResource);
+			Guard.NotNull(resource, nameof(resource));
 
-            //// cache
-            var holder = this.GetResourceValues(localeStringResource.LanguageId) as ConcurrentDictionary<string, Tuple<int, string>>;
-            holder.TryAdd(
-                localeStringResource.ResourceName,
-                new Tuple<int, string>(localeStringResource.Id, localeStringResource.ResourceValue));
+            _lsrRepository.Insert(resource);
 
-            //event notification
-            _eventPublisher.EntityInserted(localeStringResource);
+			// cache
+			ClearCacheSegment(resource.ResourceName, resource.LanguageId);
         }
 
-        /// <summary>
-        /// Updates the locale string resource
-        /// </summary>
-        /// <param name="localeStringResource">Locale string resource</param>
-        public virtual void UpdateLocaleStringResource(LocaleStringResource localeStringResource)
+        public virtual void UpdateLocaleStringResource(LocaleStringResource resource)
         {
-            if (localeStringResource == null)
-                throw new ArgumentNullException("localeStringResource");
+			Guard.NotNull(resource, nameof(resource));
 
-            var modProps = _lsrRepository.GetModifiedProperties(localeStringResource);
-
-            _lsrRepository.Update(localeStringResource);
-
-            // cache (TODO)
-            var holder = this.GetResourceValues(localeStringResource.LanguageId);
+            // cache
             object origKey = null;
-            if (modProps.TryGetValue("ResourceName", out origKey))
-            {
-                holder.Remove((string)origKey);
-            }
-            else
-            {
-                holder.Remove(localeStringResource.ResourceName);
-            }
-            
-            var holder2 = holder as ConcurrentDictionary<string, Tuple<int, string>>;
-            holder2.TryAdd(
-                localeStringResource.ResourceName,
-                new Tuple<int, string>(localeStringResource.Id, localeStringResource.ResourceValue));
+			if (_dbContext.TryGetModifiedProperty(resource, "ResourceName", out origKey))
+			{
+				ClearCacheSegment((string)origKey, resource.LanguageId);
+			}
+			ClearCacheSegment(resource.ResourceName, resource.LanguageId);
 
-            // event notification
-            _eventPublisher.EntityUpdated(localeStringResource);
+			_lsrRepository.Update(resource);
         }
 
-        public virtual IDictionary<string, Tuple<int, string>> GetResourceValues(int languageId, bool forceAll = false)
+		protected virtual IDictionary<string, string> GetCacheSegment(string forKey, int languageId)
+		{
+			Guard.NotEmpty(forKey, nameof(forKey));
+
+			var segmentKey = GetSegmentKeyPart(forKey);
+			var cacheKey = BuildCacheSegmentKey(segmentKey, languageId);
+
+			return _cacheManager.Get(cacheKey, () => 
+			{
+				var resources = _lsrRepository.TableUntracked
+					.Where(x => x.ResourceName.StartsWith(segmentKey) && x.LanguageId == languageId)
+					//.OrderBy(x => x.ResourceName)
+					.ToList();
+
+				var dict = new Dictionary<string, string>(resources.Count);
+
+				foreach (var res in resources)
+				{
+					dict[res.ResourceName.ToLowerInvariant()] = res.ResourceValue;
+				}
+
+				return dict;
+			});
+		}
+
+		/// <summary>
+		/// Clears the cached resource segment from the cache
+		/// </summary>
+		/// <param name="forKey">The resource key for which a segment key should be created</param>
+		/// <param name="languageId">Language Id. If <c>null</c>, segments for all cached languages will be invalidated</param>
+		protected virtual void ClearCacheSegment(string forKey, int? languageId = null)
+		{
+			var segmentKey = GetSegmentKeyPart(forKey);
+
+			if (languageId.HasValue && languageId.Value > 0)
+			{
+				_cacheManager.Remove(BuildCacheSegmentKey(segmentKey, languageId.Value));
+			}
+			else
+			{
+				_cacheManager.RemoveByPattern(LOCALESTRINGRESOURCES_SEGMENT_PATTERN.FormatInvariant(segmentKey));
+			}
+		}
+
+        public virtual string GetResource(
+			string resourceKey, 
+			int languageId = 0, 
+			bool logIfNotFound = true, 
+			string defaultValue = "", 
+			bool returnEmptyIfNotFound = false)
         {
-            Action<ConcurrentDictionary<string, Tuple<int, string>>> loadAllAction = (d) =>
-            {
-				var query = from l in _lsrRepository.TableUntracked
-							orderby l.ResourceName
-							where l.LanguageId == languageId
-							select l;
-				var locales = query.ToList();
-
-                foreach (var locale in locales)
-                {
-                    var resourceName = locale.ResourceName.ToLowerInvariant();
-                    //if (!d.ContainsKey(resourceName))
-                    //{
-                        //d.TryAdd(resourceName, new Tuple<int, string>(locale.Id, locale.ResourceValue));
-                        d.AddOrUpdate(
-                            resourceName, 
-                            (k) => new Tuple<int, string>(locale.Id, locale.ResourceValue), 
-                            (k, v) => { d[k] = v; return v; });
-                    //}
-                }
-
-                // perf: add a dummy item indicating that data is fully loaded
-                d.TryAdd("!!___EOF___!!", new Tuple<int, string>(0, string.Empty));
-            };
-
-            string cacheKey = string.Format(LOCALESTRINGRESOURCES_ALL_KEY, languageId);
-            var dict = _cacheManager.Get(cacheKey, () => {
-                var result = new ConcurrentDictionary<string, Tuple<int, string>>(8, 2000, StringComparer.CurrentCultureIgnoreCase);
-                if (forceAll || _localizationSettings.LoadAllLocaleRecordsOnStartup)
-                {
-                    loadAllAction(result);
-                }
-                return result;
-            });
-
-            if (forceAll && !_localizationSettings.LoadAllLocaleRecordsOnStartup && !dict.ContainsKey("!!___EOF___!!"))
-            {
-                // In this case the resources MIGHT not be loaded completely
-                // from the DB, but cached already. So load all and enforce merge.
-                loadAllAction(dict);
-            }
-
-            return dict;
-        }
-
-
-        /// <summary>
-        /// Gets a resource string based on the specified ResourceKey property.
-        /// </summary>
-        /// <param name="resourceKey">A string representing a ResourceKey.</param>
-        /// <param name="languageId">Language identifier</param>
-        /// <param name="logIfNotFound">A value indicating whether to log error if locale string resource is not found</param>
-        /// <param name="defaultValue">Default value</param>
-        /// <param name="returnEmptyIfNotFound">A value indicating whether an empty string will be returned if a resource is not found and default value is set to empty string</param>
-        /// <returns>A string representing the requested resource string.</returns>
-        public virtual string GetResource(string resourceKey, int languageId = 0, bool logIfNotFound = true, string defaultValue = "", bool returnEmptyIfNotFound = false)
-        {
-            // codehint: sm-edit
             if (languageId <= 0)
             {
                 if (_workContext.WorkingLanguage == null)
-                    return defaultValue;
-
+				{
+					return defaultValue;
+				}
+                    
                 languageId = _workContext.WorkingLanguage.Id;
             }
             
-            string result = string.Empty;
-            if (resourceKey == null)
-                resourceKey = string.Empty;
-            resourceKey = resourceKey.Trim().ToLowerInvariant();
+            string result = string.Empty;    
 
-            var holder = this.GetResourceValues(languageId) as ConcurrentDictionary<string, Tuple<int, string>>;
+            resourceKey = resourceKey.EmptyNull().Trim().ToLowerInvariant();
 
-            Tuple<int, string> lsr = null;
-            try
+			var cachedSegment = GetCacheSegment(resourceKey, languageId);
+
+            if (!cachedSegment.TryGetValue(resourceKey, out result))
             {
-                lsr = holder.GetOrAdd(resourceKey, (x) =>
-                {
-                    var query = from l in _lsrRepository.Table
-                                where l.ResourceName == resourceKey && l.LanguageId == languageId
-                                select l;
-                    var res = query.FirstOrDefault();
-					if (res != null)	// codehint: sm-edit (null case)
-						return new Tuple<int, string>(res.Id, res.ResourceValue);
-					return null;
-                });
-            }
-            catch { }
-
-            if (lsr != null)
-                result = lsr.Item2;
-
-            if (String.IsNullOrEmpty(result))
-            {
-                if (logIfNotFound)
-                    _logger.Warning(string.Format("Resource string ({0}) is not found. Language ID = {1}", resourceKey, languageId));
+				if (logIfNotFound)
+				{
+					if (_notFoundLogCount < 50)
+					{
+						_logger.Warn(string.Format("Resource string ({0}) does not exist. Language ID = {1}", resourceKey, languageId));
+					}
+					else if (_notFoundLogCount == 50)
+					{
+						_logger.Warn("Too many language resources do not exist (> 50). Stopped logging missing resources to prevent performance drop.");
+					}
+					
+					_notFoundLogCount++;
+				}
                 
                 if (!String.IsNullOrEmpty(defaultValue))
                 {
@@ -350,23 +255,36 @@ namespace SmartStore.Services.Localization
                 }
                 else
                 {
-                    if (!returnEmptyIfNotFound)
-                        result = resourceKey;
+					// try fallback to default language
+					if (!_defaultLanguageId.HasValue)
+					{
+						_defaultLanguageId = _languageService.GetDefaultLanguageId();
+					}
+
+					var defaultLangId = _defaultLanguageId.Value;
+					if (defaultLangId > 0 && defaultLangId != languageId)
+					{
+						var fallbackResult = GetResource(resourceKey, defaultLangId, false, resourceKey);
+						if (fallbackResult != resourceKey)
+						{
+							result = fallbackResult;
+						}
+					}
+
+					if (!returnEmptyIfNotFound && result.IsEmpty())
+					{
+						result = resourceKey;
+					}
                 }
             }
 
             return result;
         }
 
-        /// <summary>
-        /// Export language resources to xml
-        /// </summary>
-        /// <param name="language">Language</param>
-        /// <returns>Result in XML format</returns>
         public virtual string ExportResourcesToXml(Language language)
         {
-            if (language == null)
-                throw new ArgumentNullException("language");
+			Guard.NotNull(language, nameof(language));
+
             var sb = new StringBuilder();
             var stringWriter = new StringWriter(sb);
             var xmlWriter = new XmlTextWriter(stringWriter);
@@ -374,31 +292,199 @@ namespace SmartStore.Services.Localization
             xmlWriter.WriteStartElement("Language");
             xmlWriter.WriteAttributeString("Name", language.Name);
 
-            var resources = GetAllResources(language.Id);
-            foreach (var resource in resources)
-            {
-                if (resource.IsFromPlugin.GetValueOrDefault() == false)
-                {
-                    xmlWriter.WriteStartElement("LocaleResource");
-                    xmlWriter.WriteAttributeString("Name", resource.ResourceName);
-                    xmlWriter.WriteElementString("Value", null, resource.ResourceValue);
-                    xmlWriter.WriteEndElement();
-                }
-            }
- 
+			using (var scope = new DbContextScope(forceNoTracking: true))
+			{
+				var resources = All(language.Id).ToList();
+				foreach (var resource in resources)
+				{
+					if (resource.IsFromPlugin.GetValueOrDefault() == false)
+					{
+						xmlWriter.WriteStartElement("LocaleResource");
+						xmlWriter.WriteAttributeString("Name", resource.ResourceName);
+						xmlWriter.WriteElementString("Value", null, resource.ResourceValue);
+						xmlWriter.WriteEndElement();
+					}
+				}
+			}
+
             xmlWriter.WriteEndElement();
             xmlWriter.WriteEndDocument();
             xmlWriter.Close();
             return stringWriter.ToString();
         }
 
-		/// <summary>
-		/// Import language resources from XML file
-		/// </summary>
-		/// <param name="language">Language</param>
-		/// <param name="xmlDocument">XML document</param>
-		/// <param name="rootKey">Prefix for resource key name</param>
-		public virtual void ImportResourcesFromXml(
+		public virtual void ImportPluginResourcesFromXml(
+			PluginDescriptor pluginDescriptor,
+			IList<LocaleStringResource> targetList = null,
+			bool updateTouchedResources = true,
+			IList<Language> filterLanguages = null)
+		{
+			var directory = new DirectoryInfo(Path.Combine(pluginDescriptor.Assembly.OriginalFile.Directory.FullName, "Localization"));
+
+			if (!directory.Exists)
+				return;
+
+			if (targetList == null && updateTouchedResources)
+			{
+				DeleteLocaleStringResources(pluginDescriptor.ResourceRootKey);
+			}
+
+			var unprocessedLanguages = new List<Language>();
+
+			var defaultLanguageId = _languageService.GetDefaultLanguageId();
+			var languages = filterLanguages ?? _languageService.GetAllLanguages(true);
+
+			string code = null;
+			foreach (var language in languages)
+			{
+				code = ImportPluginResourcesForLanguage(
+					language,
+					null,
+					directory,
+					pluginDescriptor.ResourceRootKey,
+					targetList,
+					updateTouchedResources,
+					false);
+
+				if (code == null)
+				{
+					unprocessedLanguages.Add(language);
+				}
+			}
+
+			if (filterLanguages == null && unprocessedLanguages.Count > 0)
+			{
+				// There were unprocessed languages (no corresponding resource file could be found).
+				// In order for GetResource() to be able to gracefully fallback to the default language's resources,
+				// we need to import resources for the current default language....
+				var processedLanguages = languages.Except(unprocessedLanguages).ToList();
+				if (!processedLanguages.Any(x => x.Id == defaultLanguageId))
+				{
+					// ...but only if no resource file could be mapped to the default language before,
+					// namely because in this case the following operation would be redundant.
+					var defaultLanguage = _languageService.GetLanguageById(_languageService.GetDefaultLanguageId());
+					if (defaultLanguage != null)
+					{
+						ImportPluginResourcesForLanguage(
+							defaultLanguage,
+							"en-us",
+							directory,
+							pluginDescriptor.ResourceRootKey,
+							targetList,
+							updateTouchedResources,
+							true);
+					}
+				}
+			}
+		}
+
+		private string ImportPluginResourcesForLanguage(
+			Language language,
+			string fileCode,
+			DirectoryInfo directory,
+			string resourceRootKey,
+			IList<LocaleStringResource> targetList,
+			bool updateTouchedResources,
+			bool canFallBackToAnyResourceFile)
+		{
+			var fileNamePattern = "resources.{0}.xml";
+
+			var codeCandidates = GetResourceFileCodeCandidates(
+				fileCode ?? language.LanguageCulture,
+				directory,
+				canFallBackToAnyResourceFile);
+
+			string path = null;
+			string code = null;
+
+			foreach (var candidate in codeCandidates)
+			{
+				var pathCandidate = Path.Combine(directory.FullName, fileNamePattern.FormatInvariant(candidate));
+				if (File.Exists(pathCandidate))
+				{
+					code = candidate;
+					path = pathCandidate;
+					break;
+				}
+			}
+
+			if (code != null)
+			{
+				var doc = new XmlDocument();
+
+				doc.Load(path);
+				doc = FlattenResourceFile(doc);
+
+				if (targetList == null)
+				{
+					ImportResourcesFromXml(language, doc, resourceRootKey, true, updateTouchedResources: updateTouchedResources);
+				}
+				else
+				{
+					var nodes = doc.SelectNodes(@"//Language/LocaleResource");
+					foreach (XmlNode node in nodes)
+					{
+						var valueNode = node.SelectSingleNode("Value");
+						var res = new LocaleStringResource
+						{
+							ResourceName = node.Attributes["Name"].InnerText.Trim(),
+							ResourceValue = (valueNode == null ? "" : valueNode.InnerText),
+							LanguageId = language.Id,
+							IsFromPlugin = true
+						};
+
+						if (res.ResourceName.HasValue())
+						{
+							targetList.Add(res);
+						}
+					}
+				}
+			}
+
+			return code;
+		}
+
+		private IEnumerable<string> GetResourceFileCodeCandidates(string code, DirectoryInfo directory, bool canFallBackToAnyResourceFile)
+		{
+			// exact match (de-DE)
+			yield return code;
+
+			// neutral culture (de)
+			var ci = CultureInfo.GetCultureInfo(code);
+			if (ci.Parent != null && !ci.IsNeutralCulture)
+			{
+				code = ci.Parent.Name;
+				yield return code;
+			}
+
+			var rgFileName = new Regex("^resources.(.+?).xml$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+			// any other region with same language (de-*)
+			foreach (var fi in directory.EnumerateFiles("resources.{0}-*.xml".FormatInvariant(code), SearchOption.TopDirectoryOnly))
+			{
+				code = rgFileName.Match(fi.Name).Groups[1].Value;
+				if (LocalizationHelper.IsValidCultureCode(code))
+				{
+					yield return code;
+					yield break;
+				}
+			}
+
+			if (canFallBackToAnyResourceFile)
+			{
+				foreach (var fi in directory.EnumerateFiles("resources.*.xml", SearchOption.TopDirectoryOnly))
+				{
+					code = rgFileName.Match(fi.Name).Groups[1].Value;
+					if (LocalizationHelper.IsValidCultureCode(code))
+					{
+						yield return code;
+						yield break;
+					}
+				}
+			}
+		}
+
+		public virtual int ImportResourcesFromXml(
             Language language, 
             XmlDocument xmlDocument, 
             string rootKey = null, 
@@ -406,174 +492,104 @@ namespace SmartStore.Services.Localization
             ImportModeFlags mode = ImportModeFlags.Insert | ImportModeFlags.Update,
             bool updateTouchedResources = false)
 		{            
-            var autoCommit = _lsrRepository.AutoCommitEnabled;
-            var validateOnSave = _lsrRepository.Context.ValidateOnSaveEnabled;
-            var autoDetectChanges = _lsrRepository.Context.AutoDetectChangesEnabled;
-            var proxyCreation = _lsrRepository.Context.ProxyCreationEnabled;
-
-            try
-            {
-                _lsrRepository.Context.ValidateOnSaveEnabled = false;
-                _lsrRepository.Context.AutoDetectChangesEnabled = false;
-                _lsrRepository.Context.ProxyCreationEnabled = false;
-
-                var toAdd = new List<LocaleStringResource>();
-                var toUpdate = new List<LocaleStringResource>();
-                var nodes = xmlDocument.SelectNodes(@"//Language/LocaleResource");
-
-                foreach (var xel in nodes.Cast<XmlElement>())
-                {
-
-                    string name = xel.GetAttribute("Name").TrimSafe();
-                    string value = "";
-                    var valueNode = xel.SelectSingleNode("Value");
-                    if (valueNode != null)
-                        value = valueNode.InnerText;
-
-                    if (String.IsNullOrEmpty(name))
-                        continue;
-
-                    if (rootKey.HasValue())
-                    {
-                        if (!xel.GetAttributeText("AppendRootKey").IsCaseInsensitiveEqual("false"))
-                            name = "{0}.{1}".FormatWith(rootKey, name);
-                    }
-
-                    // do not use "Insert"/"Update" methods because they clear cache
-                    // let's bulk insert
-                    var resource = language.LocaleStringResources.Where(x => x.ResourceName.Equals(name, StringComparison.InvariantCultureIgnoreCase)).FirstOrDefault();
-                    if (resource != null)
-                    {
-                        if (mode.IsSet<ImportModeFlags>(ImportModeFlags.Update))
-                        {
-                            if (updateTouchedResources || !resource.IsTouched.GetValueOrDefault())
-                            {
-                                resource.ResourceValue = value;
-                                resource.IsTouched = null;
-                                toUpdate.Add(resource);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (mode.IsSet<ImportModeFlags>(ImportModeFlags.Insert))
-                        {
-                            toAdd.Add(
-                                new LocaleStringResource()
-                                {
-                                    LanguageId = language.Id,
-                                    ResourceName = name,
-                                    ResourceValue = value,
-                                    IsFromPlugin = sourceIsPlugin
-                                });
-                        }
-                    }
-                }
-
-                _lsrRepository.AutoCommitEnabled = true;
-                _lsrRepository.InsertRange(toAdd, 500);
-                toAdd.Clear();
-
-                _lsrRepository.AutoCommitEnabled = false;
-                toUpdate.Each(x =>
-                {
-                    _lsrRepository.Update(x);
-                });
-                
-                _lsrRepository.Context.SaveChanges();
-                toUpdate.Clear();
-
-                //clear cache
-                _cacheManager.RemoveByPattern(LOCALESTRINGRESOURCES_PATTERN_KEY);
-            }
-            catch (Exception ex)
-            {
-                throw ex;
-            }
-            finally
-            {
-                _lsrRepository.AutoCommitEnabled = autoCommit;
-                _lsrRepository.Context.ValidateOnSaveEnabled = validateOnSave;
-                _lsrRepository.Context.AutoDetectChangesEnabled = autoDetectChanges;
-                _lsrRepository.Context.ProxyCreationEnabled = proxyCreation;
-            }
-
-		}
-
-		/// <summary>
-		/// Import plugin resources from xml files in plugin's localization directory.
-		/// </summary>
-		/// <param name="pluginDescriptor">Descriptor of the plugin</param>
-		/// <param name="forceToList">Load them into list rather than into database</param>
-		/// <param name="updateTouchedResources">Specifies whether user touched resources should also be updated</param>	
-		/// <param name="filterLanguages">Import only files for particular languages</param>
-		public virtual void ImportPluginResourcesFromXml(PluginDescriptor pluginDescriptor,
-			List<LocaleStringResource> forceToList = null, bool updateTouchedResources = true, IList<Language> filterLanguages = null)
-		{
-			string pluginDir = pluginDescriptor.OriginalAssemblyFile.Directory.FullName;
-			string localizationDir = Path.Combine(pluginDir, "Localization");
-
-			if (!System.IO.Directory.Exists(localizationDir))
-				return;
-
-			if (forceToList == null && updateTouchedResources)
-				DeleteLocaleStringResources(pluginDescriptor.ResourceRootKey);
-
-			var languages = _languageService.GetAllLanguages(true);
-			var doc = new XmlDocument();
-
-			foreach (var filePath in System.IO.Directory.EnumerateFiles(localizationDir, "*.xml"))
+			using (var scope = new DbContextScope(autoDetectChanges: false, proxyCreation: false, validateOnSave: false, autoCommit: false, forceNoTracking: true, hooksEnabled: false))
 			{
-				Match match = Regex.Match(Path.GetFileName(filePath), Regex.Escape("resources.") + "(.*?)" + Regex.Escape(".xml"));
-				string languageCode = match.Groups[1].Value;
+				var toAdd = new List<LocaleStringResource>();
+				var toUpdate = new List<LocaleStringResource>();
+				var nodes = xmlDocument.SelectNodes(@"//Language/LocaleResource");
 
-				Language language = languages.Where(l => l.LanguageCulture.IsCaseInsensitiveEqual(languageCode)).FirstOrDefault();
-				if (language != null)
-				{
-					language = _languageService.GetLanguageById(language.Id);
-				}
+				var resources = language.LocaleStringResources.ToDictionarySafe(x => x.ResourceName, StringComparer.OrdinalIgnoreCase);
 
-				if (languageCode.HasValue() && language != null)
+				LocaleStringResource resource;
+
+				foreach (var xel in nodes.Cast<XmlElement>())
 				{
-					if (filterLanguages != null && !filterLanguages.Any(x => x.Id == language.Id))
-					{
+					string name = xel.GetAttribute("Name").TrimSafe();
+					string value = "";
+					var valueNode = xel.SelectSingleNode("Value");
+					if (valueNode != null)
+						value = valueNode.InnerText;
+
+					if (String.IsNullOrEmpty(name))
 						continue;
+
+					if (rootKey.HasValue())
+					{
+						if (!xel.GetAttributeText("AppendRootKey").IsCaseInsensitiveEqual("false"))
+							name = "{0}.{1}".FormatWith(rootKey, name);
 					}
 
-					doc.Load(filePath);
-					doc = FlattenResourceFile(doc);
+					resource = null;
 
-					if (forceToList == null)
+					// do not use "Insert"/"Update" methods because they clear cache
+					// let's bulk insert
+					//var resource = language.LocaleStringResources.Where(x => x.ResourceName.Equals(name, StringComparison.InvariantCultureIgnoreCase)).FirstOrDefault();
+					if (resources.TryGetValue(name, out resource))
 					{
-						ImportResourcesFromXml(language, doc, pluginDescriptor.ResourceRootKey, true, updateTouchedResources: updateTouchedResources);
+						if (mode.HasFlag(ImportModeFlags.Update))
+						{
+							if (updateTouchedResources || !resource.IsTouched.GetValueOrDefault())
+							{
+								if (value != resource.ResourceValue)
+								{
+									resource.ResourceValue = value;
+									resource.IsTouched = null;
+									toUpdate.Add(resource);
+								}
+							}
+						}
 					}
 					else
 					{
-						var nodes = doc.SelectNodes(@"//Language/LocaleResource");
-						foreach (XmlNode node in nodes)
+						if (mode.HasFlag(ImportModeFlags.Insert))
 						{
-							var valueNode = node.SelectSingleNode("Value");
-							var res = new LocaleStringResource()
-							{
-								ResourceName = node.Attributes["Name"].InnerText.Trim(),
-								ResourceValue = (valueNode == null ? "" : valueNode.InnerText),
-								LanguageId = language.Id,
-								IsFromPlugin = true
-							};
-
-							if (res.ResourceName.HasValue())
-								forceToList.Add(res);
+							toAdd.Add(
+								new LocaleStringResource
+								{
+									LanguageId = language.Id,
+									ResourceName = name,
+									ResourceValue = value,
+									IsFromPlugin = sourceIsPlugin
+								});
 						}
 					}
 				}
+
+				//_lsrRepository.AutoCommitEnabled = true;
+
+				if (toAdd.Any() || toUpdate.Any())
+				{
+					var segmentKeys = new HashSet<string>();
+
+					toAdd.Each(x => segmentKeys.Add(GetSegmentKeyPart(x.ResourceName)));
+					toUpdate.Each(x => segmentKeys.Add(GetSegmentKeyPart(x.ResourceName)));
+
+					_lsrRepository.InsertRange(toAdd);
+					toAdd.Clear();
+
+					_lsrRepository.UpdateRange(toUpdate);
+					toUpdate.Clear();
+
+					int num = _lsrRepository.Context.SaveChanges();
+
+					// clear cache
+					foreach (var segmentKey in segmentKeys)
+					{
+						ClearCacheSegment(segmentKey, language.Id);
+					}
+
+					return num;
+				}
+
+				return 0;
 			}
 		}
 
         public virtual XmlDocument FlattenResourceFile(XmlDocument source)
         {
-            Guard.ArgumentNotNull(() => source);
+            Guard.NotNull(source, nameof(source));
 
-            if (!source.SelectNodes("//Children").HasItems())
+            if (source.SelectNodes("//Children").Count == 0)
             {
                 // the document contains absolutely NO nesting,
                 // so don't bother parsing.
@@ -667,12 +683,18 @@ namespace SmartStore.Services.Localization
             {
                 RecursivelySortChildrenResource(child);
             }
-
         }
 
-        #endregion
+		private string BuildCacheSegmentKey(string segment, int languageId)
+		{
+			return String.Format(LOCALESTRINGRESOURCES_SEGMENT_KEY, segment, languageId);
+		}
 
-        #region Classes
+		private string GetSegmentKeyPart(string forKey)
+		{
+			return forKey.Substring(0, Math.Min(forKey.Length, 3)).ToLowerInvariant();
+		}
+
 
         private class LocaleStringResourceParent : LocaleStringResource
         {
@@ -756,7 +778,5 @@ namespace SmartStore.Services.Localization
                 return _comparison((T)o1, (T)o2);
             }
         }
-
-        #endregion
     }
 }

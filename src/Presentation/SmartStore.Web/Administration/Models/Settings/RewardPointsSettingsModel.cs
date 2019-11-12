@@ -1,5 +1,7 @@
-﻿using FluentValidation.Attributes;
-using SmartStore.Admin.Validators.Settings;
+﻿using FluentValidation;
+using FluentValidation.Attributes;
+using SmartStore.Core.Domain.Orders;
+using SmartStore.Core.Localization;
 using SmartStore.Web.Framework;
 
 namespace SmartStore.Admin.Models.Settings
@@ -13,7 +15,10 @@ namespace SmartStore.Admin.Models.Settings
         [SmartResourceDisplayName("Admin.Configuration.Settings.RewardPoints.ExchangeRate")]
         public decimal ExchangeRate { get; set; }
 
-        [SmartResourceDisplayName("Admin.Configuration.Settings.RewardPoints.PointsForRegistration")]
+		[SmartResourceDisplayName("Admin.Configuration.Settings.RewardPoints.RoundDownRewardPoints")]
+		public bool RoundDownRewardPoints { get; set; }
+
+		[SmartResourceDisplayName("Admin.Configuration.Settings.RewardPoints.PointsForRegistration")]
         public int PointsForRegistration { get; set; }
 
 		[SmartResourceDisplayName("Admin.Configuration.Settings.RewardPoints.PointsForProductReview")]
@@ -22,14 +27,25 @@ namespace SmartStore.Admin.Models.Settings
         [SmartResourceDisplayName("Admin.Configuration.Settings.RewardPoints.PointsForPurchases_Amount")]
         public decimal PointsForPurchases_Amount { get; set; }
         public int PointsForPurchases_Points { get; set; }
-		public bool PointsForPurchases_OverrideForStore { get; set; }
 
         [SmartResourceDisplayName("Admin.Configuration.Settings.RewardPoints.PointsForPurchases_Awarded")]
-        public int PointsForPurchases_Awarded { get; set; }
+        public OrderStatus PointsForPurchases_Awarded { get; set; }
 
         [SmartResourceDisplayName("Admin.Configuration.Settings.RewardPoints.PointsForPurchases_Canceled")]
-		public int PointsForPurchases_Canceled { get; set; }
+		public OrderStatus PointsForPurchases_Canceled { get; set; }
 
         public string PrimaryStoreCurrencyCode { get; set; }
+    }
+
+    public partial class RewardPointsSettingsValidator : AbstractValidator<RewardPointsSettingsModel>
+    {
+        public RewardPointsSettingsValidator(Localizer T)
+        {
+            RuleFor(x => x.PointsForPurchases_Awarded).NotEqual(OrderStatus.Pending)
+                .WithMessage(T("Admin.Configuration.Settings.RewardPoints.PointsForPurchases_Awarded.Pending"));
+
+            RuleFor(x => x.PointsForPurchases_Canceled).NotEqual(OrderStatus.Pending)
+                .WithMessage(T("Admin.Configuration.Settings.RewardPoints.PointsForPurchases_Canceled.Pending"));
+        }
     }
 }

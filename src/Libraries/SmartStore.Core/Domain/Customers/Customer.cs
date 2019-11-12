@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Runtime.Serialization;
 using SmartStore.Core.Domain.Common;
@@ -20,7 +21,8 @@ namespace SmartStore.Core.Domain.Customers
         private ICollection<ShoppingCartItem> _shoppingCartItems;
         private ICollection<Order> _orders;
         private ICollection<RewardPointsHistory> _rewardPointsHistory;
-        private ICollection<ReturnRequest> _returnRequests;
+		private ICollection<WalletHistory> _walletHistory;
+		private ICollection<ReturnRequest> _returnRequests;
         private ICollection<Address> _addresses;
         private ICollection<ForumTopic> _forumTopics;
         private ICollection<ForumPost> _forumPosts;
@@ -103,6 +105,7 @@ namespace SmartStore.Core.Domain.Customers
         /// <summary>
         /// Gets or sets a value indicating whether the customer has been deleted
         /// </summary>
+		[Index]
         public bool Deleted { get; set; }
 
         /// <summary>
@@ -115,18 +118,19 @@ namespace SmartStore.Core.Domain.Customers
         /// Gets or sets the customer system name
         /// </summary>
 		[DataMember]
+		[Index]
 		public string SystemName { get; set; }
 
         /// <summary>
         /// Gets or sets the last IP address
         /// </summary>
-		[DataMember]
+		[DataMember, Index("IX_Customer_LastIpAddress")]
 		public string LastIpAddress { get; set; }
 
         /// <summary>
         /// Gets or sets the date and time of entity creation
         /// </summary>
-		[DataMember]
+		[DataMember, Index("IX_Customer_CreatedOn")]
 		public DateTime CreatedOnUtc { get; set; }
 
         /// <summary>
@@ -138,9 +142,56 @@ namespace SmartStore.Core.Domain.Customers
         /// <summary>
         /// Gets or sets the date and time of last activity
         /// </summary>
-		[DataMember]
+		[DataMember, Index("IX_Customer_LastActivity")]
 		public DateTime LastActivityDateUtc { get; set; }
-        
+
+		/// <summary>
+		/// For future use
+		/// </summary>
+		public string Salutation { get; set; }
+
+		[DataMember]
+		public string Title { get; set; }
+
+		[DataMember]
+		public string FirstName { get; set; }
+
+		[DataMember]
+		public string LastName { get; set; }
+
+		[DataMember, Index("IX_Customer_FullName")]
+		public string FullName { get; set; }
+
+		[DataMember, Index("IX_Customer_Company")]
+		public string Company { get; set; }
+
+		[DataMember, Index("IX_Customer_CustomerNumber")]
+		public string CustomerNumber { get; set; }
+
+		[DataMember, Index("IX_Customer_BirthDate")]
+		public DateTime? BirthDate { get; set; }
+
+        [DataMember]
+        public string Gender { get; set; }
+
+        [DataMember]
+        public int VatNumberStatusId { get; set; }
+
+        [DataMember]
+        public string TimeZoneId { get; set; }
+
+        [DataMember]
+        public int TaxDisplayTypeId { get; set; }
+
+        [DataMember]
+        public DateTime? LastForumVisit { get; set; }
+
+        [DataMember]
+        public string LastUserAgent { get; set; }
+
+        [DataMember]
+        public string LastUserDeviceType { get; set; }
+
         #region Navigation properties
 
         /// <summary>
@@ -161,13 +212,14 @@ namespace SmartStore.Core.Domain.Customers
             protected set { _customerContent = value; }
         }
 
-        /// <summary>
-        /// Gets or sets the customer roles
-        /// </summary>
-        public virtual ICollection<CustomerRole> CustomerRoles
+		/// <summary>
+		/// Gets or sets the customer roles
+		/// </summary>
+		[DataMember]
+		public virtual ICollection<CustomerRole> CustomerRoles
         {
 			get { return _customerRoles ?? (_customerRoles = new HashSet<CustomerRole>()); }
-            protected set { _customerRoles = value; }
+            protected internal set { _customerRoles = value; }
         }
 
         /// <summary>
@@ -186,7 +238,7 @@ namespace SmartStore.Core.Domain.Customers
 		public virtual ICollection<Order> Orders
         {
 			get { return _orders ?? (_orders = new HashSet<Order>()); }
-            protected set { _orders = value; }            
+            protected internal set { _orders = value; }            
         }
 
         /// <summary>
@@ -197,6 +249,21 @@ namespace SmartStore.Core.Domain.Customers
 			get { return _rewardPointsHistory ?? (_rewardPointsHistory = new HashSet<RewardPointsHistory>()); }
             protected set { _rewardPointsHistory = value; }            
         }
+
+		/// <summary>
+		/// Gets or sets the wallet history.
+		/// </summary>
+		public virtual ICollection<WalletHistory> WalletHistory
+		{
+			get
+			{
+				return _walletHistory ?? (_walletHistory = new HashSet<WalletHistory>());
+			}
+			protected set
+			{
+				_walletHistory = value;
+			}
+		}
 
         /// <summary>
         /// Gets or sets return request of this customer
@@ -247,56 +314,66 @@ namespace SmartStore.Core.Domain.Customers
 			get { return _forumPosts ?? (_forumPosts = new HashSet<ForumPost>()); }
             protected set { _forumPosts = value; }
         }
-        
-        #endregion
 
-        #region Addresses
+		#endregion
 
-        public virtual void RemoveAddress(Address address)
-        {
-            if (this.Addresses.Contains(address))
-            {
-                if (this.BillingAddress == address) this.BillingAddress = null;
-                if (this.ShippingAddress == address) this.ShippingAddress = null;
+		#region Utils
 
-                this.Addresses.Remove(address);
-            }
-        }
 
-        #endregion
+		/// <summary>
+		/// Gets a string identifier for the customer's roles by joining all role ids
+		/// </summary>
+		/// <param name="onlyActiveCustomerRoles"><c>true</c> ignores all inactive roles</param>
+		/// <returns>The identifier</returns>
+		public string GetRolesIdent(bool onlyActiveCustomerRoles = true)
+		{
+			return string.Join(",", this.CustomerRoles.Where(x => !onlyActiveCustomerRoles || x.Active).Select(x => x.Id));
+		}
 
-        #region Reward points
+		public virtual void RemoveAddress(Address address)
+		{
+			if (this.Addresses.Contains(address))
+			{
+				if (this.BillingAddress == address) this.BillingAddress = null;
+				if (this.ShippingAddress == address) this.ShippingAddress = null;
 
-        public void AddRewardPointsHistoryEntry(int points, string message = "",
-            Order usedWithOrder = null, decimal usedAmount = 0M)
-        {
-            int newPointsBalance = this.GetRewardPointsBalance() + points;
+				this.Addresses.Remove(address);
+			}
+		}
 
-            var rewardPointsHistory = new RewardPointsHistory()
-            {
-                Customer = this,
-                UsedWithOrder = usedWithOrder,
-                Points = points,
-                PointsBalance = newPointsBalance,
-                UsedAmount = usedAmount,
-                Message = message,
-                CreatedOnUtc = DateTime.UtcNow
-            };
+		public void AddRewardPointsHistoryEntry(
+			int points, 
+			string message = "",
+			Order usedWithOrder = null, 
+			decimal usedAmount = 0M)
+		{
+			int newPointsBalance = this.GetRewardPointsBalance() + points;
 
-            this.RewardPointsHistory.Add(rewardPointsHistory);
-        }
+			var rewardPointsHistory = new RewardPointsHistory()
+			{
+				Customer = this,
+				UsedWithOrder = usedWithOrder,
+				Points = points,
+				PointsBalance = newPointsBalance,
+				UsedAmount = usedAmount,
+				Message = message,
+				CreatedOnUtc = DateTime.UtcNow
+			};
 
-        /// <summary>
-        /// Gets reward points balance
-        /// </summary>
-        public int GetRewardPointsBalance()
-        {
-            int result = 0;
-            if (this.RewardPointsHistory.Count > 0)
-                result = this.RewardPointsHistory.OrderByDescending(rph => rph.CreatedOnUtc).ThenByDescending(rph => rph.Id).FirstOrDefault().PointsBalance;
-            return result;
-        }
+			this.RewardPointsHistory.Add(rewardPointsHistory);
+		}
 
-        #endregion
-    }
+		/// <summary>
+		/// Gets reward points balance
+		/// </summary>
+		public int GetRewardPointsBalance()
+		{
+			int result = 0;
+			if (this.RewardPointsHistory.Count > 0)
+				result = this.RewardPointsHistory.OrderByDescending(rph => rph.CreatedOnUtc).ThenByDescending(rph => rph.Id).FirstOrDefault().PointsBalance;
+			return result;
+		}
+
+		#endregion
+	}
 }

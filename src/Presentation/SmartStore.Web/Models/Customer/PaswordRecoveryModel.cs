@@ -1,8 +1,9 @@
-﻿using System.Web.Mvc;
+﻿using FluentValidation;
 using FluentValidation.Attributes;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
-using SmartStore.Web.Validators.Customer;
+using SmartStore.Web.Framework.Modelling;
+using System.ComponentModel.DataAnnotations;
+using System.Web.Mvc;
 
 namespace SmartStore.Web.Models.Customer
 {
@@ -11,8 +12,26 @@ namespace SmartStore.Web.Models.Customer
     {
         [AllowHtml]
         [SmartResourceDisplayName("Account.PasswordRecovery.Email")]
-        public string Email { get; set; }
+		[DataType(DataType.EmailAddress)]
+		public string Email { get; set; }
 
-        public string Result { get; set; }
+        public string ResultMessage { get; set; }
+
+        public PasswordRecoveryResultState ResultState { get; set; }
+    }
+
+    public enum PasswordRecoveryResultState
+    {
+        Success,
+        Error
+    }
+
+    public class PasswordRecoveryValidator : AbstractValidator<PasswordRecoveryModel>
+    {
+        public PasswordRecoveryValidator()
+        {
+            RuleFor(x => x.Email).NotEmpty();
+            RuleFor(x => x.Email).EmailAddress();
+        }
     }
 }

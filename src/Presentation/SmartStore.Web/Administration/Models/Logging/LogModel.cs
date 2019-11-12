@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Web.Mvc;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Logging
 {
@@ -37,16 +37,19 @@ namespace SmartStore.Admin.Models.Logging
         [AllowHtml]
         public string ReferrerUrl { get; set; }
 
-        [SmartResourceDisplayName("Admin.System.Log.Fields.CreatedOn")]
+        [SmartResourceDisplayName("Common.CreatedOn")]
         public DateTime CreatedOn { get; set; }
 
-		[SmartResourceDisplayName("Admin.System.Log.Fields.UpdatedOn")]
-		public DateTime? UpdatedOn { get; set; }
+		[SmartResourceDisplayName("Admin.System.Log.Fields.Logger")]
+		public string Logger { get; set; }
 
-		[SmartResourceDisplayName("Admin.System.Log.Fields.Frequency")]
-		public int Frequency { get; set; }
+		[SmartResourceDisplayName("Admin.System.Log.Fields.Logger")]
+		public string LoggerShort { get; set; }
 
-		[SmartResourceDisplayName("Admin.System.Log.Fields.ContentHash")]
-		public string ContentHash { get; set; }
+		[SmartResourceDisplayName("Admin.System.Log.Fields.HttpMethod")]
+		public string HttpMethod { get; set; }
+
+		[SmartResourceDisplayName("Admin.System.Log.Fields.UserName")]
+		public string UserName { get; set; }
     }
 }

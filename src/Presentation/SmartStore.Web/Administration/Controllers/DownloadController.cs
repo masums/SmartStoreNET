@@ -1,28 +1,33 @@
 ﻿using System;
-using System.IO;
-using System.Web;
 using System.Web.Mvc;
 using SmartStore.Core.Domain.Media;
+using SmartStore.Core.Security;
 using SmartStore.Services.Media;
 using SmartStore.Web.Framework.Controllers;
+using SmartStore.Web.Framework.Security;
 
 namespace SmartStore.Admin.Controllers
 {
-    [AdminAuthorize]
+	[AdminAuthorize]
     public class DownloadController : AdminControllerBase
     {
-        private readonly IDownloadService _downloadService;
+		private const string DOWNLOAD_TEMPLATE = "~/Administration/Views/Shared/EditorTemplates/Download.cshtml";
+		
+		private readonly IDownloadService _downloadService;
 
         public DownloadController(IDownloadService downloadService)
         {
-            this._downloadService = downloadService;
+            _downloadService = downloadService;
         }
 
+        #region Download
+
+        [Permission(Permissions.Media.Download.Read)]
         public ActionResult DownloadFile(int downloadId)
         {
             var download = _downloadService.GetDownloadById(downloadId);
             if (download == null)
-                return Content("No download record found with the specified id");
+                return Content(T("Common.Download.NoDataAvailable"));
 
             if (download.UseDownloadUrl)
             {
@@ -30,90 +35,137 @@ namespace SmartStore.Admin.Controllers
             }
             else
             {
-                //use stored data
-                if (download.DownloadBinary == null)
-                    return Content(string.Format("Download data is not available any more. Download ID={0}", downloadId));
+				//use stored data
+				var data = _downloadService.LoadDownloadBinary(download);
 
-                string fileName = !String.IsNullOrWhiteSpace(download.Filename) ? download.Filename : downloadId.ToString();
-                string contentType = !String.IsNullOrWhiteSpace(download.ContentType) ? download.ContentType : "application/octet-stream";
-                return new FileContentResult(download.DownloadBinary, contentType) { FileDownloadName = fileName + download.Extension };
+				if (data == null || data.LongLength == 0)
+					return Content(T("Common.Download.NoDataAvailable"));
+
+				var fileName = (download.Filename.HasValue() ? download.Filename : downloadId.ToString());
+				var contentType = (download.ContentType.HasValue() ? download.ContentType : "application/octet-stream");
+
+                return new FileContentResult(data, contentType)
+				{
+					FileDownloadName = fileName + download.Extension
+				};
             }
-
         }
 
         [HttpPost]
         [ValidateInput(false)]
-        public ActionResult SaveDownloadUrl(string downloadUrl)
+        [Permission(Permissions.Media.Download.Create)]
+        public ActionResult SaveDownloadUrl(string downloadUrl, bool minimalMode = false, string fieldName = null, int entityId = 0, string entityName = "")
         {
-            //insert
-            var download = new Download()
-            {
-                DownloadGuid = Guid.NewGuid(),
-                UseDownloadUrl = true,
-                DownloadUrl = downloadUrl,
-                IsNew = true
-              };
-            _downloadService.InsertDownload(download);
+			var download = new Download
+			{
+                EntityId = entityId,
+                EntityName = entityName,
+				DownloadGuid = Guid.NewGuid(),
+				UseDownloadUrl = true,
+				DownloadUrl = downloadUrl,
+				IsNew = true,
+				IsTransient = true,
+				UpdatedOnUtc = DateTime.UtcNow
+			};
 
-            return Json(new { downloadId = download.Id }, JsonRequestBehavior.AllowGet);
+            _downloadService.InsertDownload(download, null);
+
+			return Json(new
+			{
+				success = true,
+				downloadId = download.Id,
+				html = this.RenderPartialViewToString(DOWNLOAD_TEMPLATE, download.Id, new { minimalMode = minimalMode, fieldName = fieldName })
+			}, JsonRequestBehavior.AllowGet);
         }
 
         [HttpPost]
-        public ActionResult AsyncUpload()
+        [Permission(Permissions.Media.Download.Create)]
+        public ActionResult AsyncUpload(bool minimalMode = false, string fieldName = null, int entityId = 0, string entityName = "")
         {
-            //we process it distinct ways based on a browser
-            //find more info here http://stackoverflow.com/questions/4884920/mvc3-valums-ajax-file-upload
-            Stream stream = null;
-            var fileName = "";
-            var contentType = "";
-            if (String.IsNullOrEmpty(Request["qqfile"]))
-            {
-                // IE
-                HttpPostedFileBase httpPostedFile = Request.Files[0];
-                if (httpPostedFile == null)
-                    throw new ArgumentException("No file uploaded");
-                stream = httpPostedFile.InputStream;
-                fileName = Path.GetFileName(httpPostedFile.FileName);
-                contentType = httpPostedFile.ContentType;
-            }
-            else
-            {
-                //Webkit, Mozilla
-                stream = Request.InputStream;
-                fileName = Request["qqfile"];
-            }
+			var postedFile = Request.ToPostedFileResult();
+			if (postedFile == null)
+			{
+				throw new ArgumentException(T("Common.NoFileUploaded"));
+			}
 
-            var fileBinary = new byte[stream.Length];
-            stream.Read(fileBinary, 0, fileBinary.Length);
-
-            var fileExtension = Path.GetExtension(fileName);
-            if (!String.IsNullOrEmpty(fileExtension))
-                fileExtension = fileExtension.ToLowerInvariant();
-
-            var download = new Download()
+            var download = new Download
             {
+                EntityId = entityId,
+                EntityName = entityName,
                 DownloadGuid = Guid.NewGuid(),
                 UseDownloadUrl = false,
                 DownloadUrl = "",
-                DownloadBinary = fileBinary,
-                ContentType = contentType,
-                //we store filename without extension for downloads
-                Filename = Path.GetFileNameWithoutExtension(fileName),
-                Extension = fileExtension,
-                IsNew = true
+				ContentType = postedFile.ContentType,
+                // we store filename without extension for downloads
+                Filename = postedFile.FileTitle,
+                Extension = postedFile.FileExtension,
+                IsNew = true,
+				IsTransient = true,
+				UpdatedOnUtc = DateTime.UtcNow
             };
-            _downloadService.InsertDownload(download);
 
-            //when returning JSON the mime-type must be set to text/plain
-            //otherwise some browsers will pop-up a "Save As" dialog.
+            _downloadService.InsertDownload(download, postedFile.Buffer);
+
             return Json(new 
             { 
                 success = true, 
-                downloadId = download.Id,
-                fileName = download.Filename + download.Extension,
-                downloadUrl = Url.Action("DownloadFile", new { downloadId = download.Id }) 
-            },
-            "text/plain");
+				downloadId = download.Id,
+				html = this.RenderPartialViewToString(DOWNLOAD_TEMPLATE, download.Id, new { minimalMode = minimalMode, fieldName = fieldName, entityId = entityId, entityName = entityName })
+            });
         }
+
+        [HttpPost]
+        [ValidateInput(false)]
+        [Permission(Permissions.Media.Download.Update)]
+        public ActionResult AddChangelog(int downloadId, string changelogText)
+        {
+            var success = false;
+
+            var download = _downloadService.GetDownloadById(downloadId);
+            if (download != null)
+            {
+                download.Changelog = changelogText;
+                _downloadService.UpdateDownload(download);
+                success = true;
+            }
+            
+            return Json(new { success });
+        }
+
+        [HttpPost]
+        [Permission(Permissions.Media.Download.Read)]
+        public ActionResult GetChangelogText(int downloadId)
+        {
+            var success = false;
+            var changeLogText = string.Empty;
+
+            var download = _downloadService.GetDownloadById(downloadId);
+            if (download != null)
+            {
+                changeLogText = download.Changelog;
+                success = true;
+            }
+
+            return Json(new
+            {
+                success,
+                changelog = changeLogText
+            });
+        }
+
+        [HttpPost]
+        [Permission(Permissions.Media.Download.Delete)]
+        public ActionResult DeleteDownload(bool minimalMode = false, string fieldName = null)
+		{
+			// We don't actually delete here. We just return the editor in it's init state.
+			// So the download entity can be set to transient state and deleted later by a scheduled task.
+			return Json(new
+			{
+				success = true,
+				html = this.RenderPartialViewToString(DOWNLOAD_TEMPLATE, null, new { minimalMode, fieldName }),
+			});
+		}
+
+        #endregion
     }
 }

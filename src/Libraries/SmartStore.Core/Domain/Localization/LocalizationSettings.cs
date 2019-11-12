@@ -22,11 +22,6 @@ namespace SmartStore.Core.Domain.Localization
         public bool UseImagesForLanguageSelection { get; set; }
 
         /// <summary>
-        /// A value indicating whether to load all records on application startup
-        /// </summary>
-        public bool LoadAllLocaleRecordsOnStartup { get; set; }
-
-        /// <summary>
         /// A value indicating whether the browser user lannguage should be detected
         /// </summary>
         public bool DetectBrowserUserLanguage { get; set; }

@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Web.Mvc;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.News
 {
@@ -9,6 +9,7 @@ namespace SmartStore.Admin.Models.News
     {
         [SmartResourceDisplayName("Admin.ContentManagement.News.Comments.Fields.NewsItem")]
         public int NewsItemId { get; set; }
+
         [SmartResourceDisplayName("Admin.ContentManagement.News.Comments.Fields.NewsItem")]
         [AllowHtml]
         public string NewsItemTitle { get; set; }
@@ -28,7 +29,7 @@ namespace SmartStore.Admin.Models.News
         [SmartResourceDisplayName("Admin.ContentManagement.News.Comments.Fields.CommentText")]
         public string CommentText { get; set; }
 
-        [SmartResourceDisplayName("Admin.ContentManagement.News.Comments.Fields.CreatedOn")]
+        [SmartResourceDisplayName("Common.CreatedOn")]
         public DateTime CreatedOn { get; set; }
 
     }

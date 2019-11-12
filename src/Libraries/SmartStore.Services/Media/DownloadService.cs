@@ -1,50 +1,55 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using NuGet;
+using SmartStore.Collections;
+using SmartStore.Core;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Media;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Payments;
 using SmartStore.Core.Events;
+using SmartStore.Core.Plugins;
+using SmartStore.Services.Configuration;
+using SmartStore.Services.Media.Storage;
 
 namespace SmartStore.Services.Media
 {
-    /// <summary>
-    /// Download service
-    /// </summary>
     public partial class DownloadService : IDownloadService
     {
-        #region Fields
-
         private readonly IRepository<Download> _downloadRepository;
         private readonly IEventPublisher _eventPubisher;
+		private readonly Provider<IMediaStorageProvider> _storageProvider;
 
-        #endregion
-
-        #region Ctor
-
-        /// <summary>
-        /// Ctor
-        /// </summary>
-        /// <param name="downloadRepository">Download repository</param>
-        /// <param name="eventPubisher"></param>
-        public DownloadService(IRepository<Download> downloadRepository,
-            IEventPublisher eventPubisher)
+		public DownloadService(
+			IRepository<Download> downloadRepository,
+			IEventPublisher eventPubisher,
+			ISettingService settingService,
+			IProviderManager providerManager)
         {
             _downloadRepository = downloadRepository;
             _eventPubisher = eventPubisher;
-        }
 
-        #endregion
+			var systemName = settingService.GetSettingByKey("Media.Storage.Provider", DatabaseMediaStorageProvider.SystemName);
 
-        #region Methods
+			_storageProvider = providerManager.GetProvider<IMediaStorageProvider>(systemName);
+		}
 
-        /// <summary>
-        /// Gets a download
-        /// </summary>
-        /// <param name="downloadId">Download identifier</param>
-        /// <returns>Download</returns>
-        public virtual Download GetDownloadById(int downloadId)
+		private void UpdateDownloadCore(Download download, byte[] downloadBinary, bool updateDataStorage)
+		{
+			download.UpdatedOnUtc = DateTime.UtcNow;
+
+			_downloadRepository.Update(download);
+
+			if (updateDataStorage)
+			{
+				// save to storage
+				_storageProvider.Value.Save(download.ToMedia(), downloadBinary);
+			}
+		}
+
+		public virtual Download GetDownloadById(int downloadId)
         {
             if (downloadId == 0)
                 return null;
@@ -53,11 +58,82 @@ namespace SmartStore.Services.Media
             return download;
         }
 
-        /// <summary>
-        /// Gets a download by GUID
-        /// </summary>
-        /// <param name="downloadGuid">Download GUID</param>
-        /// <returns>Download</returns>
+		public virtual IList<Download> GetDownloadsByIds(int[] downloadIds)
+		{
+			if (downloadIds == null || downloadIds.Length == 0)
+				return new List<Download>();
+
+			var query = from dl in _downloadRepository.Table
+						where downloadIds.Contains(dl.Id)
+						select dl;
+
+			var downloads = query.ToList();
+
+			// sort by passed identifier sequence
+			return downloads.OrderBySequence(downloadIds).ToList();
+		}
+        
+		public virtual IList<Download> GetDownloadsFor<TEntity>(TEntity entity) where TEntity : BaseEntity
+		{
+			Guard.NotNull(entity, nameof(entity));
+
+			return GetDownloadsFor(entity.Id, entity.GetUnproxiedType().Name);
+		}
+
+		public virtual IList<Download> GetDownloadsFor(int entityId, string entityName)
+		{
+			if (entityId > 0)
+			{
+				var downloads = (from x in _downloadRepository.Table
+								 where x.EntityId == entityId && x.EntityName == entityName
+								 select x).ToList();
+
+				if (downloads.Any())
+				{
+					var idsOrderedByVersion = downloads
+						.Select(x => new { x.Id, Version = new SemanticVersion(x.FileVersion.HasValue() ? x.FileVersion : "1.0.0.0") })
+						.OrderBy(x => x.Version)
+						.Select(x => x.Id);
+
+					downloads = new List<Download>(downloads.OrderBySequence(idsOrderedByVersion));
+
+					return downloads;
+				}
+			}
+
+			return new List<Download>();
+		}
+
+        public virtual Download GetDownloadByVersion(int entityId, string entityName, string fileVersion)
+        {
+            if (entityId > 0 && fileVersion.HasValue() && entityName.HasValue())
+            {
+                var download = (from x in _downloadRepository.Table
+                                 where x.EntityId == entityId && x.EntityName.Equals(entityName) && x.FileVersion.Equals(fileVersion)
+                                 select x).FirstOrDefault();
+                
+                return download;
+            }
+
+            return null;
+        }
+
+        public virtual Multimap<int, Download> GetDownloadsByEntityIds(int[] entityIds, string entityName)
+        {
+            Guard.NotNull(entityIds, nameof(entityIds));
+            Guard.NotEmpty(entityName, nameof(entityName));
+
+            var query = _downloadRepository.TableUntracked
+                .Where(x => entityIds.Contains(x.EntityId) && x.EntityName == entityName)
+				.OrderBy(x => x.FileVersion);
+
+            var map = query
+                .ToList()
+                .ToMultimap(x => x.EntityId, x => x);
+
+            return map;
+        }
+
         public virtual Download GetDownloadByGuid(Guid downloadGuid)
         {
             if (downloadGuid == Guid.Empty)
@@ -70,54 +146,43 @@ namespace SmartStore.Services.Media
             return order;
         }
 
-        /// <summary>
-        /// Deletes a download
-        /// </summary>
-        /// <param name="download">Download</param>
         public virtual void DeleteDownload(Download download)
         {
-            if (download == null)
-                throw new ArgumentNullException("download");
+			Guard.NotNull(download, nameof(download));
 
-            _downloadRepository.Delete(download);
+			// delete from storage
+			_storageProvider.Value.Remove(download.ToMedia());
 
-            _eventPubisher.EntityDeleted(download);
+			// delete entity
+			_downloadRepository.Delete(download);
         }
 
-        /// <summary>
-        /// Inserts a download
-        /// </summary>
-        /// <param name="download">Download</param>
-        public virtual void InsertDownload(Download download)
+        public virtual void InsertDownload(Download download, byte[] downloadBinary)
         {
-            if (download == null)
-                throw new ArgumentNullException("download");
+			Guard.NotNull(download, nameof(download));
 
             _downloadRepository.Insert(download);
 
-            _eventPubisher.EntityInserted(download);
+			// save to storage
+			_storageProvider.Value.Save(download.ToMedia(), downloadBinary);
         }
 
-        /// <summary>
-        /// Updates the download
-        /// </summary>
-        /// <param name="download">Download</param>
-        public virtual void UpdateDownload(Download download)
+		public virtual void UpdateDownload(Download download)
+		{
+			Guard.NotNull(download, nameof(download));
+
+			// we use an overload because a byte array cannot be nullable
+			UpdateDownloadCore(download, null, false);
+		}
+
+		public virtual void UpdateDownload(Download download, byte[] downloadBinary)
         {
-            if (download == null)
-                throw new ArgumentNullException("download");
+			Guard.NotNull(download, nameof(download));
 
-            _downloadRepository.Update(download);
-
-            _eventPubisher.EntityUpdated(download);
+			UpdateDownloadCore(download, downloadBinary, true);
         }
 
-        /// <summary>
-        /// Gets a value indicating whether download is allowed
-        /// </summary>
-        /// <param name="orderItem">Order item to check</param>
-        /// <returns>True if download is allowed; otherwise, false.</returns>
-        public virtual bool IsDownloadAllowed(OrderItem orderItem)
+		public virtual bool IsDownloadAllowed(OrderItem orderItem)
         {
             if (orderItem == null)
                 return false;
@@ -182,11 +247,6 @@ namespace SmartStore.Services.Media
             return false;
         }
 
-        /// <summary>
-        /// Gets a value indicating whether license download is allowed
-        /// </summary>
-        /// <param name="orderItem">Order item to check</param>
-        /// <returns>True if license download is allowed; otherwise, false.</returns>
         public virtual bool IsLicenseDownloadAllowed(OrderItem orderItem)
         {
             if (orderItem == null)
@@ -197,6 +257,11 @@ namespace SmartStore.Services.Media
                 orderItem.LicenseDownloadId > 0;
         }
 
-        #endregion
-    }
+		public virtual byte[] LoadDownloadBinary(Download download)
+		{
+			Guard.NotNull(download, nameof(download));
+
+			return _storageProvider.Value.Load(download.ToMedia());
+		}
+	}
 }

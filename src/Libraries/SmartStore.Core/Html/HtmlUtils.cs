@@ -3,148 +3,143 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Web;
 using System.Linq;
+using AngleSharp;
+using AngleSharp.Parser.Html;
+using AngleSharp.Parser.Css;
+using System.Collections.Generic;
+using AngleSharp.Dom;
+using AngleSharp.Dom.Html;
+using Ganss.XSS;
+using SmartStore.Utilities.ObjectPools;
 
 namespace SmartStore.Core.Html
 {
     /// <summary>
-    /// Represents a HTML helper
+    /// Utility class for html manipulation or creation
     /// </summary>
     public partial class HtmlUtils
     {
-        #region Fields
-        private readonly static Regex paragraphStartRegex = new Regex("<p>", RegexOptions.IgnoreCase);
-        private readonly static Regex paragraphEndRegex = new Regex("</p>", RegexOptions.IgnoreCase);
-        //private static Regex ampRegex = new Regex("&(?!(?:#[0-9]{2,4};|[a-z0-9]+;))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+		private readonly static Regex _paragraphStartRegex = new Regex("<p>", RegexOptions.IgnoreCase);
+        private readonly static Regex _paragraphEndRegex = new Regex("</p>", RegexOptions.IgnoreCase);
+		//private static Regex ampRegex = new Regex("&(?!(?:#[0-9]{2,4};|[a-z0-9]+;))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        #endregion
+		/// <summary>
+		/// Formats the text
+		/// </summary>
+		/// <param name="text">Text</param>
+		/// <param name="stripTags">A value indicating whether to strip tags</param>
+		/// <param name="convertPlainTextToHtml">A value indicating whether HTML is allowed</param>
+		/// <param name="allowHtml">A value indicating whether HTML is allowed</param>
+		/// <param name="allowBBCode">A value indicating whether BBCode is allowed</param>
+		/// <param name="resolveLinks">A value indicating whether to resolve links</param>
+		/// <param name="addNoFollowTag">A value indicating whether to add "noFollow" tag</param>
+		/// <returns>Formatted text</returns>
+		[Obsolete("Use specific formatter methods instead, e.g. StripTags(), SanitizeHtml() etc.")]
+		public static string FormatText(
+			string text,
+			bool stripTags,
+			bool convertPlainTextToHtml,
+			bool allowHtml,
+			bool allowBBCode,
+			bool resolveLinks,
+			bool addNoFollowTag)
+		{
 
-        #region Utilities
+			if (String.IsNullOrEmpty(text))
+				return string.Empty;
 
-        private static string EnsureOnlyAllowedHtml(string text)
+			try
+			{
+				if (stripTags)
+				{
+					text = StripTags(text);
+				}
+
+				if (allowHtml)
+				{
+					text = SanitizeHtml(text);
+				}
+				else
+				{
+					text = HttpUtility.HtmlEncode(text);
+				}
+
+				if (convertPlainTextToHtml)
+				{
+					text = ConvertPlainTextToHtml(text);
+				}
+
+				if (allowBBCode)
+				{
+					text = BBCodeHelper.ToHtml(text, true, true, true, true, true, true);
+				}
+
+				if (resolveLinks)
+				{
+					text = ResolveLinksHelper.FormatText(text);
+				}
+
+				if (addNoFollowTag)
+				{
+					//add noFollow tag. not implemented
+				}
+			}
+			catch (Exception exc)
+			{
+				text = string.Format("Text cannot be formatted. Error: {0}", exc.Message);
+			}
+
+			return text;
+		}
+
+		public static string SanitizeHtml(string html, bool isFragment = true)
         {
-            if (String.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(html))
                 return string.Empty;
 
-            string allowedTags = "br,hr,b,i,u,a,div,ol,ul,li,blockquote,img,span,p,em,strong,font,pre,h1,h2,h3,h4,h5,h6,address,cite";
+			var sanitizer = new HtmlSanitizer();
 
-            var m = Regex.Matches(text, "<.*?>", RegexOptions.IgnoreCase);
-            for (int i = m.Count - 1; i >= 0; i--)
-            {
-                string tag = text.Substring(m[i].Index + 1, m[i].Length - 1).Trim().ToLower();
-
-                if (!IsValidTag(tag, allowedTags))
-                {
-                    text = text.Remove(m[i].Index, m[i].Length);
-                }
-            }
-
-            return text;
-        }
-
-        private static bool IsValidTag(string tag, string tags)
-        {
-            string[] allowedTags = tags.Split(',');
-            if (tag.IndexOf("javascript") >= 0) return false;
-            if (tag.IndexOf("vbscript") >= 0) return false;
-            if (tag.IndexOf("onclick") >= 0) return false;
-
-            var endchars = new char[] { ' ', '>', '/', '\t' };
-
-            int pos = tag.IndexOfAny(endchars, 1);
-            if (pos > 0) tag = tag.Substring(0, pos);
-            if (tag[0] == '/') tag = tag.Substring(1);
-
-            foreach (string aTag in allowedTags)
-            {
-                if (tag == aTag) return true;
-            }
-
-            return false;
-        }
-        #endregion
-
-        #region Methods
-        /// <summary>
-        /// Formats the text
-        /// </summary>
-        /// <param name="text">Text</param>
-        /// <param name="stripTags">A value indicating whether to strip tags</param>
-        /// <param name="convertPlainTextToHtml">A value indicating whether HTML is allowed</param>
-        /// <param name="allowHtml">A value indicating whether HTML is allowed</param>
-        /// <param name="allowBBCode">A value indicating whether BBCode is allowed</param>
-        /// <param name="resolveLinks">A value indicating whether to resolve links</param>
-        /// <param name="addNoFollowTag">A value indicating whether to add "noFollow" tag</param>
-        /// <returns>Formatted text</returns>
-        public static string FormatText(string text, bool stripTags,
-            bool convertPlainTextToHtml, bool allowHtml, 
-            bool allowBBCode, bool resolveLinks, bool addNoFollowTag)
-        {
-
-            if (String.IsNullOrEmpty(text))
-                return string.Empty;
-
-            try
-            {
-                if (stripTags)
-                {
-                    text = HtmlUtils.StripTags(text);
-                }
-
-                if (allowHtml)
-                {
-                    text = HtmlUtils.EnsureOnlyAllowedHtml(text);
-                }
-                else
-                {
-                    text = HttpUtility.HtmlEncode(text);
-                }
-
-                if (convertPlainTextToHtml)
-                {
-                    text = HtmlUtils.ConvertPlainTextToHtml(text);
-                }
-
-                if (allowBBCode)
-                {
-                    text = BBCodeHelper.FormatText(text, true, true, true, true, true, true);
-                }
-
-                if (resolveLinks)
-                {
-                    text = ResolveLinksHelper.FormatText(text);
-                }
-
-                if (addNoFollowTag)
-                {
-                    //add noFollow tag. not implemented
-                }
-            }
-            catch (Exception exc)
-            {
-                text = string.Format("Text cannot be formatted. Error: {0}", exc.Message);
-            }
-            return text;
+			if (isFragment)
+			{
+				return sanitizer.Sanitize(html);
+			}
+			else
+			{
+				return sanitizer.SanitizeDocument(html);
+			}
         }
         
         /// <summary>
         /// Strips tags
         /// </summary>
-        /// <param name="text">Text</param>
+        /// <param name="html">Text</param>
         /// <returns>Formatted text</returns>
-        public static string StripTags(string text)
+        public static string StripTags(string html)
         {
-            if (String.IsNullOrEmpty(text))
-                return string.Empty;
+			if (html.IsEmpty())
+				return string.Empty;
 
-            text = Regex.Replace(text, @"(>)(\r|\n)*(<)", "><");
-            text = Regex.Replace(text, "(<[^>]*>)([^<]*)", "$2");
-            text = Regex.Replace(text, "(&#x?[0-9]{2,4};|&quot;|&amp;|&nbsp;|&lt;|&gt;|&euro;|&copy;|&reg;|&permil;|&Dagger;|&dagger;|&lsaquo;|&rsaquo;|&bdquo;|&rdquo;|&ldquo;|&sbquo;|&rsquo;|&lsquo;|&mdash;|&ndash;|&rlm;|&lrm;|&zwj;|&zwnj;|&thinsp;|&emsp;|&ensp;|&tilde;|&circ;|&Yuml;|&scaron;|&Scaron;)", "@");
+			var ignoreTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "script", "style", "svg", "img" };
+			var parser = new HtmlParser();
+			var doc = parser.Parse(html);
 
-            return text;
-        }
+			List<IElement> removeElements = new List<IElement>();
+
+			foreach (var ignoreTag in ignoreTags)
+			{
+				removeElements.AddRange(doc.QuerySelectorAll(ignoreTag));
+			}
+
+			foreach (var el in removeElements)
+			{
+				el.Remove();
+			}
+
+			return doc.Body.TextContent;
+		}
 
         /// <summary>
-        /// replace anchor text (remove a tag from the following url <a href="http://example.com">Name</a> and output only the string "Name")
+        /// Replace anchor text (remove a tag from the following url <a href="http://example.com">Name</a> and output only the string "Name")
         /// </summary>
         /// <param name="text">Text</param>
         /// <returns>Text</returns>
@@ -164,7 +159,7 @@ namespace SmartStore.Core.Html
         /// <returns>Formatted text</returns>
         public static string ConvertPlainTextToHtml(string text)
         {
-            if (String.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(text))
                 return string.Empty;
 
             text = text.Replace("\r\n", "<br />");
@@ -183,8 +178,7 @@ namespace SmartStore.Core.Html
         /// <param name="decode">A value indicating whether to decode text</param>
         /// <param name="replaceAnchorTags">A value indicating whether to replace anchor text (remove a tag from the following url <a href="http://example.com">Name</a> and output only the string "Name")</param>
         /// <returns>Formatted text</returns>
-        public static string ConvertHtmlToPlainText(string text,
-            bool decode = false, bool replaceAnchorTags = false)
+        public static string ConvertHtmlToPlainText(string text, bool decode = false, bool replaceAnchorTags = false)
         {
             if (String.IsNullOrEmpty(text))
                 return string.Empty;
@@ -208,7 +202,6 @@ namespace SmartStore.Core.Html
         /// Converts an attribute string spec to a html table putting each new line in a TR and each attr name/value in a TD.
         /// </summary>
         /// <param name="text">The text to convert</param>
-        /// <param name="htmlEncode">A value indicating whether to encode (HTML) values</param>
         /// <returns>The formatted (html) string</returns>
         public static string ConvertPlainTextToTable(string text, string tableCssClass = null)
         {
@@ -225,7 +218,8 @@ namespace SmartStore.Core.Html
                 return string.Empty;
             }
 
-            var builder = new StringBuilder();
+            var psb = PooledStringBuilder.Rent();
+            var builder = (StringBuilder)psb;
 
             builder.AppendFormat("<table{0}>", tableCssClass.HasValue() ? "class='" + tableCssClass + "'" : "");
 
@@ -250,7 +244,7 @@ namespace SmartStore.Core.Html
 
             builder.Append("</table>");
 
-            return builder.ToString();
+            return psb.ToStringAndReturn();
         }
 
         /// <summary>
@@ -263,8 +257,8 @@ namespace SmartStore.Core.Html
             if (String.IsNullOrEmpty(text))
                 return string.Empty;
 
-            text = paragraphStartRegex.Replace(text, string.Empty);
-            text = paragraphEndRegex.Replace(text, "\n");
+            text = _paragraphStartRegex.Replace(text, string.Empty);
+            text = _paragraphEndRegex.Replace(text, "\n");
             text = text.Replace("\r\n", "\n").Replace("\r", "\n");
             text = text + "\n\n";
             text = text.Replace("\n\n", "\n");
@@ -277,8 +271,39 @@ namespace SmartStore.Core.Html
                     builder.AppendFormat("<p>{0}</p>\n", str);
                 }
             }
+
             return builder.ToString();
         }
-        #endregion
+
+		/// <summary>
+		/// Converts all occurences of pixel-based inline font-size expression to relative 'em'
+		/// </summary>
+		/// <param name="html"></param>
+		/// <param name="baseFontSizePx"></param>
+		/// <returns></returns>
+		public static string RelativizeFontSizes(string html, int baseFontSizePx = 16)
+		{
+			Guard.NotEmpty(html, nameof(html));
+			Guard.IsPositive(baseFontSizePx, nameof(baseFontSizePx));
+
+			var parser = new HtmlParser(new AngleSharp.Configuration().WithCss());
+			var doc = parser.Parse(html);
+
+			var nodes = doc.QuerySelectorAll("*[style]");
+			foreach (var node in nodes)
+			{
+				if (node.Style.FontSize is string s && s.EndsWith("px"))
+				{
+					var size = s.Substring(0, s.Length - 2).Convert<double>();
+					if (size > 0)
+					{
+						//node.Style.FontSize = Math.Round(((double)size / (double)baseFontSizePx), 4) + "em";
+						node.Style.FontSize = "{0}em".FormatInvariant(Math.Round(((double)size / (double)baseFontSizePx), 4));
+					}
+				}
+			}
+
+			return doc.Body.InnerHtml;
+		}
     }
 }

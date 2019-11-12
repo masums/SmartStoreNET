@@ -3,14 +3,24 @@ using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Discounts;
 using SmartStore.Core.Domain.Orders;
+using SmartStore.Core.Domain.Directory;
 
 namespace SmartStore.Services.Catalog
 {
-    /// <summary>
-    /// Price calculation service
-    /// </summary>
-    public partial interface IPriceCalculationService
+	/// <summary>
+	/// Price calculation service
+	/// </summary>
+	public partial interface IPriceCalculationService
     {
+		/// <summary>
+		/// Creates a price calculation context
+		/// </summary>
+		/// <param name="products">Products. <c>null</c> to lazy load data if required.</param>
+		/// <param name="customer">Customer, <c>null</c> to use current customer.</param>
+		/// <param name="storeId">Store identifier, <c>null</c> to use current store.</param>
+		/// <returns>Price calculation context</returns>
+		PriceCalculationContext CreatePriceCalculationContext(IEnumerable<Product> products = null, Customer customer = null, int? storeId = null);
+
 		/// <summary>
 		/// Get product special price (is valid)
 		/// </summary>
@@ -59,14 +69,16 @@ namespace SmartStore.Services.Catalog
 		/// <param name="includeDiscounts">A value indicating whether include discounts or not for final price computation</param>
 		/// <param name="quantity">Shopping cart item quantity</param>
 		/// <param name="bundleItem">A product bundle item</param>
+		/// <param name="context">Object with cargo data for better performance</param>
 		/// <returns>Final price</returns>
 		decimal GetFinalPrice(Product product,
 			Customer customer,
 			decimal additionalCharge,
 			bool includeDiscounts,
 			int quantity,
-			ProductBundleItemData bundleItem = null);
-
+			ProductBundleItemData bundleItem = null,
+			PriceCalculationContext context = null,
+            bool isTierPrice = false);
 		/// <summary>
 		/// Gets the final price including bundle per-item pricing
 		/// </summary>
@@ -77,26 +89,47 @@ namespace SmartStore.Services.Catalog
 		/// <param name="includeDiscounts">A value indicating whether include discounts or not for final price computation</param>
 		/// <param name="quantity">Shopping cart item quantity</param>
 		/// <param name="bundleItem">A product bundle item</param>
+		/// <param name="context">Object with cargo data for better performance</param>
 		/// <returns>Final price</returns>
-		decimal GetFinalPrice(Product product, IList<ProductBundleItemData> bundleItems,
-			Customer customer, decimal additionalCharge, bool includeDiscounts, int quantity, ProductBundleItemData bundleItem = null);
+		decimal GetFinalPrice(Product product,
+			IEnumerable<ProductBundleItemData> bundleItems,
+			Customer customer,
+			decimal additionalCharge,
+			bool includeDiscounts,
+			int quantity,
+			ProductBundleItemData bundleItem = null,
+			PriceCalculationContext context = null);
 
 		/// <summary>
 		/// Get the lowest possible price for a product.
 		/// </summary>
 		/// <param name="product">Product</param>
+		/// <param name="customer">The customer</param>
+		/// <param name="context">Object with cargo data for better performance</param>
 		/// <param name="displayFromMessage">Whether to display the from message.</param>
 		/// <returns>The lowest price.</returns>
-		decimal GetLowestPrice(Product product, out bool displayFromMessage);
+		decimal GetLowestPrice(Product product, Customer customer, PriceCalculationContext context, out bool displayFromMessage);
 
 		/// <summary>
 		/// Get the lowest price of a grouped product.
 		/// </summary>
-		/// <param name="product">Grouped product.</param>
-		/// <param name="associatedProducts">Products associated to product.</param>
-		/// <param name="lowestPriceProduct">The associated product with the lowest price.</param>
+		/// <param name="product">Grouped product</param>
+		/// <param name="customer">The customer</param>
+		/// <param name="context">Object with cargo data for better performance</param>
+		/// <param name="associatedProducts">Products associated to product</param>
+		/// <param name="lowestPriceProduct">The associated product with the lowest price</param>
 		/// <returns>The lowest price.</returns>
-		decimal? GetLowestPrice(Product product, IEnumerable<Product> associatedProducts, out Product lowestPriceProduct);
+		decimal? GetLowestPrice(Product product, Customer customer, PriceCalculationContext context, IEnumerable<Product> associatedProducts, out Product lowestPriceProduct);
+
+		/// <summary>
+		/// Get the initial price including preselected attributes
+		/// </summary>
+		/// <param name="product">Product</param>
+		/// <param name="customer">The customer</param>
+		/// <param name="currency">The currency</param>
+		/// <param name="context">Object with cargo data for better performance</param>
+		/// <returns>Preselected price</returns>
+		decimal GetPreselectedPrice(Product product, Customer customer, Currency currency, PriceCalculationContext context);
 
 		/// <summary>
 		/// Gets the product cost
@@ -155,13 +188,17 @@ namespace SmartStore.Services.Catalog
 		/// <param name="quantity">Product quantity</param>
 		/// <param name="appliedDiscount">Applied discount</param>
 		/// <param name="bundleItem">A product bundle item</param>
+		/// <param name="context">Object with cargo data for better performance</param>
+        /// <param name="finalPrice">Final product price without discount.</param>
 		/// <returns>Discount amount</returns>
 		decimal GetDiscountAmount(Product product,
 			Customer customer,
 			decimal additionalCharge,
 			int quantity,
 			out Discount appliedDiscount,
-			ProductBundleItemData bundleItem = null);
+			ProductBundleItemData bundleItem = null,
+			PriceCalculationContext context = null,
+            decimal? finalPrice = null);
 
 
         /// <summary>
@@ -204,6 +241,7 @@ namespace SmartStore.Services.Catalog
 		/// </summary>
 		/// <param name="attributeValue">Product variant attribute value</param>
 		/// <returns>Price adjustment of a variant attribute value</returns>
-		decimal GetProductVariantAttributeValuePriceAdjustment(ProductVariantAttributeValue attributeValue);
+		decimal GetProductVariantAttributeValuePriceAdjustment(ProductVariantAttributeValue attributeValue, 
+            Product product, Customer customer, PriceCalculationContext context, int productQuantity = 1);
     }
 }

@@ -8,8 +8,8 @@ namespace SmartStore.Core.Domain.Orders
     /// <summary>
     /// Represents a shopping cart item
     /// </summary>
-    public partial class ShoppingCartItem : BaseEntity
-    {
+    public partial class ShoppingCartItem : BaseEntity, IAuditable
+	{
 		/// <summary>
 		/// Gets or sets the store identifier
 		/// </summary>
@@ -65,10 +65,10 @@ namespace SmartStore.Core.Domain.Orders
         /// </summary>
         public DateTime UpdatedOnUtc { get; set; }
 
-        /// <summary>
-        /// Gets the log type
-        /// </summary>
-        public ShoppingCartType ShoppingCartType
+		/// <summary>
+		/// Gets or sets the shopping cart type
+		/// </summary>
+		public ShoppingCartType ShoppingCartType
         {
             get
             {

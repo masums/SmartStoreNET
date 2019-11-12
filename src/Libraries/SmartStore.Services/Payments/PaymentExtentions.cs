@@ -1,15 +1,15 @@
 using System;
-using System.Linq;
 using System.Collections.Generic;
+using System.Linq;
+using System.Web.Routing;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Payments;
 using SmartStore.Core.Plugins;
 using SmartStore.Services.Orders;
-using System.Web.Routing;
 
 namespace SmartStore.Services.Payments
 {
-    public static class PaymentExtentions
+	public static class PaymentExtentions
     {
         /// <summary>
         /// Is payment method active?
@@ -27,6 +27,9 @@ namespace SmartStore.Services.Payments
 
             if (paymentSettings.ActivePaymentMethodSystemNames == null)
                 return false;
+
+			if (!paymentMethod.Value.IsActive)
+				return false;
 
 			return paymentSettings.ActivePaymentMethodSystemNames.Contains(paymentMethod.Metadata.SystemName, StringComparer.OrdinalIgnoreCase);
         }
@@ -55,13 +58,13 @@ namespace SmartStore.Services.Payments
             var result = decimal.Zero;
             if (usePercentage)
             {
-                //percentage
-                var orderTotalWithoutPaymentFee = orderTotalCalculationService.GetShoppingCartTotal(cart, usePaymentMethodAdditionalFee: false);
+                // Percentage
+                decimal? orderTotalWithoutPaymentFee = orderTotalCalculationService.GetShoppingCartTotal(cart, usePaymentMethodAdditionalFee: false);
                 result = (decimal)((((float)orderTotalWithoutPaymentFee) * ((float)fee)) / 100f);
             }
             else
             {
-                //fixed value
+                // Fixed value
                 result = fee;
             }
             return result;
@@ -69,7 +72,7 @@ namespace SmartStore.Services.Payments
 
 		public static RouteInfo GetConfigurationRoute(this IPaymentMethod method)
 		{
-			Guard.ArgumentNotNull(() => method);
+			Guard.NotNull(method, nameof(method));
 			
 			string action;
 			string controller;
@@ -91,7 +94,7 @@ namespace SmartStore.Services.Payments
 
 		public static RouteInfo GetPaymentInfoRoute(this IPaymentMethod method)
 		{
-			Guard.ArgumentNotNull(() => method);
+			Guard.NotNull(method, nameof(method));
 
 			string action;
 			string controller;

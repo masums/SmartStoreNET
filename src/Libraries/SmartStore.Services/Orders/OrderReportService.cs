@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Data.Entity;
 using SmartStore.Core;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Catalog;
@@ -215,7 +216,7 @@ namespace SmartStore.Services.Orders
                          (!paymentStatusId.HasValue || paymentStatusId == o.PaymentStatusId) &&
                          (!shippingStatusId.HasValue || shippingStatusId == o.ShippingStatusId) &&
                          (!o.Deleted) &&
-                         (!p.Deleted) &&
+                         (!p.Deleted) && (!p.IsSystemProduct) &&
                          (billingCountryId == 0 || o.BillingAddress.CountryId == billingCountryId) &&
                          (showHidden || p.Published)
                          select orderItem;
@@ -248,7 +249,7 @@ namespace SmartStore.Services.Orders
             }
 
             if (recordsToReturn != 0 && recordsToReturn != int.MaxValue)
-                query2 = query2.Take(recordsToReturn);
+                query2 = query2.Take(() => recordsToReturn);
 
             var result = query2.ToList().Select(x =>
             {
@@ -264,7 +265,20 @@ namespace SmartStore.Services.Orders
             return result;
         }
 
-		public virtual int[] GetAlsoPurchasedProductsIds(int storeId, int productId, int recordsToReturn = 5, bool showHidden = false)
+        public virtual int GetPurchaseCount(int productId)
+        {
+            if (productId == 0)
+                throw new ArgumentException("Product ID is not specified");
+            
+            var query = from orderItem in _orderItemRepository.Table
+                        where orderItem.ProductId == productId
+                        group orderItem by orderItem.Id into g
+                        select new { ProductsPurchased = g.Sum(x => x.Quantity) };
+           
+            return query.Select(x => x.ProductsPurchased).FirstOrDefault();
+        }
+        
+        public virtual int[] GetAlsoPurchasedProductsIds(int storeId, int productId, int recordsToReturn = 5, bool showHidden = false)
         {
             if (productId == 0)
                 throw new ArgumentException("Product ID is not specified");
@@ -281,8 +295,8 @@ namespace SmartStore.Services.Orders
                          (showHidden || p.Published) &&
 						 (!orderItem.Order.Deleted) &&
 						 (storeId == 0 || orderItem.Order.StoreId == storeId) &&
-                         (!p.Deleted) &&
-                         (showHidden || p.Published)
+                         (!p.Deleted) && (!p.IsSystemProduct) &&
+						 (showHidden || p.Published)
                          select new { orderItem = orderItem, p };
 
             var query3 = from orderItem_p in query2
@@ -295,7 +309,7 @@ namespace SmartStore.Services.Orders
             query3 = query3.OrderByDescending(x => x.ProductsPurchased);
 
 			if (recordsToReturn > 0)
-				query3 = query3.Take(recordsToReturn);
+				query3 = query3.Take(() => recordsToReturn);
 
 			var report = query3.ToList();
 
@@ -318,8 +332,10 @@ namespace SmartStore.Services.Orders
         public virtual IPagedList<Product> ProductsNeverSold(DateTime? startTime,
             DateTime? endTime, int pageIndex, int pageSize, bool showHidden = false)
         {
-            //this inner query should retrieve all purchased order product varint identifiers
-            var query1 = (from orderItem in _orderItemRepository.Table
+			var groupedProductId = (int)ProductType.GroupedProduct;
+
+			// This inner query should retrieve all purchased order product varint identifiers.
+			var query1 = (from orderItem in _orderItemRepository.Table
                           join o in _orderRepository.Table on orderItem.OrderId equals o.Id
                           where (!startTime.HasValue || startTime.Value <= o.CreatedOnUtc) &&
                                 (!endTime.HasValue || endTime.Value >= o.CreatedOnUtc) &&
@@ -327,11 +343,12 @@ namespace SmartStore.Services.Orders
                           select orderItem.ProductId).Distinct();
 
             var query2 = from p in _productRepository.Table
-						 orderby p.Name
-                         where (!query1.Contains(p.Id)) &&
-                               (!p.Deleted) &&
+                         where !query1.Contains(p.Id) &&
+								p.ProductTypeId != groupedProductId &&
+							   !p.Deleted &&
                                (showHidden || p.Published)
-                         select p;
+						 orderby p.Name
+						 select p;
 
 			var products = new PagedList<Product>(query2, pageIndex, pageSize);
 			return products;

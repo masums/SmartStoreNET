@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Reflection;
 using System.Xml;
@@ -10,6 +11,30 @@ using System.Runtime.Serialization;
 
 namespace SmartStore.Core.Plugins
 {
+	/// <summary>
+	/// Information about an assembly referenced by a plugin.
+	/// </summary>
+	public sealed class AssemblyReference
+	{
+		/// <summary>
+		/// File in ASP.NET temp folder
+		/// </summary>
+		public FileInfo File { get; internal set; }
+		/// <summary>
+		/// The original assembly file that a shadow copy was made from it
+		/// </summary>
+		public FileInfo OriginalFile { get; internal set; }
+		/// <summary>
+		/// The assembly that has been shadow copied and was loaded into the AppDomain
+		/// </summary>
+		public Assembly Assembly { get; internal set; }
+
+		/// <summary>
+		/// Exception thrown during activation/probing
+		/// </summary>
+		internal Exception ActivationException { get; set; }
+	}
+
 	[DataContract]
     public class PluginDescriptor : IComparable<PluginDescriptor>
     {
@@ -18,17 +43,17 @@ namespace SmartStore.Core.Plugins
 
         public PluginDescriptor()
         {
-            this.Version = new Version("1.0");
-            this.MinAppVersion = SmartStoreVersion.Version;
+            Version = new Version("1.0");
+            MinAppVersion = SmartStoreVersion.Version;
         }
 
-        public PluginDescriptor(Assembly referencedAssembly, FileInfo originalAssemblyFile, Type pluginType)
-            : this()
-        {
-            this.ReferencedAssembly = referencedAssembly;
-            this.OriginalAssemblyFile = originalAssemblyFile;
-            this.PluginType = pluginType;
-        }
+		// Unit tests
+		public PluginDescriptor(Assembly referencedAssembly, FileInfo originalAssemblyFile, Type pluginClrType)
+			: this()
+		{
+			Assembly = new AssemblyReference { Assembly = referencedAssembly, OriginalFile = originalAssemblyFile, File = originalAssemblyFile };
+			PluginClrType = pluginClrType;
+		}
 
         /// <summary>
         /// Plugin file name
@@ -38,26 +63,31 @@ namespace SmartStore.Core.Plugins
         /// <summary>
         /// The physical path of the runtime plugin
         /// </summary>
-        public string PhysicalPath
-        {
-            get
-            {
-                return OriginalAssemblyFile.Directory.FullName;
-            }
-        }
+		public string PhysicalPath { get; set; }
 
-        /// <summary>
-        /// Gets the file name of the brand image (without path)
-        /// or an empty string if no image is specified
-        /// </summary>
-        public string BrandImageFileName
+		/// <summary>
+		/// Gets the folder name
+		/// </summary>
+		[DataMember]
+		public string FolderName { get; internal set; }
+
+		/// <summary>
+		/// The virtual path of the runtime plugin
+		/// </summary>
+		public string VirtualPath { get; set; }
+
+		/// <summary>
+		/// Gets the file name of the brand image (without path)
+		/// or an empty string if no image is specified
+		/// </summary>
+		public string BrandImageFileName
         {
             get
             {
                 if (_brandImageFileName == null)
                 {
                     // "null" means we haven't checked yet!
-                    var filesToCheck = new string[] { "branding.png", "branding.gif", "branding.jpg", "branding.jpeg" };
+                    var filesToCheck = new [] { "branding.png", "branding.gif", "branding.jpg", "branding.jpeg" };
                     var dir = this.PhysicalPath;
                     foreach (var file in filesToCheck)
                     {
@@ -78,23 +108,23 @@ namespace SmartStore.Core.Plugins
         }
 
         /// <summary>
-        /// Plugin type
+        /// Plugin runtime type
         /// </summary>
-        public Type PluginType { get; set; }
+        public Type PluginClrType { get; set; }
 
-        /// <summary>
-        /// The assembly that has been shadow copied that is active in the application
-        /// </summary>
-        public Assembly ReferencedAssembly { get; internal set; }
+		/// <summary>
+		/// The plugin assembly.
+		/// </summary>
+		public AssemblyReference Assembly { get; internal set; } = new AssemblyReference();
 
-        /// <summary>
-        /// The original assembly file that a shadow copy was made from it
-        /// </summary>
-        public FileInfo OriginalAssemblyFile { get; internal set; }
+		/// <summary>
+		/// List of assemblies files found in the plugin folder, except the main plugin assembly.
+		/// </summary>
+		internal AssemblyReference[] ReferencedLocalAssemblies { get; set; } = new AssemblyReference[0];
 
-        /// <summary>
-        /// Gets or sets the plugin group
-        /// </summary>
+		/// <summary>
+		/// Gets or sets the plugin group
+		/// </summary>
 		[DataMember]
 		public string Group { get; internal set; }
 
@@ -111,12 +141,6 @@ namespace SmartStore.Core.Plugins
         /// </summary>
 		[DataMember]
 		public string FriendlyName { get; set; }
-
-		/// <summary>
-		/// Gets the folder name
-		/// </summary>
-		[DataMember]
-		public string FolderName { get; internal set; }
 
         /// <summary>
         /// Gets or sets the system name
@@ -148,6 +172,12 @@ namespace SmartStore.Core.Plugins
 		[DataMember]
 		public string Author { get; set; }
 
+		/// <summary>
+		/// Gets or sets the project/marketplace url
+		/// </summary>
+		[DataMember]
+		public string Url { get; set; }
+
         /// <summary>
         /// Gets or sets the display order
         /// </summary>
@@ -155,10 +185,16 @@ namespace SmartStore.Core.Plugins
 		public int DisplayOrder { get; set; }
 
         /// <summary>
-        /// Gets or sets the value indicating whether plugin is installed
+        /// Gets or sets a value indicating whether the plugin is installed
         /// </summary>
 		[DataMember]
 		public bool Installed { get; set; }
+
+		/// <summary>
+		/// Gets a value indicating whether the plugin is incompatible with the current application version
+		/// </summary>
+		[DataMember]
+		public bool Incompatible { get; set; }
 
 		/// <summary>
 		/// Gets or sets the value indicating whether the plugin is configurable
@@ -172,41 +208,44 @@ namespace SmartStore.Core.Plugins
 		/// <summary>
 		/// Gets or sets the root key of string resources.
 		/// </summary>
-		/// <remarks>Tries to get it from first entry of resource XML file if not specified. In that case the first resource name should not contain a dot if it's not part of the root key.
-		/// Otherwise you get the wrong root key.</remarks>
+		/// <remarks>
+		/// Tries to get it from first entry of resource XML file if not specified.
+		/// In that case the first resource name should not contain a dot if it's not part of the root key.
+		/// Otherwise you get the wrong root key.
+		/// </remarks>
 		public string ResourceRootKey 
 		{
 			get {
 				if (_resourceRootKey == null) 
 				{
 					_resourceRootKey = "";
+
 					try 
 					{
-						// try to get root-key from first entry of XML file
-						string localizationDir = Path.Combine(OriginalAssemblyFile.Directory.FullName, "Localization");
+						// Try to get root-key from first entry of XML file
+						var localizationDir = new DirectoryInfo(Path.Combine(PhysicalPath, "Localization"));
 
-						if (System.IO.Directory.Exists(localizationDir)) 
+						if (localizationDir.Exists) 
 						{
-							string filePath = System.IO.Directory.EnumerateFiles(localizationDir, "*.xml").FirstOrDefault();
-							if (filePath.HasValue()) 
+							var localizationFile = localizationDir.EnumerateFiles("*.xml").FirstOrDefault();
+							if (localizationFile != null) 
 							{
 								XmlDocument doc = new XmlDocument();
-								doc.Load(filePath);
-								var node = doc.SelectSingleNode(@"//Language/LocaleResource");
-								if (node != null) 
+								doc.Load(localizationFile.FullName);
+								var key = doc.SelectSingleNode(@"//Language/LocaleResource")?.Attributes["Name"]?.InnerText;
+								if (key.HasValue() && key.Contains('.'))
 								{
-									string key = node.Attributes["Name"].InnerText;
-									if (key.HasValue() && key.Contains('.'))
-										_resourceRootKey = key.Substring(0, key.LastIndexOf('.'));
-								}
+									_resourceRootKey = key.Substring(0, key.LastIndexOf('.'));
+								}	
 							}
 						}
 					}
-					catch (Exception exc) 
+					catch (Exception ex) 
 					{
-						exc.Dump();
+						ex.Dump();
 					}
 				}
+
 				return _resourceRootKey;
 			}
 			set {
@@ -217,14 +256,16 @@ namespace SmartStore.Core.Plugins
         public T Instance<T>() where T : class, IPlugin
         {
             object instance;
-            if (!EngineContext.Current.ContainerManager.TryResolve(PluginType, null, out instance))
+            if (!EngineContext.Current.ContainerManager.TryResolve(PluginClrType, null, out instance))
             {
-                //not resolved
-                instance = EngineContext.Current.ContainerManager.ResolveUnregistered(PluginType);
+                // Not registered
+                instance = EngineContext.Current.ContainerManager.ResolveUnregistered(PluginClrType);
             }
+
             var typedInstance = instance as T;
             if (typedInstance != null)
                 typedInstance.PluginDescriptor = this;
+
             return typedInstance;
         }
 
@@ -233,7 +274,8 @@ namespace SmartStore.Core.Plugins
             return Instance<IPlugin>();
         }
 
-        public int CompareTo(PluginDescriptor other)
+		[SuppressMessage("ReSharper", "StringCompareToIsCultureSpecific")]
+		public int CompareTo(PluginDescriptor other)
         {
 			if (DisplayOrder != other.DisplayOrder)
 				return DisplayOrder.CompareTo(other.DisplayOrder);

@@ -1,12 +1,15 @@
-﻿
-using SmartStore.Core.Configuration;
+﻿using SmartStore.Core.Configuration;
+using SmartStore.Core.Domain.Localization;
 
 namespace SmartStore.Core.Domain.Common
 {
-    public class AddressSettings : ISettings
+    public class AddressSettings : BaseEntity, ISettings, ILocalizedEntity
     {
 		public AddressSettings()
 		{
+            ValidateEmailAddress = false;
+            SalutationEnabled = false;
+            TitleEnabled = false;
 			CompanyEnabled = true;
 			StreetAddressEnabled = true;
 			StreetAddressRequired = true;
@@ -16,12 +19,34 @@ namespace SmartStore.Core.Domain.Common
 			CityEnabled = true;
 			CityRequired = true;
 			CountryEnabled = true;
+			CountryRequired = true;
 			StateProvinceEnabled = true;
+			StateProvinceRequired = false;
 			PhoneEnabled = true;
 			PhoneRequired = true;
 			FaxEnabled = true;
 		}
-		
+
+        /// <summary>
+        /// Gets or sets a value indicating whether email address should be validated
+        /// </summary>
+        public bool ValidateEmailAddress { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether 'Salutation' is enabled
+        /// </summary>
+        public bool SalutationEnabled { get; set; }
+
+        /// <summary>
+        /// Gets or sets values with available salutations
+        /// </summary>
+        public string Salutations { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether 'Title' is enabled
+        /// </summary>
+        public bool TitleEnabled { get; set; }
+
 		/// <summary>
         /// Gets or sets a value indicating whether 'Company' is enabled
         /// </summary>
@@ -72,15 +97,25 @@ namespace SmartStore.Core.Domain.Common
         /// </summary>
         public bool CountryEnabled { get; set; }
 
-        /// <summary>
-        /// Gets or sets a value indicating whether 'State / province' is enabled
-        /// </summary>
-        public bool StateProvinceEnabled { get; set; }
+		/// <summary>
+		/// Gets or sets a value indicating whether 'Country' is required
+		/// </summary>
+		public bool CountryRequired { get; set; }
 
-        /// <summary>
-        /// Gets or sets a value indicating whether 'Phone number' is enabled
-        /// </summary>
-        public bool PhoneEnabled { get; set; }
+		/// <summary>
+		/// Gets or sets a value indicating whether 'State / province' is enabled
+		/// </summary>
+		public bool StateProvinceEnabled { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether 'State / province' is required
+		/// </summary>
+		public bool StateProvinceRequired { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether 'Phone number' is enabled
+		/// </summary>
+		public bool PhoneEnabled { get; set; }
         /// <summary>
         /// Gets or sets a value indicating whether 'Phone number' is required
         /// </summary>

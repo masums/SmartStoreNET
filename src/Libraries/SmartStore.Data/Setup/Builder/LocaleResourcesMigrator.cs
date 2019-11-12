@@ -10,7 +10,6 @@ using SmartStore.Core.Domain.Localization;
 
 namespace SmartStore.Data.Setup
 {
-	
 	internal class LocaleResourcesMigrator
 	{
 		private readonly SmartObjectContext _ctx;
@@ -19,7 +18,7 @@ namespace SmartStore.Data.Setup
 		
 		public LocaleResourcesMigrator(SmartObjectContext ctx)
 		{
-			Guard.ArgumentNotNull(() => ctx);
+			Guard.NotNull(ctx, nameof(ctx));
 
 			_ctx = ctx;
 			_languages = _ctx.Set<Language>();
@@ -28,14 +27,14 @@ namespace SmartStore.Data.Setup
 		
 		public void Migrate(IEnumerable<LocaleResourceEntry> entries, bool updateTouchedResources = false)
 		{
-			Guard.ArgumentNotNull(() => entries);
+			Guard.NotNull(entries, nameof(entries));
 
 			if (!entries.Any() || !_languages.Any())
 				return;
 
-			using (var scope = new DbContextScope(_ctx, autoDetectChanges: false))
+			using (var scope = new DbContextScope(_ctx, autoDetectChanges: false, hooksEnabled: false))
 			{
-				var langMap = _languages.ToDictionary(x => x.UniqueSeoCode.EmptyNull().ToLower());
+				var langMap = _languages.ToDictionarySafe(x => x.UniqueSeoCode.EmptyNull().ToLower());
 
 				var toDelete = new List<LocaleStringResource>();
 				var toUpdate = new List<LocaleStringResource>();
@@ -50,10 +49,10 @@ namespace SmartStore.Data.Setup
 
 				foreach (var lang in langMap)
 				{
-					foreach (var entry in entries.Where(x => x.Lang == null || langMap[x.Lang.ToLower()].Id == lang.Value.Id))
+					var validEntries = entries.Where(x => x.Lang == null || langMap[x.Lang.ToLower()].Id == lang.Value.Id);
+					foreach (var entry in validEntries)
 					{
-						bool isLocal;
-						var db = GetResource(entry.Key, lang.Value.Id, toAdd, out isLocal);
+						var db = GetResource(entry.Key, lang.Value.Id, toAdd, out bool isLocal);
 
 						if (db == null && entry.Value.HasValue() && !entry.UpdateOnly)
 						{
@@ -98,11 +97,8 @@ namespace SmartStore.Data.Setup
 				// remove deleted resources
 				_resources.RemoveRange(toDelete);
 
-				// update modified resources
-				toUpdate.Each(x => _ctx.Entry(x).State = System.Data.Entity.EntityState.Modified);
-
 				// save now
-				_ctx.SaveChanges();
+				int affectedRows = _ctx.SaveChanges();
 			}
 		}
 

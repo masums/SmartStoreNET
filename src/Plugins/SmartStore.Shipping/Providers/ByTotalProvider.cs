@@ -1,20 +1,21 @@
 ﻿using System;
-using System.Data.Entity.Migrations;
 using System.Web.Routing;
 using SmartStore.Core;
 using SmartStore.Core.Domain.Shipping;
+using SmartStore.Core.Localization;
+using SmartStore.Core.Logging;
 using SmartStore.Core.Plugins;
-using SmartStore.Shipping.Services;
 using SmartStore.Services.Catalog;
 using SmartStore.Services.Configuration;
 using SmartStore.Services.Localization;
-using SmartStore.Core.Logging;
 using SmartStore.Services.Shipping;
 using SmartStore.Services.Shipping.Tracking;
+using SmartStore.Services.Tax;
+using SmartStore.Shipping.Services;
 
 namespace SmartStore.Shipping
 {
-    [SystemName("Shipping.ByTotal")]
+	[SystemName("Shipping.ByTotal")]
     [FriendlyName("Shipping by total")]
     [DisplayOrder(1)]
 	public class ByTotalProvider : IShippingRateComputationMethod, IConfigurable
@@ -27,7 +28,7 @@ namespace SmartStore.Shipping
         private readonly ILogger _logger;
         private readonly ISettingService _settingService;
         private readonly ILocalizationService _localizationService;
-
+		private readonly ITaxService _taxService;
 
         /// <summary>
         /// Ctor
@@ -46,7 +47,8 @@ namespace SmartStore.Shipping
             IPriceCalculationService priceCalculationService,
             ILogger logger,
             ISettingService settingService,
-            ILocalizationService localizationService)
+            ILocalizationService localizationService,
+			ITaxService taxService)
         {
             this._shippingService = shippingService;
 			this._storeContext = storeContext;
@@ -56,14 +58,19 @@ namespace SmartStore.Shipping
             this._logger = logger;
             this._settingService = settingService;
             this._localizationService = localizationService;
-        }
+			_taxService = taxService;
 
-        #region Properties
+			T = NullLocalizer.Instance;
+		}
 
-        /// <summary>
-        ///  Gets a shipping rate computation method type
-        /// </summary>
-        public ShippingRateComputationMethodType ShippingRateComputationMethodType
+		#region Properties
+
+		public Localizer T { get; set; }
+
+		/// <summary>
+		///  Gets a shipping rate computation method type
+		/// </summary>
+		public ShippingRateComputationMethodType ShippingRateComputationMethodType
         {
             get
             {
@@ -119,7 +126,7 @@ namespace SmartStore.Shipping
             {
                 shippingTotal = Math.Round((decimal)((((float)subtotal) * ((float)shippingByTotalRecord.ShippingChargePercentage)) / 100f), 2);
                 shippingTotal += baseCharge;
-                if (maxCharge.HasValue && maxCharge > baseCharge)
+                if (maxCharge.HasValue && shippingTotal > maxCharge)
                 {
                     // shipping charge should not exceed MaxCharge
                     shippingTotal = Math.Min(shippingTotal.Value, maxCharge.Value);
@@ -158,7 +165,7 @@ namespace SmartStore.Shipping
 
             if (getShippingOptionRequest.Items == null || getShippingOptionRequest.Items.Count == 0)
             {
-                response.AddError("No shipment items");
+                response.AddError(T("Admin.System.Warnings.NoShipmentItems"));
                 return response;
             }
 
@@ -181,13 +188,22 @@ namespace SmartStore.Shipping
                 {
                     continue;
                 }
-                subTotal += _priceCalculationService.GetSubTotal(shoppingCartItem, true);
-            }
 
-            decimal sqThreshold = _shippingByTotalSettings.SmallQuantityThreshold;
-            decimal sqSurcharge = _shippingByTotalSettings.SmallQuantitySurcharge;
+				var itemSubTotalBase = _priceCalculationService.GetSubTotal(shoppingCartItem, true);
+				var itemSubTotal = _taxService.GetProductPrice(
+                    shoppingCartItem.Item.Product,
+                    itemSubTotalBase,
+                    _shippingByTotalSettings.CalculateTotalIncludingTax,
+                    getShippingOptionRequest.Customer,
+                    out var _);
 
-            var shippingMethods = _shippingService.GetAllShippingMethods(countryId);
+				subTotal += itemSubTotal;
+			}
+
+			var sqThreshold = _shippingByTotalSettings.SmallQuantityThreshold;
+            var sqSurcharge = _shippingByTotalSettings.SmallQuantitySurcharge;
+
+            var shippingMethods = _shippingService.GetAllShippingMethods(getShippingOptionRequest, storeId);
             foreach (var shippingMethod in shippingMethods)
             {
                 decimal? rate = GetRate(subTotal, shippingMethod.Id, storeId, countryId, stateProvinceId, zip);
@@ -195,14 +211,15 @@ namespace SmartStore.Shipping
                 {
                     if (rate > 0 && sqThreshold > 0 && subTotal <= sqThreshold)
                     {
-                        // add small quantity surcharge (Mindermengenzuschalg)
+                        // Add small quantity surcharge (Mindermengenzuschlag).
                         rate += sqSurcharge;
                     }
                     
                     var shippingOption = new ShippingOption();
-                    shippingOption.Name = shippingMethod.Name;
-                    shippingOption.Description = shippingMethod.Description;
-                    shippingOption.Rate = rate.Value;
+					shippingOption.ShippingMethodId = shippingMethod.Id;
+                    shippingOption.Name = shippingMethod.GetLocalized(x => x.Name);
+					shippingOption.Description = shippingMethod.GetLocalized(x => x.Description);
+					shippingOption.Rate = rate.Value;
                     response.ShippingOptions.Add(shippingOption);
                 }
             }
@@ -230,6 +247,11 @@ namespace SmartStore.Shipping
                 return null;
             }
         }
+
+		public bool IsActive
+		{
+			get { return true; }
+		}
 
         /// <summary>
         /// Gets a route for provider configuration

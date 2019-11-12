@@ -1,10 +1,10 @@
 ﻿using System.Collections.Generic;
 using System.Web.Mvc;
+using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Validators.Catalog;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Localization;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Catalog
 {
@@ -15,9 +15,13 @@ namespace SmartStore.Admin.Models.Catalog
         {
             Locales = new List<ProductTagLocalizedModel>();
         }
+
         [SmartResourceDisplayName("Admin.Catalog.ProductTags.Fields.Name")]
         [AllowHtml]
         public string Name { get; set; }
+
+        [SmartResourceDisplayName("Admin.Catalog.ProductTags.Published")]
+        public bool Published { get; set; }
 
         [SmartResourceDisplayName("Admin.Catalog.ProductTags.Fields.ProductCount")]
         public int ProductCount { get; set; }
@@ -33,4 +37,12 @@ namespace SmartStore.Admin.Models.Catalog
         [AllowHtml]
         public string Name { get; set; }
     }
+
+	public partial class ProductTagValidator : AbstractValidator<ProductTagModel>
+	{
+		public ProductTagValidator()
+		{
+			RuleFor(x => x.Name).NotEmpty();
+		}
+	}
 }

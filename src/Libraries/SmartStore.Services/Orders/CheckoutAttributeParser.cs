@@ -6,9 +6,6 @@ using SmartStore.Core.Domain.Orders;
 
 namespace SmartStore.Services.Orders
 {
-    /// <summary>
-    /// Checkout attribute parser
-    /// </summary>
     public partial class CheckoutAttributeParser : ICheckoutAttributeParser
     {
         private readonly ICheckoutAttributeService _checkoutAttributeService;
@@ -18,11 +15,6 @@ namespace SmartStore.Services.Orders
             this._checkoutAttributeService = checkoutAttributeService;
         }
 
-        /// <summary>
-        /// Gets selected checkout attribute identifiers
-        /// </summary>
-        /// <param name="attributes">Attributes</param>
-        /// <returns>Selected checkout attribute identifiers</returns>
         public IList<int> ParseCheckoutAttributeIds(string attributes)
         {
             var ids = new List<int>();
@@ -40,8 +32,7 @@ namespace SmartStore.Services.Orders
                     if (node1.Attributes != null && node1.Attributes["ID"] != null)
                     {
                         string str1 = node1.Attributes["ID"].InnerText.Trim();
-                        int id = 0;
-                        if (int.TryParse(str1, out id))
+                        if (int.TryParse(str1, out var id))
                         {
                             ids.Add(id);
                         }
@@ -55,11 +46,6 @@ namespace SmartStore.Services.Orders
             return ids;
         }
 
-        /// <summary>
-        /// Gets selected checkout attributes
-        /// </summary>
-        /// <param name="attributes">Attributes</param>
-        /// <returns>Selected checkout attributes</returns>
         public IList<CheckoutAttribute> ParseCheckoutAttributes(string attributes)
         {
             var caCollection = new List<CheckoutAttribute>();
@@ -75,11 +61,6 @@ namespace SmartStore.Services.Orders
             return caCollection;
         }
 
-        /// <summary>
-        /// Get checkout attribute values
-        /// </summary>
-        /// <param name="attributes">Attributes</param>
-        /// <returns>Checkout attribute values</returns>
         public IList<CheckoutAttributeValue> ParseCheckoutAttributeValues(string attributes)
         {
             var caValues = new List<CheckoutAttributeValue>();
@@ -94,8 +75,7 @@ namespace SmartStore.Services.Orders
                 {
                     if (!String.IsNullOrEmpty(caValueStr))
                     {
-                        int caValueId = 0;
-                        if (int.TryParse(caValueStr, out caValueId))
+                        if (int.TryParse(caValueStr, out var caValueId))
                         {
                             var caValue = _checkoutAttributeService.GetCheckoutAttributeValueById(caValueId);
                             if (caValue != null)
@@ -107,56 +87,47 @@ namespace SmartStore.Services.Orders
             return caValues;
         }
 
-        /// <summary>
-        /// Gets selected checkout attribute value
-        /// </summary>
-        /// <param name="attributes">Attributes</param>
-        /// <param name="checkoutAttributeId">Checkout attribute identifier</param>
-        /// <returns>Checkout attribute value</returns>
         public IList<string> ParseValues(string attributes, int checkoutAttributeId)
         {
             var selectedCheckoutAttributeValues = new List<string>();
-            try
-            {
-                var xmlDoc = new XmlDocument();
-                xmlDoc.LoadXml(attributes);
 
-                var nodeList1 = xmlDoc.SelectNodes(@"//Attributes/CheckoutAttribute");
-                foreach (XmlNode node1 in nodeList1)
-                {
-                    if (node1.Attributes != null && node1.Attributes["ID"] != null)
-                    {
-                        string str1 = node1.Attributes["ID"].InnerText.Trim();
-                        int id = 0;
-                        if (int.TryParse(str1, out id))
-                        {
-                            if (id == checkoutAttributeId)
-                            {
-                                var nodeList2 = node1.SelectNodes(@"CheckoutAttributeValue/Value");
-                                foreach (XmlNode node2 in nodeList2)
-                                {
-                                    string value = node2.InnerText.Trim();
-                                    selectedCheckoutAttributeValues.Add(value);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception exc)
-            {
-                Debug.Write(exc.ToString());
-            }
+			if (attributes.HasValue())
+			{
+				try
+				{
+					var xmlDoc = new XmlDocument();
+					xmlDoc.LoadXml(attributes);
+
+					var nodeList1 = xmlDoc.SelectNodes(@"//Attributes/CheckoutAttribute");
+					foreach (XmlNode node1 in nodeList1)
+					{
+						if (node1.Attributes != null && node1.Attributes["ID"] != null)
+						{
+							var str1 = node1.Attributes["ID"].InnerText.Trim();
+							if (int.TryParse(str1, out var id))
+							{
+								if (id == checkoutAttributeId)
+								{
+									var nodeList2 = node1.SelectNodes(@"CheckoutAttributeValue/Value");
+									foreach (XmlNode node2 in nodeList2)
+									{
+										string value = node2.InnerText.Trim();
+										selectedCheckoutAttributeValues.Add(value);
+									}
+								}
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Debug.Write(ex.ToString());
+				}
+			}
+
             return selectedCheckoutAttributeValues;
         }
 
-        /// <summary>
-        /// Adds an attribute
-        /// </summary>
-        /// <param name="attributes">Attributes</param>
-        /// <param name="ca">Checkout attribute</param>
-        /// <param name="value">Value</param>
-        /// <returns>Attributes</returns>
         public string AddCheckoutAttribute(string attributes, CheckoutAttribute ca, string value)
         {
             string result = string.Empty;
@@ -182,8 +153,7 @@ namespace SmartStore.Services.Orders
                     if (node1.Attributes != null && node1.Attributes["ID"] != null)
                     {
                         string str1 = node1.Attributes["ID"].InnerText.Trim();
-                        int id = 0;
-                        if (int.TryParse(str1, out id))
+                        if (int.TryParse(str1, out var id))
                         {
                             if (id == ca.Id)
                             {
@@ -218,12 +188,6 @@ namespace SmartStore.Services.Orders
             return result;
         }
 
-        /// <summary>
-        /// Removes checkout attributes which cannot be applied to the current cart and returns an update attributes in XML format
-        /// </summary>
-        /// <param name="attributes">Attributes in XML format</param>
-        /// <param name="cart">Shopping cart items</param>
-        /// <returns>Updated attributes in XML format</returns>
         public virtual string EnsureOnlyActiveAttributes(string attributes, IList<OrganizedShoppingCartItem> cart)
         {
             if (String.IsNullOrEmpty(attributes))
@@ -256,8 +220,7 @@ namespace SmartStore.Services.Orders
                         if (node.Attributes != null && node.Attributes["ID"] != null)
                         {
                             string str1 = node.Attributes["ID"].InnerText.Trim();
-                            int id = 0;
-                            if (int.TryParse(str1, out id))
+                            if (int.TryParse(str1, out var id))
                             {
                                 if (checkoutAttributeIdsToRemove.Contains(id))
                                 {

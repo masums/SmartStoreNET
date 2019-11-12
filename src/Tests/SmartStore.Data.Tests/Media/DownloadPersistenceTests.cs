@@ -17,11 +17,14 @@ namespace SmartStore.Data.Tests.Media
                 DownloadGuid = guid,
                 UseDownloadUrl = true,
                 DownloadUrl = "http://www.someUrl.com/file.zip",
-                DownloadBinary = new byte[] { 1, 2, 3 },
-                ContentType = "application/x-zip-co",
+				MediaStorage = new MediaStorage { Data = new byte[] { 1, 2, 3 } },
+				UpdatedOnUtc = DateTime.UtcNow,
+				ContentType = "application/x-zip-co",
                 Filename = "file",
                 Extension = ".zip",
-                IsNew = true
+                IsNew = true,
+                EntityName = "Product",
+                EntityId = 1
             };
 
             var fromDb = SaveAndLoadEntity(download);
@@ -29,11 +32,13 @@ namespace SmartStore.Data.Tests.Media
             fromDb.DownloadGuid.ShouldEqual(guid);
             fromDb.UseDownloadUrl.ShouldEqual(true);
             fromDb.DownloadUrl.ShouldEqual("http://www.someUrl.com/file.zip");
-            fromDb.DownloadBinary.ShouldEqual(new byte[] { 1, 2, 3 });
-            fromDb.ContentType.ShouldEqual("application/x-zip-co");
+			fromDb.MediaStorage.Data.ShouldEqual(new byte[] { 1, 2, 3 });
+			fromDb.ContentType.ShouldEqual("application/x-zip-co");
             fromDb.Filename.ShouldEqual("file");
             fromDb.Extension.ShouldEqual(".zip");
             fromDb.IsNew.ShouldEqual(true);
+            fromDb.EntityName.ShouldEqual("Product");
+            fromDb.EntityId.ShouldEqual(1);
         }
     }
 }

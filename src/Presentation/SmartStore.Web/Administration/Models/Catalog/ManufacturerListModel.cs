@@ -1,7 +1,7 @@
-﻿using System.Web.Mvc;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Web.Mvc;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
-using Telerik.Web.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Catalog
 {
@@ -11,6 +11,11 @@ namespace SmartStore.Admin.Models.Catalog
         [AllowHtml]
         public string SearchManufacturerName { get; set; }
 
-        public GridModel<ManufacturerModel> Manufacturers { get; set; }
+        [UIHint("Stores")]
+        [SmartResourceDisplayName("Admin.Common.Store.SearchFor")]
+		public int SearchStoreId { get; set; }
+
+        public bool IsSingleStoreMode { get; set; }
+		public int GridPageSize { get; set; }
     }
 }

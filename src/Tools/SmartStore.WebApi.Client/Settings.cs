@@ -1,19 +1,17 @@
-﻿namespace SmartStoreNetWebApiClient.Properties {
-    
-    
-    internal sealed partial class Settings {
-        
-        public Settings() {
-            // this.SettingChanging += this.SettingChangingEventHandler;
-            // this.SettingsSaving += this.SettingsSavingEventHandler;
+﻿namespace SmartStoreNetWebApiClient.Properties
+{
+    internal sealed partial class Settings
+    {
+        public Settings()
+        {
         }
-        
-        private void SettingChangingEventHandler(object sender, System.Configuration.SettingChangingEventArgs e) {
-            // Noop
+
+        private void SettingChangingEventHandler(object sender, System.Configuration.SettingChangingEventArgs e)
+        {
         }
-        
-        private void SettingsSavingEventHandler(object sender, System.ComponentModel.CancelEventArgs e) {
-            // Noop
+
+        private void SettingsSavingEventHandler(object sender, System.ComponentModel.CancelEventArgs e)
+        {
         }
     }
 }

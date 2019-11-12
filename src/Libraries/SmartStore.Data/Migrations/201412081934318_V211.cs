@@ -199,33 +199,30 @@ namespace SmartStore.Data.Migrations
 				"Table of contents",
 				"Inhaltsverzeichnis");
 
-            builder.AddOrUpdate("Admin.Common.ExportToPdf.Manufacturer",
-				"Hersteller",
-                "Manufacturer");
-            builder.AddOrUpdate("Admin.Common.ExportToPdf.Weight",
-                "Weight",
-				"Gewicht");
-            builder.AddOrUpdate("Admin.Common.ExportToPdf.Length",
+            builder.AddOrUpdate("PDFProductCatalog.Manufacturer",
+                "Manufacturer",
+                "Hersteller");
+            builder.AddOrUpdate("PDFProductCatalog.Length",
 				"Legth",
 				"Länge");
-            builder.AddOrUpdate("Admin.Common.ExportToPdf.Width",
+            builder.AddOrUpdate("PDFProductCatalog.Width",
                 "Width",
 				"Breite");
-            builder.AddOrUpdate("Admin.Common.ExportToPdf.Height",
+            builder.AddOrUpdate("PDFProductCatalog.Height",
                 "Height",
 				"Höhe");
 
-            builder.AddOrUpdate("Admin.Common.ExportToPdf.SpecificationAttributes",
+            builder.AddOrUpdate("PDFProductCatalog.SpecificationAttributes",
                 "Specification attributes",
                 "Spezifikation");
-            builder.AddOrUpdate("Admin.Common.ExportToPdf.BundledItems",
+            builder.AddOrUpdate("PDFProductCatalog.BundledItems",
                 "Bundled items",
                 "Produktset besteht aus");
-            builder.AddOrUpdate("Admin.Common.ExportToPdf.AssociatedProducts",
+            builder.AddOrUpdate("PDFProductCatalog.AssociatedProducts",
                 "Associated products",
                 "Gruppierte Produkte");
 
-            //TODO
+
             builder.AddOrUpdate("PDFProductCatalog.CompanyEmailAddress",
                 "Mail",
                 "E-Mail");
@@ -246,6 +243,14 @@ namespace SmartStore.Data.Migrations
             builder.AddOrUpdate("Admin.Configuration.Settings.Order.MinOrderSubtotalAmount.Hint").Value("de", "Legt den Mindestbestellwert der Zwischensumme fest.");
             builder.AddOrUpdate("Admin.Configuration.Settings.Order.MinOrderTotalAmount").Value("de", "Mindestbestellwert Gesamtsumme");
             builder.AddOrUpdate("Admin.Configuration.Settings.Order.MinOrderTotalAmount.Hint").Value("de", "Legt den Mindestbestellwert der Gesamtsumme fest.");
+
+            builder.AddOrUpdate("Admin.Configuration.Settings.Catalog.ShowProductReviewsInProductDetail",
+                "Show product reviews in product detail view",
+                "Zeige Produktbewertungen in der Produktdetailansicht");
+            builder.AddOrUpdate("Admin.Configuration.Settings.Catalog.ShowProductReviewsInProductDetail.Hint",
+                "Determines whether product reviews are shown in product detail view.",
+                "Legt fest, ob Produktbewertungen in der Produktdetailansicht angezeigt werden.");
+
 		}
     }
 }

@@ -1,29 +1,46 @@
 ﻿using System.Collections.Generic;
 using System.Web.Mvc;
+using SmartStore.Core.Domain.Customers;
 using SmartStore.Web.Framework;
+using SmartStore.Web.Framework.Localization;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Settings
 {
-    public partial class CustomerUserSettingsModel
-    {
+    public partial class CustomerUserSettingsModel : ModelBase, ILocalizedModel<CustomerUserSettingsLocalizedModel>
+	{
         public CustomerUserSettingsModel()
         {
             CustomerSettings = new CustomerSettingsModel();
             AddressSettings = new AddressSettingsModel();
             DateTimeSettings = new DateTimeSettingsModel();
             ExternalAuthenticationSettings = new ExternalAuthenticationSettingsModel();
-        }
+			PrivacySettings = new PrivacySettingsModel();
+			Locales = new List<CustomerUserSettingsLocalizedModel>();
+			PrivacySettings = new PrivacySettingsModel();
+		}
+
         public CustomerSettingsModel CustomerSettings { get; set; }
         public AddressSettingsModel AddressSettings { get; set; }
         public DateTimeSettingsModel DateTimeSettings { get; set; }
         public ExternalAuthenticationSettingsModel ExternalAuthenticationSettings { get; set; }
+		public PrivacySettingsModel PrivacySettings { get; set; }
+		public IList<CustomerUserSettingsLocalizedModel> Locales { get; set; }
 
         #region Nested classes
 
         public partial class CustomerSettingsModel
         {
-            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.UsernamesEnabled")]
-            public bool UsernamesEnabled { get; set; }
+			public IList<SelectListItem> AvailableRegisterCustomerRoles { get; set; }
+
+            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.CustomerLoginType")]
+            public CustomerLoginType CustomerLoginType { get; set; }
+
+            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.CustomerNumberMethod")]
+            public CustomerNumberMethod CustomerNumberMethod { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.CustomerNumberVisibility")]
+            public CustomerNumberVisibility CustomerNumberVisibility { get; set; }
 
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AllowUsersToChangeUsernames")]
             public bool AllowUsersToChangeUsernames { get; set; }
@@ -32,13 +49,13 @@ namespace SmartStore.Admin.Models.Settings
             public bool CheckUsernameAvailabilityEnabled { get; set; }
 
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.UserRegistrationType")]
-            public int UserRegistrationType { get; set; }
+            public UserRegistrationType UserRegistrationType { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AllowCustomersToUploadAvatars")]
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.RegisterCustomerRole")]
+			public int RegisterCustomerRoleId { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AllowCustomersToUploadAvatars")]
             public bool AllowCustomersToUploadAvatars { get; set; }
-
-            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.DefaultAvatarEnabled")]
-            public bool DefaultAvatarEnabled { get; set; }
 
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.ShowCustomersLocation")]
             public bool ShowCustomersLocation { get; set; }
@@ -59,7 +76,7 @@ namespace SmartStore.Admin.Models.Settings
             public bool HideBackInStockSubscriptionsTab { get; set; }
 
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.CustomerNameFormat")]
-            public int CustomerNameFormat { get; set; }
+            public CustomerNameFormat CustomerNameFormat { get; set; }
 
 			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.CustomerNameFormatMaxLength")]
 			public int CustomerNameFormatMaxLength { get; set; }
@@ -76,13 +93,19 @@ namespace SmartStore.Admin.Models.Settings
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.StoreLastVisitedPage")]
             public bool StoreLastVisitedPage { get; set; }
 
-
-
-
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.GenderEnabled")]
             public bool GenderEnabled { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.DateOfBirthEnabled")]
+            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.TitleEnabled")]
+            public bool TitleEnabled { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.FirstNameRequired")]
+			public bool FirstNameRequired { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.LastNameRequired")]
+			public bool LastNameRequired { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.DateOfBirthEnabled")]
             public bool DateOfBirthEnabled { get; set; }
 
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.CompanyEnabled")]
@@ -113,10 +136,10 @@ namespace SmartStore.Admin.Models.Settings
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.CountryEnabled")]
             public bool CountryEnabled { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.StateProvinceEnabled")]
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.StateProvinceEnabled")]
             public bool StateProvinceEnabled { get; set; }
-
-            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.PhoneEnabled")]
+			
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.PhoneEnabled")]
             public bool PhoneEnabled { get; set; }
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.PhoneRequired")]
             public bool PhoneRequired { get; set; }
@@ -125,10 +148,19 @@ namespace SmartStore.Admin.Models.Settings
             public bool FaxEnabled { get; set; }
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.FaxRequired")]
             public bool FaxRequired { get; set; }
-        }
+		}
 
         public partial class AddressSettingsModel
-        {
+        {            
+            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.SalutationEnabled")]
+            public bool SalutationEnabled { get; set; }
+                                       
+            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.Salutations")]
+            public string Salutations { get; set; }
+            
+            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.TitleEnabled")]
+            public bool TitleEnabled { get; set; }
+            
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.CompanyEnabled")]
             public bool CompanyEnabled { get; set; }
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.CompanyRequired")]
@@ -156,11 +188,15 @@ namespace SmartStore.Admin.Models.Settings
 
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.CountryEnabled")]
             public bool CountryEnabled { get; set; }
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.CountryRequired")]
+			public bool CountryRequired { get; set; }
 
-            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.StateProvinceEnabled")]
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.StateProvinceEnabled")]
             public bool StateProvinceEnabled { get; set; }
-
-            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.PhoneEnabled")]
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.StateProvinceRequired")]
+			public bool StateProvinceRequired { get; set; }
+			
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.PhoneEnabled")]
             public bool PhoneEnabled { get; set; }
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.PhoneRequired")]
             public bool PhoneRequired { get; set; }
@@ -169,6 +205,9 @@ namespace SmartStore.Admin.Models.Settings
             public bool FaxEnabled { get; set; }
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.FaxRequired")]
             public bool FaxRequired { get; set; }
+
+            [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.ValidateEmailAddress")]
+            public bool ValidateEmailAddress { get; set; }
         }
 
         public partial class DateTimeSettingsModel
@@ -193,6 +232,45 @@ namespace SmartStore.Admin.Models.Settings
             [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.ExternalAuthenticationAutoRegisterEnabled")]
             public bool AutoRegisterEnabled { get; set; }
         }
-        #endregion
-    }
+
+		public partial class PrivacySettingsModel
+		{
+			public PrivacySettingsModel()
+			{
+				EnableCookieConsent = true;
+			}
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.Privacy.EnableCookieConsent")]
+			public bool EnableCookieConsent { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.Privacy.CookieConsentBadgetext")]
+			[AllowHtml]
+			public string CookieConsentBadgetext { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.Privacy.StoreLastIpAddress")]
+			public bool StoreLastIpAddress { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.Privacy.DisplayGdprConsentOnForms")]
+			public bool DisplayGdprConsentOnForms { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.Privacy.FullNameOnContactUsRequired")]
+			public bool FullNameOnContactUsRequired { get; set; }
+
+			[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.Privacy.FullNameOnProductRequestRequired")]
+			public bool FullNameOnProductRequestRequired { get; set; }
+		}
+		
+		#endregion
+	}
+
+	public class CustomerUserSettingsLocalizedModel : ILocalizedModelLocal
+    {
+        public int LanguageId { get; set; }
+
+        [SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.AddressFormFields.Salutations")]
+        public string Salutations { get; set; }
+
+		[SmartResourceDisplayName("Admin.Configuration.Settings.CustomerUser.Privacy.CookieConsentBadgetext")]
+		public string CookieConsentBadgetext { get; set; }
+	}
 }

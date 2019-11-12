@@ -1,22 +1,23 @@
 ﻿<Language Name="English" IsDefault="false" IsRightToLeft="false">
 
+  <LocaleResource Name="Plugins.FriendlyName.SmartStore.OfflinePayment" AppendRootKey="false">
+    <Value>Offline payment methods</Value>
+  </LocaleResource>
+  <LocaleResource Name="Plugins.Description.SmartStore.OfflinePayment" AppendRootKey="false">
+    <Value>Provides offline payment methods, e.g. direct debit, credit card, invoice, prepayment, cash on delivery etc.</Value>
+  </LocaleResource>
+
   <LocaleResource Name="DescriptionText">
     <Value>Description</Value>
   </LocaleResource>
   <LocaleResource Name="DescriptionText.Hint">
     <Value>Enter info that will be shown to customers during checkout.</Value>
   </LocaleResource>
-  <LocaleResource Name="AdditionalFee">
-    <Value>Additional fee</Value>
+  <LocaleResource Name="PaymentMethodLogo">
+	<Value>Logo</Value>
   </LocaleResource>
-  <LocaleResource Name="AdditionalFee.Hint">
-    <Value>Determines the additional fee.</Value>
-  </LocaleResource>
-  <LocaleResource Name="AdditionalFeePercentage">
-    <Value>Additional fee. Use percentage</Value>
-  </LocaleResource>
-  <LocaleResource Name="AdditionalFeePercentage.Hint">
-    <Value>Determines whether to apply a percentage additional fee to the order total. If not enabled, a fixed value is used.</Value>
+  <LocaleResource Name="PaymentMethodLogo.Hint">
+	<Value>Upload an image which will be displayed as thumbnail of the payment method on the payment selection page.</Value>
   </LocaleResource>
 
   <!-- CashOnDelivery -->
@@ -33,7 +34,7 @@
       <LocaleResource Name="PaymentInfoDescription">
         <Value>
           <![CDATA[
-            Once your order is placed, you will be contacted by our stuff to confirm the order.
+            Once your order is placed, you will be contacted by our staff to confirm the order.
           ]]>
         </Value>
       </LocaleResource>
@@ -54,7 +55,7 @@
       <LocaleResource Name="PaymentInfoDescription">
         <Value>
           <![CDATA[
-            Once your order is placed, you will be contacted by our stuff to confirm the order.
+            Once your order is placed, you will be contacted by our staff to confirm the order.
           ]]>
         </Value>
       </LocaleResource>
@@ -96,7 +97,7 @@
       <LocaleResource Name="PaymentInfoDescription">
         <Value>
           <![CDATA[
-            Once your order is placed, you will be contacted by our stuff to confirm the order.
+            Once your order is placed, you will be contacted by our staff to confirm the order.
           ]]>
         </Value>
       </LocaleResource>
@@ -114,11 +115,24 @@
           <![CDATA[ ]]>
         </Value>
       </LocaleResource>
+	  <LocaleResource Name="PaymentInfoDescription">
+		<Value>
+		  <![CDATA[
+            Once your order is placed, you will be contacted by our staff to confirm the order.
+          ]]>
+		</Value>
+	  </LocaleResource>
       <LocaleResource Name="Fields.TransactMode">
-        <Value>After checkout mark payment as</Value>
+        <Value>Payment status after order completion</Value>
       </LocaleResource>
       <LocaleResource Name="Fields.TransactMode.Hint">
-        <Value>Specify transaction mode.</Value>
+        <Value>Specifies the payment status after order completion.</Value>
+      </LocaleResource>
+      <LocaleResource Name="ExcludedCreditCards">
+        <Value>Excluded credit cards</Value>
+      </LocaleResource>
+      <LocaleResource Name="ExcludedCreditCards.Hint">
+        <Value>Credit cards that customers may not pay with.</Value>
       </LocaleResource>
     </Children>
   </LocaleResource>
@@ -137,7 +151,7 @@
       <LocaleResource Name="PaymentInfoDescription">
         <Value>
           <![CDATA[
-             Once your order is placed, you will be contacted by our stuff to confirm the order.
+             Once your order is placed, you will be contacted by our staff to confirm the order.
           ]]>
         </Value>
       </LocaleResource>
@@ -189,23 +203,24 @@
       <LocaleResource Name="YesEnterIban">
         <Value>Yes</Value>
       </LocaleResource>
-      <LocaleResource Name="DirectDebitAccountHolderRequired">
-        <Value>Please enter the name of the account holder.</Value>
-      </LocaleResource>
-      <LocaleResource Name="DirectDebitAccountNumberRequired">
-        <Value>Please enter your account number.</Value>
-      </LocaleResource>
-      <LocaleResource Name="DirectDebitBankCodeRequired">
-        <Value>Please enter the bank code.</Value>
-      </LocaleResource>
-      <LocaleResource Name="DirectDebitIBANRequired">
-        <Value>Please enter the IBAN (International Bank Account Number).</Value>
-      </LocaleResource>
-      <LocaleResource Name="DirectDebitBICRequired">
-        <Value>Please enter the BIC (Bank Interchange Code).</Value>
-      </LocaleResource>
     </Children>
   </LocaleResource>
 
+  <!-- PuchaseOrderNumber -->
+  <LocaleResource Name="Plugins.FriendlyName.SmartStore.PurchaseOrderNumber" AppendRootKey="false">
+    <Value>Purchase order</Value>
+  </LocaleResource>
+  <LocaleResource Name="Plugins.Payments.PuchaseOrder" AppendRootKey="false">
+    <Children>
+      <LocaleResource Name="AdminInstruction">
+        <Value>
+          <![CDATA[ ]]>
+        </Value>
+      </LocaleResource>
+      <LocaleResource Name="PurchaseOrderNumber">
+        <Value>PO Number</Value>
+      </LocaleResource>
+    </Children>
+  </LocaleResource>
  
 </Language>

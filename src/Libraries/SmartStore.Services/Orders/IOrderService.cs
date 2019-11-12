@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using SmartStore.Collections;
 using SmartStore.Core;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Payments;
@@ -69,6 +70,34 @@ namespace SmartStore.Services.Orders
         /// <param name="order">The order</param>
         void DeleteOrder(Order order);
 
+		/// <summary>
+		/// Get orders
+		/// </summary>
+		/// <param name="storeId">Store identifier; null to load all orders</param>
+		/// <param name="customerId">Customer identifier; null to load all orders</param>
+		/// <param name="startTime">Order start time; null to load all orders</param>
+		/// <param name="endTime">Order end time; null to load all orders</param>
+		/// <param name="orderStatusIds">Filter by order status</param>
+		/// <param name="paymentStatusIds">Filter by payment status</param>
+		/// <param name="shippingStatusIds">Filter by shipping status</param>
+		/// <param name="billingEmail">Billing email. Leave empty to load all records.</param>
+		/// <param name="orderNumber">Filter by order number</param>
+		/// <param name="billingName">Billing name. Leave empty to load all records.</param>
+        /// <param name="paymentMethods">Filter by payment method system names.</param>
+		/// <returns>Order query</returns>
+		IQueryable<Order> GetOrders(
+			int storeId,
+			int customerId,
+			DateTime? startTime,
+			DateTime? endTime,
+			int[] orderStatusIds,
+			int[] paymentStatusIds,
+			int[] shippingStatusIds,
+			string billingEmail,
+			string orderNumber,
+			string billingName = null,
+            string[] paymentMethods = null);
+
         /// <summary>
         /// Search orders
         /// </summary>
@@ -85,10 +114,12 @@ namespace SmartStore.Services.Orders
         /// <param name="pageIndex">Page index</param>
         /// <param name="pageSize">Page size</param>
 		/// <param name="billingName">Billing name. Leave empty to load all records.</param>
+        /// <param name="paymentMethods">Filter by payment method system names.</param>
         /// <returns>Order collection</returns>
 		IPagedList<Order> SearchOrders(int storeId, int customerId, DateTime? startTime, DateTime? endTime,
 			int[] orderStatusIds, int[] paymentStatusIds, int[] shippingStatusIds,
-			string billingName, string orderGuid, string orderNumber, int pageIndex, int pageSize, string billingEmail = null);
+			string billingEmail, string orderGuid, string orderNumber, int pageIndex, int pageSize, string billingName = null,
+            string[] paymentMethods = null);
 
         /// <summary>
         /// Gets all orders by affiliate identifier
@@ -98,12 +129,6 @@ namespace SmartStore.Services.Orders
         /// <param name="pageSize">Page size</param>
         /// <returns>Orders</returns>
         IPagedList<Order> GetAllOrders(int affiliateId, int pageIndex, int pageSize);
-
-        /// <summary>
-        /// Load all orders
-        /// </summary>
-        /// <returns>Order collection</returns>
-        IList<Order> LoadAllOrders();
 
         /// <summary>
         /// Gets all orders by affiliate identifier
@@ -137,17 +162,25 @@ namespace SmartStore.Services.Orders
         /// <param name="paymentMethodSystemName">Payment method system name</param>
         /// <returns>Order</returns>
         Order GetOrderByAuthorizationTransactionIdAndPaymentMethod(string authorizationTransactionId, string paymentMethodSystemName);
-        
-        #endregion
 
-        #region Orders items
-        
-        /// <summary>
-        /// Gets an order item
-        /// </summary>
-        /// <param name="orderItemId">Order item identifier</param>
-        /// <returns>Order item</returns>
-        OrderItem GetOrderItemById(int orderItemId);
+		/// <summary>
+		/// Shortcut to add an order
+		/// </summary>
+		/// <param name="order">Order</param>
+		/// <param name="note">Order note</param>
+		/// <param name="displayToCustomer">Whether to display the note to the customer</param>
+		void AddOrderNote(Order order, string note, bool displayToCustomer = false);
+
+		#endregion
+
+		#region Orders items
+
+		/// <summary>
+		/// Gets an order item
+		/// </summary>
+		/// <param name="orderItemId">Order item identifier</param>
+		/// <returns>Order item</returns>
+		OrderItem GetOrderItemById(int orderItemId);
 
         /// <summary>
         /// Gets an order item
@@ -172,6 +205,13 @@ namespace SmartStore.Services.Orders
            int? customerId, DateTime? startTime, DateTime? endTime,
            OrderStatus? os, PaymentStatus? ps, ShippingStatus? ss,
            bool loadDownloableProductsOnly = false);
+
+		/// <summary>
+		/// Get order items by order identifiers
+		/// </summary>
+		/// <param name="orderIds">Order identifiers</param>
+		/// <returns>Order items</returns>
+		Multimap<int, OrderItem> GetOrderItemsByOrderIds(int[] orderIds);
 
         /// <summary>
         /// Delete an order item

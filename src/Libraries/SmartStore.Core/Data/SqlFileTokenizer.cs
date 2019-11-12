@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using SmartStore.Utilities;
+using SmartStore.Utilities.ObjectPools;
 
 namespace SmartStore.Core.Data
 {
@@ -15,7 +16,7 @@ namespace SmartStore.Core.Data
 
 		public SqlFileTokenizer(string fileName, Assembly assembly = null, string location = null)
 		{
-			Guard.ArgumentNotEmpty(() => fileName);
+			Guard.NotEmpty(fileName, nameof(fileName));
 
 			this.FileName = fileName;
 			this.Assembly = assembly;
@@ -49,10 +50,10 @@ namespace SmartStore.Core.Data
 			
 			using (var reader = ReadSqlFile())
 			{
-				var statement = string.Empty;
+				string statement;
 				while ((statement = ReadNextSqlStatement(reader)) != null)
 				{
-					yield return statement;
+					yield return statement.EmptyNull();
 				}
 			}
 		}
@@ -92,28 +93,29 @@ namespace SmartStore.Core.Data
 
 		private string ReadNextSqlStatement(TextReader reader)
 		{
-			var sb = new StringBuilder();
+            var psb = PooledStringBuilder.Rent();
+            var sb = (StringBuilder)psb;
 
-			string lineOfText;
+            string lineOfText;
 
-			while (true)
-			{
-				lineOfText = reader.ReadLine();
-				if (lineOfText == null)
-				{
-					if (sb.Length > 0)
-						return sb.ToString();
-					else
-						return null;
-				}
+            while (true)
+            {
+                lineOfText = reader.ReadLine();
+                if (lineOfText == null)
+                {
+                    if (sb.Length > 0)
+                        return sb.ToString();
+                    else
+                        return null;
+                }
 
-				if (lineOfText.TrimEnd().ToUpper() == "GO")
-					break;
+                if (lineOfText.TrimEnd().ToUpper() == "GO")
+                    break;
 
-				sb.Append(lineOfText + Environment.NewLine);
-			}
+                sb.Append(lineOfText + Environment.NewLine);
+            }
 
-			return sb.ToString();
+            return psb.ToStringAndReturn();
 		}
 
 	}

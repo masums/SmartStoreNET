@@ -1,140 +1,164 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Web;
+using NUnit.Framework;
+using Rhino.Mocks;
 using SmartStore.Core;
-using SmartStore.Core.Caching;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Domain.Customers;
+using SmartStore.Core.Domain.Directory;
 using SmartStore.Core.Domain.Discounts;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Shipping;
+using SmartStore.Core.Domain.Stores;
 using SmartStore.Core.Domain.Tax;
+using SmartStore.Core.Events;
+using SmartStore.Core.Infrastructure;
 using SmartStore.Core.Plugins;
 using SmartStore.Services.Catalog;
 using SmartStore.Services.Common;
+using SmartStore.Services.Configuration;
+using SmartStore.Services.Directory;
 using SmartStore.Services.Discounts;
-using SmartStore.Core.Events;
-using SmartStore.Services.Localization;
-using SmartStore.Core.Logging;
+using SmartStore.Services.Media;
 using SmartStore.Services.Orders;
 using SmartStore.Services.Payments;
 using SmartStore.Services.Shipping;
 using SmartStore.Services.Tax;
 using SmartStore.Tests;
-using NUnit.Framework;
-using Rhino.Mocks;
-using SmartStore.Core.Domain.Stores;
-using SmartStore.Services.Configuration;
-using SmartStore.Services.Directory;
 
 namespace SmartStore.Services.Tests.Orders
 {
-    [TestFixture]
+	[TestFixture]
     public class OrderTotalCalculationServiceTests : ServiceTest
     {
         IWorkContext _workContext;
 		IStoreContext _storeContext;
         ITaxService _taxService;
         IShippingService _shippingService;
-        IPaymentService _paymentService;
+		IProviderManager _providerManager;
         ICheckoutAttributeParser _checkoutAttributeParser;
         IDiscountService _discountService;
         IGiftCardService _giftCardService;
         IGenericAttributeService _genericAttributeService;
+        IPaymentService _paymentService;
+        ICurrencyService _currencyService;
         TaxSettings _taxSettings;
         RewardPointsSettings _rewardPointsSettings;
         ICategoryService _categoryService;
-        IProductAttributeParser _productAttributeParser;
+		IManufacturerService _manufacturerService;
+		IProductAttributeParser _productAttributeParser;
 		IProductService _productService;
+		IProductAttributeService _productAttributeService;
         IPriceCalculationService _priceCalcService;
         IOrderTotalCalculationService _orderTotalCalcService;
         IAddressService _addressService;
         ShippingSettings _shippingSettings;
-        ILocalizationService _localizationService;
-        ILogger _logger;
         IRepository<ShippingMethod> _shippingMethodRepository;
-        ShoppingCartSettings _shoppingCartSettings;
+		IRepository<StoreMapping> _storeMappingRepository;
+		ShoppingCartSettings _shoppingCartSettings;
         CatalogSettings _catalogSettings;
         IEventPublisher _eventPublisher;
 		ISettingService _settingService;
+		IDownloadService _downloadService;
+		ICommonServices _services;
+		HttpRequestBase _httpRequestBase;
 		IGeoCountryLookup _geoCountryLookup;
 		Store _store;
+        Currency _currency;
+        ITypeFinder _typeFinder;
 
         [SetUp]
         public new void SetUp()
         {
-			_workContext = MockRepository.GenerateMock<IWorkContext>();
-
-			_store = new Store() { Id = 1 };
+			_store = new Store { Id = 1 };
 			_storeContext = MockRepository.GenerateMock<IStoreContext>();
 			_storeContext.Expect(x => x.CurrentStore).Return(_store);
 
-            var pluginFinder = new PluginFinder();
-            var cacheManager = new NullCache();
+            _currency = new Currency { Id = 1 };
+            _workContext = MockRepository.GenerateMock<IWorkContext>();
+            _workContext.Expect(x => x.WorkingCurrency).Return(_currency);
+
+            _services = MockRepository.GenerateMock<ICommonServices>();
+            _services.Expect(x => x.StoreContext).Return(_storeContext);
+            _services.Expect(x => x.WorkContext).Return(_workContext);
+
+            var pluginFinder = PluginFinder.Current;
+
+			_shoppingCartSettings = new ShoppingCartSettings();
+			_catalogSettings = new CatalogSettings();
 
             //price calculation service
             _discountService = MockRepository.GenerateMock<IDiscountService>();
             _categoryService = MockRepository.GenerateMock<ICategoryService>();
+			_manufacturerService = MockRepository.GenerateMock<IManufacturerService>();
             _productAttributeParser = MockRepository.GenerateMock<IProductAttributeParser>();
 			_productService = MockRepository.GenerateMock<IProductService>();
-			_settingService = MockRepository.GenerateMock<ISettingService>();
-
-            _shoppingCartSettings = new ShoppingCartSettings();
-            _catalogSettings = new CatalogSettings();
-
-			_priceCalcService = new PriceCalculationService(_workContext, _storeContext,
-				 _discountService, _categoryService, _productAttributeParser, _productService, _shoppingCartSettings, _catalogSettings);
-
+			_productAttributeService = MockRepository.GenerateMock<IProductAttributeService>();
+			_genericAttributeService = MockRepository.GenerateMock<IGenericAttributeService>();
+            _paymentService = MockRepository.GenerateMock<IPaymentService>();
+            _currencyService = MockRepository.GenerateMock<ICurrencyService>();
             _eventPublisher = MockRepository.GenerateMock<IEventPublisher>();
             _eventPublisher.Expect(x => x.Publish(Arg<object>.Is.Anything));
-
-            _localizationService = MockRepository.GenerateMock<ILocalizationService>();
+            
+			_settingService = MockRepository.GenerateMock<ISettingService>();
+			_typeFinder = MockRepository.GenerateMock<ITypeFinder>();
 
             //shipping
             _shippingSettings = new ShippingSettings();
             _shippingSettings.ActiveShippingRateComputationMethodSystemNames = new List<string>();
             _shippingSettings.ActiveShippingRateComputationMethodSystemNames.Add("FixedRateTestShippingRateComputationMethod");
             _shippingMethodRepository = MockRepository.GenerateMock<IRepository<ShippingMethod>>();
-            _logger = new NullLogger();
-            _shippingService = new ShippingService(cacheManager,
+			_storeMappingRepository = MockRepository.GenerateMock<IRepository<StoreMapping>>();
+
+			_shippingService = new ShippingService(
                 _shippingMethodRepository,
-                _logger,
+				_storeMappingRepository,
                 _productAttributeParser,
 				_productService,
                 _checkoutAttributeParser,
 				_genericAttributeService,
-                _localizationService,
-                _shippingSettings, pluginFinder,
-                _eventPublisher, _shoppingCartSettings,
+                _shippingSettings,
+                _eventPublisher,
+				_shoppingCartSettings,
 				_settingService,
-				this.ProviderManager);
+				this.ProviderManager,
+				_typeFinder,
+				_services);
 
-
-            _paymentService = MockRepository.GenerateMock<IPaymentService>();
+			_providerManager = MockRepository.GenerateMock<IProviderManager>();
             _checkoutAttributeParser = MockRepository.GenerateMock<ICheckoutAttributeParser>();
             _giftCardService = MockRepository.GenerateMock<IGiftCardService>();
-            _genericAttributeService = MockRepository.GenerateMock<IGenericAttributeService>();
-
-            _eventPublisher = MockRepository.GenerateMock<IEventPublisher>();
-            _eventPublisher.Expect(x => x.Publish(Arg<object>.Is.Anything));
 
             //tax
-            _taxSettings = new TaxSettings();
-            _taxSettings.ShippingIsTaxable = true;
-            _taxSettings.PaymentMethodAdditionalFeeIsTaxable = true;
-			_taxSettings.PricesIncludeTax = false;
-			_taxSettings.TaxDisplayType = TaxDisplayType.IncludingTax;
-            _taxSettings.DefaultTaxAddressId = 10;
+            _taxSettings = new TaxSettings
+            {
+                ShippingPriceIncludesTax = false,
+                ShippingIsTaxable = true,
+                PaymentMethodAdditionalFeeIsTaxable = true,
+                PricesIncludeTax = false,
+                TaxDisplayType = TaxDisplayType.IncludingTax,
+                DefaultTaxAddressId = 10
+            };
+
             _addressService = MockRepository.GenerateMock<IAddressService>();
-            _addressService.Expect(x => x.GetAddressById(_taxSettings.DefaultTaxAddressId)).Return(new Address() { Id = _taxSettings.DefaultTaxAddressId });
+            _addressService.Expect(x => x.GetAddressById(_taxSettings.DefaultTaxAddressId)).Return(new Address { Id = _taxSettings.DefaultTaxAddressId });
+			_downloadService = MockRepository.GenerateMock<IDownloadService>();
+			_httpRequestBase = MockRepository.GenerateMock<HttpRequestBase>();
 			_geoCountryLookup = MockRepository.GenerateMock<IGeoCountryLookup>();
-			_taxService = new TaxService(_addressService, _workContext, _taxSettings, _shoppingCartSettings, pluginFinder, _settingService, _geoCountryLookup, this.ProviderManager);
+
+			_taxService = new TaxService(_addressService, _workContext, _taxSettings, _shoppingCartSettings, pluginFinder, _geoCountryLookup, this.ProviderManager);
 
             _rewardPointsSettings = new RewardPointsSettings();
 
+			_priceCalcService = new PriceCalculationService(_discountService, _categoryService, _manufacturerService, _productAttributeParser, _productService,
+				_catalogSettings, _productAttributeService, _downloadService, _services, _httpRequestBase, _taxService, _taxSettings);
+
 			_orderTotalCalcService = new OrderTotalCalculationService(_workContext, _storeContext,
-                _priceCalcService, _taxService, _shippingService, _paymentService,
-                _checkoutAttributeParser, _discountService, _giftCardService, _genericAttributeService,
+                _priceCalcService, _taxService, _shippingService, _providerManager,
+                _checkoutAttributeParser, _discountService, _giftCardService, _genericAttributeService, _paymentService, _currencyService, _productAttributeParser,
                 _taxSettings, _rewardPointsSettings, _shippingSettings, _shoppingCartSettings, _catalogSettings);
         }
 
@@ -182,6 +206,7 @@ namespace SmartStore.Services.Tests.Orders
 			cart.ForEach(sci => sci.Item.CustomerId = customer.Id);
 
 			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToCategories)).Return(new List<Discount>());
+			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToManufacturers)).Return(new List<Discount>());
 
 			decimal discountAmount;
 			Discount appliedDiscount;
@@ -245,6 +270,7 @@ namespace SmartStore.Services.Tests.Orders
 			cart.ForEach(sci => sci.Item.CustomerId = customer.Id);
 
 			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToCategories)).Return(new List<Discount>());
+			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToManufacturers)).Return(new List<Discount>());
 
 			decimal discountAmount;
 			Discount appliedDiscount;
@@ -267,8 +293,7 @@ namespace SmartStore.Services.Tests.Orders
         [Test]
         public void Can_get_shopping_cart_subTotal_discount_excluding_tax()
         {
-			//customer
-			Customer customer = new Customer();
+			var customer = new Customer();
 
 			//shopping cart
 			var product1 = new Product
@@ -279,7 +304,7 @@ namespace SmartStore.Services.Tests.Orders
 				CustomerEntersPrice = false,
 				Published = true,
 			};
-			var sci1 = new ShoppingCartItem()
+			var sci1 = new ShoppingCartItem
 			{
 				Product = product1,
 				ProductId = product1.Id,
@@ -293,7 +318,7 @@ namespace SmartStore.Services.Tests.Orders
 				CustomerEntersPrice = false,
 				Published = true,
 			};
-			var sci2 = new ShoppingCartItem()
+			var sci2 = new ShoppingCartItem
 			{
 				Product = product2,
 				ProductId = product2.Id,
@@ -308,7 +333,7 @@ namespace SmartStore.Services.Tests.Orders
 			cart.ForEach(sci => sci.Item.CustomerId = customer.Id);
 
 			//discounts
-			var discount1 = new Discount()
+			var discount1 = new Discount
 			{
 				Id = 1,
 				Name = "Discount 1",
@@ -317,8 +342,9 @@ namespace SmartStore.Services.Tests.Orders
 				DiscountLimitation = DiscountLimitationType.Unlimited,
 			};
 			_discountService.Expect(ds => ds.IsDiscountValid(discount1, customer)).Return(true);
-			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToOrderSubTotal)).Return(new List<Discount>() { discount1 });
+			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToOrderSubTotal)).Return(new List<Discount> { discount1 });
 			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToCategories)).Return(new List<Discount>());
+			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToManufacturers)).Return(new List<Discount>());
 
 			decimal discountAmount;
 			Discount appliedDiscount;
@@ -326,9 +352,11 @@ namespace SmartStore.Services.Tests.Orders
 			decimal subTotalWithDiscount;
 			SortedDictionary<decimal, decimal> taxRates;
 			//10% - default tax rate
+
 			_orderTotalCalcService.GetShoppingCartSubTotal(cart, false,
 				out discountAmount, out appliedDiscount,
 				out subTotalWithoutDiscount, out subTotalWithDiscount, out taxRates);
+
 			discountAmount.ShouldEqual(3);
 			appliedDiscount.ShouldNotBeNull();
 			appliedDiscount.Name.ShouldEqual("Discount 1");
@@ -342,8 +370,7 @@ namespace SmartStore.Services.Tests.Orders
         [Test]
         public void Can_get_shopping_cart_subTotal_discount_including_tax()
         {
-			//customer
-			Customer customer = new Customer();
+			var customer = new Customer();
 
 			//shopping cart
 			var product1 = new Product
@@ -354,7 +381,7 @@ namespace SmartStore.Services.Tests.Orders
 				CustomerEntersPrice = false,
 				Published = true,
 			};
-			var sci1 = new ShoppingCartItem()
+			var sci1 = new ShoppingCartItem
 			{
 				Product = product1,
 				ProductId = product1.Id,
@@ -368,7 +395,7 @@ namespace SmartStore.Services.Tests.Orders
 				CustomerEntersPrice = false,
 				Published = true,
 			};
-			var sci2 = new ShoppingCartItem()
+			var sci2 = new ShoppingCartItem
 			{
 				Product = product2,
 				ProductId = product2.Id,
@@ -383,7 +410,7 @@ namespace SmartStore.Services.Tests.Orders
 			cart.ForEach(sci => sci.Item.CustomerId = customer.Id);
 
 			//discounts
-			var discount1 = new Discount()
+			var discount1 = new Discount
 			{
 				Id = 1,
 				Name = "Discount 1",
@@ -392,20 +419,21 @@ namespace SmartStore.Services.Tests.Orders
 				DiscountLimitation = DiscountLimitationType.Unlimited,
 			};
 			_discountService.Expect(ds => ds.IsDiscountValid(discount1, customer)).Return(true);
-			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToOrderSubTotal)).Return(new List<Discount>() { discount1 });
+			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToOrderSubTotal)).Return(new List<Discount> { discount1 });
 			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToCategories)).Return(new List<Discount>());
+			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToManufacturers)).Return(new List<Discount>());
 
 			decimal discountAmount;
 			Discount appliedDiscount;
 			decimal subTotalWithoutDiscount;
 			decimal subTotalWithDiscount;
 			SortedDictionary<decimal, decimal> taxRates;
+
 			_orderTotalCalcService.GetShoppingCartSubTotal(cart, true,
 				out discountAmount, out appliedDiscount,
 				out subTotalWithoutDiscount, out subTotalWithDiscount, out taxRates);
 
-			//TODO strange. Why does the commented test fail? discountAmount.ShouldEqual(3.3);
-			//discountAmount.ShouldEqual(3.3);
+			(3.3M == Math.Round(discountAmount, 8)).ShouldBeTrue();
 			appliedDiscount.ShouldNotBeNull();
 			appliedDiscount.Name.ShouldEqual("Discount 1");
 			subTotalWithoutDiscount.ShouldEqual(98.329);
@@ -764,11 +792,11 @@ namespace SmartStore.Services.Tests.Orders
         [Test]
         public void Can_get_shipping_total_discount_excluding_tax()
         {
-			var sci1 = new ShoppingCartItem()
+			var sci1 = new ShoppingCartItem
 			{
 				AttributesXml = "",
 				Quantity = 3,
-				Product = new Product()
+				Product = new Product
 				{
 					Id = 1,
 					Weight = 1.5M,
@@ -779,11 +807,11 @@ namespace SmartStore.Services.Tests.Orders
 					IsShipEnabled = true,
 				}
 			};
-			var sci2 = new ShoppingCartItem()
+			var sci2 = new ShoppingCartItem
 			{
 				AttributesXml = "",
 				Quantity = 4,
-				Product = new Product()
+				Product = new Product
 				{
 					Id = 2,
 					Weight = 11.5M,
@@ -796,11 +824,11 @@ namespace SmartStore.Services.Tests.Orders
 			};
 
 			//sci3 is not shippable
-			var sci3 = new ShoppingCartItem()
+			var sci3 = new ShoppingCartItem
 			{
 				AttributesXml = "",
 				Quantity = 5,
-				Product = new Product()
+				Product = new Product
 				{
 					Id = 3,
 					Weight = 11.5M,
@@ -822,7 +850,7 @@ namespace SmartStore.Services.Tests.Orders
 			cart.ForEach(sci => sci.Item.CustomerId = customer.Id);
 
 			//discounts
-			var discount1 = new Discount()
+			var discount1 = new Discount
 			{
 				Id = 1,
 				Name = "Discount 1",
@@ -833,13 +861,7 @@ namespace SmartStore.Services.Tests.Orders
 			_discountService.Expect(ds => ds.IsDiscountValid(discount1, customer)).Return(true);
 			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToShipping)).Return(new List<Discount>() { discount1 });
 
-
-			decimal taxRate = decimal.Zero;
-			Discount appliedDiscount = null;
-			decimal? shipping = null;
-
-
-			shipping = _orderTotalCalcService.GetShoppingCartShippingTotal(cart, false, out taxRate, out appliedDiscount);
+			var shipping = _orderTotalCalcService.GetShoppingCartShippingTotal(cart, false, out var taxRate, out var appliedDiscount);
 			appliedDiscount.ShouldNotBeNull();
 			appliedDiscount.Name.ShouldEqual("Discount 1");
 			shipping.ShouldNotBeNull();
@@ -940,7 +962,7 @@ namespace SmartStore.Services.Tests.Orders
         public void Can_get_tax_total()
         {
 			//customer
-			var customer = new Customer()
+			var customer = new Customer
 			{
 				Id = 10,
 			};
@@ -983,37 +1005,43 @@ namespace SmartStore.Services.Tests.Orders
 			cart.ForEach(sci => sci.Item.CustomerId = customer.Id);
 
 
-			_genericAttributeService.Expect(x => x.GetAttributesForEntity(customer.Id, "Customer"))
-				.Return(new List<GenericAttribute>()
-                            {
-                                new GenericAttribute()
-                                    {
-                                        StoreId = _store.Id,
-                                        EntityId = customer.Id,
-                                        Key = SystemCustomerAttributeNames.SelectedPaymentMethod,
-                                        KeyGroup = "Customer",
-                                        Value = "test1"
-                                    }
-                            });
-			_paymentService.Expect(ps => ps.GetAdditionalHandlingFee(cart, "test1")).Return(20);
-			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToCategories)).Return(new List<Discount>());
+			//_genericAttributeService.Expect(x => x.GetAttributesForEntity(customer.Id, "Customer"))
+			//	.Return(new List<GenericAttribute>()
+			//				{
+			//					new GenericAttribute()
+			//						{
+			//							StoreId = _store.Id,
+			//							EntityId = customer.Id,
+			//							Key = SystemCustomerAttributeNames.SelectedPaymentMethod,
+			//							KeyGroup = "Customer",
+			//							Value = "test1"
+			//						}
+			//				});
+			//_paymentService.Expect(ps => ps.GetAdditionalHandlingFee(cart, "test1")).Return(20);
 
-			//56 - items, 10 - shipping (fixed), 20 - payment fee
+			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToCategories)).Return(new List<Discount>());
+			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToManufacturers)).Return(new List<Discount>());
+
+			//56 - items, 10 - shipping (fixed), 20 - payment fee = 86
+			//56 - items, 10 - shipping (fixed) = 66
 
 			//1. shipping is taxable, payment fee is taxable
 			_taxSettings.ShippingIsTaxable = true;
 			_taxSettings.PaymentMethodAdditionalFeeIsTaxable = true;
-			SortedDictionary<decimal, decimal> taxRates;
-			_orderTotalCalcService.GetTaxTotal(cart, out taxRates).ShouldEqual(8.6);
-			taxRates.ShouldNotBeNull();
+
+            _orderTotalCalcService.GetTaxTotal(cart, out SortedDictionary<decimal, decimal> taxRates).ShouldEqual(6.6m);
+
+            taxRates.ShouldNotBeNull();
 			taxRates.Count.ShouldEqual(1);
 			taxRates.ContainsKey(10).ShouldBeTrue();
-			taxRates[10].ShouldEqual(8.6);
+			taxRates[10].ShouldEqual(6.6);
 
 			//2. shipping is taxable, payment fee is not taxable
 			_taxSettings.ShippingIsTaxable = true;
 			_taxSettings.PaymentMethodAdditionalFeeIsTaxable = false;
+
 			_orderTotalCalcService.GetTaxTotal(cart, out taxRates).ShouldEqual(6.6);
+
 			taxRates.ShouldNotBeNull();
 			taxRates.Count.ShouldEqual(1);
 			taxRates.ContainsKey(10).ShouldBeTrue();
@@ -1022,16 +1050,20 @@ namespace SmartStore.Services.Tests.Orders
 			//3. shipping is not taxable, payment fee is taxable
 			_taxSettings.ShippingIsTaxable = false;
 			_taxSettings.PaymentMethodAdditionalFeeIsTaxable = true;
-			_orderTotalCalcService.GetTaxTotal(cart, out taxRates).ShouldEqual(7.6);
+
+			_orderTotalCalcService.GetTaxTotal(cart, out taxRates).ShouldEqual(5.6);
+
 			taxRates.ShouldNotBeNull();
 			taxRates.Count.ShouldEqual(1);
 			taxRates.ContainsKey(10).ShouldBeTrue();
-			taxRates[10].ShouldEqual(7.6);
+			taxRates[10].ShouldEqual(5.6);
 
 			//3. shipping is not taxable, payment fee is not taxable
 			_taxSettings.ShippingIsTaxable = false;
 			_taxSettings.PaymentMethodAdditionalFeeIsTaxable = false;
+
 			_orderTotalCalcService.GetTaxTotal(cart, out taxRates).ShouldEqual(5.6);
+
 			taxRates.ShouldNotBeNull();
 			taxRates.Count.ShouldEqual(1);
 			taxRates.ContainsKey(10).ShouldBeTrue();
@@ -1285,15 +1317,14 @@ namespace SmartStore.Services.Tests.Orders
 		//}
 
         [Test]
-        public void Can_get_shopping_cart_total_discount()
+        public void Can_get_shopping_cart_total()
         {
-			//customer
-			var customer = new Customer()
+			var customer = new Customer
 			{
 				Id = 10,
 			};
 
-			//shopping cart
+			// Shopping cart
 			var product1 = new Product
 			{
 				Id = 1,
@@ -1302,12 +1333,13 @@ namespace SmartStore.Services.Tests.Orders
 				Published = true,
 				IsShipEnabled = true,
 			};
-			var sci1 = new ShoppingCartItem()
+			var sci1 = new ShoppingCartItem
 			{
 				Product = product1,
 				ProductId = product1.Id,
 				Quantity = 2,
 			};
+
 			var product2 = new Product
 			{
 				Id = 2,
@@ -1316,7 +1348,7 @@ namespace SmartStore.Services.Tests.Orders
 				Published = true,
 				IsShipEnabled = true,
 			};
-			var sci2 = new ShoppingCartItem()
+			var sci2 = new ShoppingCartItem
 			{
 				Product = product2,
 				ProductId = product2.Id,
@@ -1330,8 +1362,8 @@ namespace SmartStore.Services.Tests.Orders
 			cart.ForEach(sci => sci.Item.Customer = customer);
 			cart.ForEach(sci => sci.Item.CustomerId = customer.Id);
 
-			//discounts
-			var discount1 = new Discount()
+			// Discounts
+			var discount1 = new Discount
 			{
 				Id = 1,
 				Name = "Discount 1",
@@ -1342,40 +1374,43 @@ namespace SmartStore.Services.Tests.Orders
 			_discountService.Expect(ds => ds.IsDiscountValid(discount1, customer)).Return(true);
 			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToOrderTotal)).Return(new List<Discount>() { discount1 });
 			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToCategories)).Return(new List<Discount>());
+			_discountService.Expect(ds => ds.GetAllDiscounts(DiscountType.AssignedToManufacturers)).Return(new List<Discount>());
 
 
-			_genericAttributeService.Expect(x => x.GetAttributesForEntity(customer.Id, "Customer"))
-				.Return(new List<GenericAttribute>()
-                            {
-                                new GenericAttribute()
-                                    {
-                                        StoreId = _store.Id,
-                                        EntityId = customer.Id,
-                                        Key = SystemCustomerAttributeNames.SelectedPaymentMethod,
-                                        KeyGroup = "Customer",
-                                        Value = "test1"
-                                    }
-                            });
-			_paymentService.Expect(ps => ps.GetAdditionalHandlingFee(cart, "test1")).Return(20);
+			//_genericAttributeService.Expect(x => x.GetAttributesForEntity(customer.Id, "Customer"))
+			//	.Return(new List<GenericAttribute>
+			//	{
+			//		new GenericAttribute
+			//		{
+			//			StoreId = _store.Id,
+			//			EntityId = customer.Id,
+			//			Key = SystemCustomerAttributeNames.SelectedPaymentMethod,
+			//			KeyGroup = "Customer",
+			//			Value = "test1"
+			//		}
+			//	});
 
+			//_paymentService.Expect(ps => ps.GetAdditionalHandlingFee(cart, "test1")).Return(20);
 
-			decimal discountAmount;
-			Discount appliedDiscount;
-			List<AppliedGiftCard> appliedGiftCards;
-			int redeemedRewardPoints;
-			decimal redeemedRewardPointsAmount;
-
-			//shipping is taxable, payment fee is taxable
+			// Shipping is taxable, payment fee is taxable
 			_taxSettings.ShippingIsTaxable = true;
 			_taxSettings.PaymentMethodAdditionalFeeIsTaxable = true;
 
-			//56 - items, 10 - shipping (fixed), 20 - payment fee, 8.6 - tax, [-3] - discount
-			_orderTotalCalcService.GetShoppingCartTotal(cart, out discountAmount, out appliedDiscount,
-				out appliedGiftCards, out redeemedRewardPoints, out redeemedRewardPointsAmount)
-				.ShouldEqual(91.6M);
-			discountAmount.ShouldEqual(3);
-			appliedDiscount.ShouldNotBeNull();
-			appliedDiscount.Name.ShouldEqual("Discount 1");
+            // 56 - items, 10 - shipping (fixed), 20 - payment fee, 8.6 - tax, [-3] - discount = 91.6
+            // 56 - items, 10 - shipping (fixed), 6.6 - tax, [-3] - discount = 69.6
+            var cartTotal = _orderTotalCalcService.GetShoppingCartTotal(cart);
+            cartTotal.TotalAmount.ShouldEqual(69.6M);
+            cartTotal.DiscountAmount.ShouldEqual(3);
+            cartTotal.AppliedDiscount.ShouldNotBeNull();
+            cartTotal.AppliedDiscount.Name.ShouldEqual("Discount 1");
+
+            // Test implicit operators
+            decimal? totalAmount = null;
+            totalAmount = _orderTotalCalcService.GetShoppingCartTotal(cart);
+            totalAmount.ShouldEqual(69.6M);
+
+            ShoppingCartTotal cartTotalObject = 123.45M;
+            cartTotalObject.TotalAmount.ShouldEqual(123.45M);
         }
 
         [Test]

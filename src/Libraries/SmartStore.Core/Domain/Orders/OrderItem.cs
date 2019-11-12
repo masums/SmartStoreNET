@@ -61,6 +61,12 @@ namespace SmartStore.Core.Domain.Orders
 		[DataMember]
 		public decimal PriceExclTax { get; set; }
 
+		/// <summary>
+		/// Gets or sets the tax rate
+		/// </summary>
+		[DataMember]
+		public decimal TaxRate { get; set; }
+
         /// <summary>
         /// Gets or sets the discount amount (incl tax)
         /// </summary>
@@ -121,6 +127,18 @@ namespace SmartStore.Core.Domain.Orders
 		/// </summary>
 		[DataMember]
 		public decimal ProductCost { get; set; }
+
+        /// <summary>
+        /// Gets or sets the delivery time at the time of purchase.
+        /// </summary>
+        [DataMember]
+        public int? DeliveryTimeId { get; set; }
+
+        /// <summary>
+        /// Indicates whether the delivery time was displayed at the time of purchase.
+        /// </summary>
+        [DataMember]
+        public bool DisplayDeliveryTime { get; set; }
 
         /// <summary>
         /// Gets the order

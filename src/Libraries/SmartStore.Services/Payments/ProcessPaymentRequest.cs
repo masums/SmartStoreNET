@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using SmartStore.Core.Domain.Catalog;
+using SmartStore.Core.Domain.Orders;
 
 namespace SmartStore.Services.Payments
 {
@@ -12,8 +13,10 @@ namespace SmartStore.Services.Payments
     {
 		public ProcessPaymentRequest()
 		{
-			this.CustomProperties = new Dictionary<string, CustomPaymentRequestValue>();
-		}
+			CustomProperties = new Dictionary<string, CustomPaymentRequestValue>();
+            IsMultiOrder = false;
+            ShoppingCartItemIds = new List<int>();
+        }
 
 		/// <summary>
 		/// Gets or sets a store identifier
@@ -45,10 +48,17 @@ namespace SmartStore.Services.Payments
         /// </summary>
         public string PaymentMethodSystemName { get; set; }
 
+        /// <summary>
+        /// Gets or sets a payment method identifier
+        /// </summary>
+        public bool IsMultiOrder { get; set; }
+
 		/// <summary>
 		/// Use that dictionary for any payment method or checkout flow specific data
 		/// </summary>
 		public Dictionary<string, CustomPaymentRequestValue> CustomProperties { get; set; }
+
+        public IList<int> ShoppingCartItemIds { get; set; }
 
         #region Payment method specific properties 
 
@@ -148,6 +158,7 @@ namespace SmartStore.Services.Payments
     }
 
 
+	[Serializable]
 	public partial class CustomPaymentRequestValue
 	{
 		/// <summary>

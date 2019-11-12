@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using SmartStore.Core;
-using SmartStore.Core.Caching;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Blogs;
 using SmartStore.Core.Domain.Stores;
 using SmartStore.Core.Events;
+using SmartStore.Services.Localization;
+using SmartStore.Core.Domain.Seo;
+using SmartStore.Utilities;
 
 namespace SmartStore.Services.Blogs
 {
@@ -15,13 +17,14 @@ namespace SmartStore.Services.Blogs
     /// </summary>
     public partial class BlogService : IBlogService
     {
-
         #region Fields
 
         private readonly IRepository<BlogPost> _blogPostRepository;
 		private readonly IRepository<StoreMapping> _storeMappingRepository;
-        private readonly ICacheManager _cacheManager;
-        private readonly IEventPublisher _eventPublisher;
+		private readonly ICommonServices _services;
+		private readonly ILanguageService _languageService;
+        private readonly SeoSettings _seoSettings;
+        private readonly BlogSettings _blogSettings;
 
         #endregion
 
@@ -29,15 +32,19 @@ namespace SmartStore.Services.Blogs
 
         public BlogService(IRepository<BlogPost> blogPostRepository,
 			IRepository<StoreMapping> storeMappingRepository,
-			ICacheManager cacheManager, 
-			IEventPublisher eventPublisher)
+			ICommonServices services,
+			ILanguageService languageService,
+            SeoSettings seoSettings,
+            BlogSettings blogSettings)
         {
             _blogPostRepository = blogPostRepository;
 			_storeMappingRepository = storeMappingRepository;
-            _cacheManager = cacheManager;
-            _eventPublisher = eventPublisher;
+			_services = services;
+			_languageService = languageService;
+			_blogSettings = blogSettings;
+            _seoSettings = seoSettings;
 
-			this.QuerySettings = DbQuerySettings.Default;
+            this.QuerySettings = DbQuerySettings.Default;
         }
 
 		public DbQuerySettings QuerySettings { get; set; }
@@ -56,9 +63,6 @@ namespace SmartStore.Services.Blogs
                 throw new ArgumentNullException("blogPost");
 
             _blogPostRepository.Delete(blogPost);
-
-            //event notification
-            _eventPublisher.EntityDeleted(blogPost);
         }
 
         /// <summary>
@@ -84,22 +88,31 @@ namespace SmartStore.Services.Blogs
         /// <param name="pageIndex">Page index</param>
         /// <param name="pageSize">Page size</param>
         /// <param name="showHidden">A value indicating whether to show hidden records</param>
+		/// <param name="maxAge">The maximum age of returned blog posts</param>
         /// <returns>Blog posts</returns>
 		public virtual IPagedList<BlogPost> GetAllBlogPosts(int storeId, int languageId,
-            DateTime? dateFrom, DateTime? dateTo, int pageIndex, int pageSize, bool showHidden = false)
+			DateTime? dateFrom, DateTime? dateTo, int pageIndex, int pageSize, bool showHidden = false, DateTime? maxAge = null)
         {
             var query = _blogPostRepository.Table;
+
             if (dateFrom.HasValue)
                 query = query.Where(b => dateFrom.Value <= b.CreatedOnUtc);
+
             if (dateTo.HasValue)
                 query = query.Where(b => dateTo.Value >= b.CreatedOnUtc);
+
             if (languageId > 0)
                 query = query.Where(b => languageId == b.LanguageId);
+
+			if (maxAge.HasValue)
+				query = query.Where(b => b.CreatedOnUtc >= maxAge.Value);
+
             if (!showHidden)
             {
                 var utcNow = DateTime.UtcNow;
                 query = query.Where(b => !b.StartDateUtc.HasValue || b.StartDateUtc <= utcNow);
                 query = query.Where(b => !b.EndDateUtc.HasValue || b.EndDateUtc >= utcNow);
+                query = query.Where(b => b.IsPublished);
             }
 
 			if (storeId > 0 && !QuerySettings.IgnoreMultiStore)
@@ -135,18 +148,30 @@ namespace SmartStore.Services.Blogs
         /// <param name="pageSize">Page size</param>
         /// <param name="showHidden">A value indicating whether to show hidden records</param>
         /// <returns>Blog posts</returns>
-		public virtual IPagedList<BlogPost> GetAllBlogPostsByTag(int storeId, int languageId, string tag,
-            int pageIndex, int pageSize, bool showHidden = false)
+		public virtual IPagedList<BlogPost> GetAllBlogPostsByTag(
+			int storeId, 
+			int languageId, 
+			string tag,
+            int pageIndex, 
+			int pageSize, 
+			bool showHidden = false,
+            DateTime? maxAge = null)
         {
             tag = tag.Trim();
 
             //we laod all records and only then filter them by tag
-			var blogPostsAll = GetAllBlogPosts(storeId, languageId, null, null, 0, int.MaxValue, showHidden);
+			var blogPostsAll = GetAllBlogPosts(storeId, languageId, null, null, 0, int.MaxValue, showHidden, maxAge);
             var taggedBlogPosts = new List<BlogPost>();
+            
             foreach (var blogPost in blogPostsAll)
             {
-                var tags = blogPost.ParseTags();
-                if (!String.IsNullOrEmpty(tags.FirstOrDefault(t => t.Equals(tag, StringComparison.InvariantCultureIgnoreCase))))
+                var tags = blogPost.ParseTags().Select(x => SeoHelper.GetSeName(x,
+                    _seoSettings.ConvertNonWesternChars,
+                    _seoSettings.AllowUnicodeCharsInUrls,
+                    true,
+                    _seoSettings.SeoNameCharConversion));
+
+                if (tags.FirstOrDefault(t => t.Equals(tag, StringComparison.InvariantCultureIgnoreCase)).HasValue())
                     taggedBlogPosts.Add(blogPost);
             }
 
@@ -200,9 +225,6 @@ namespace SmartStore.Services.Blogs
                 throw new ArgumentNullException("blogPost");
 
             _blogPostRepository.Insert(blogPost);
-
-            //event notification
-            _eventPublisher.EntityInserted(blogPost);
         }
 
         /// <summary>
@@ -215,9 +237,6 @@ namespace SmartStore.Services.Blogs
                 throw new ArgumentNullException("blogPost");
 
             _blogPostRepository.Update(blogPost);
-
-            //event notification
-            _eventPublisher.EntityUpdated(blogPost);
         }
         
         /// <summary>

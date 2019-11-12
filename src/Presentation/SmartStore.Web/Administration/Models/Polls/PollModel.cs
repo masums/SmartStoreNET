@@ -2,19 +2,22 @@
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Web.Mvc;
+using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Models.Stores;
-using SmartStore.Admin.Validators.Polls;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Polls
 {
     [Validator(typeof(PollValidator))]
     public class PollModel : EntityModelBase
     {
+        public bool UsernamesEnabled { get; set; }
+        public int GridPageSize { get; set; }
+
         [SmartResourceDisplayName("Admin.ContentManagement.Polls.Fields.Language")]
         public int LanguageId { get; set; }
+        public List<SelectListItem> AvailableLanguages { get; set; }
 
         [SmartResourceDisplayName("Admin.ContentManagement.Polls.Fields.Language")]
         [AllowHtml]
@@ -37,7 +40,7 @@ namespace SmartStore.Admin.Models.Polls
         [SmartResourceDisplayName("Admin.ContentManagement.Polls.Fields.AllowGuestsToVote")]
         public bool AllowGuestsToVote { get; set; } 	
 
-        [SmartResourceDisplayName("Admin.ContentManagement.Polls.Fields.DisplayOrder")]
+        [SmartResourceDisplayName("Common.DisplayOrder")]
         public int DisplayOrder { get; set; }
 
         [SmartResourceDisplayName("Admin.ContentManagement.Polls.Fields.StartDate")]
@@ -46,12 +49,19 @@ namespace SmartStore.Admin.Models.Polls
         [SmartResourceDisplayName("Admin.ContentManagement.Polls.Fields.EndDate")]
         public DateTime? EndDate { get; set; }
 
-		[SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
-		public bool LimitedToStores { get; set; }
+        // Store mapping
+        [UIHint("Stores"), AdditionalMetadata("multiple", true)]
+        [SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
+        public int[] SelectedStoreIds { get; set; }
+        [SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
+        public bool LimitedToStores { get; set; }
+    }
 
-		[SmartResourceDisplayName("Admin.Common.Store.AvailableFor")]
-		public List<StoreModel> AvailableStores { get; set; }
-		public int[] SelectedStoreIds { get; set; }
-
+    public partial class PollValidator : AbstractValidator<PollModel>
+    {
+        public PollValidator()
+        {
+            RuleFor(x => x.Name).NotEmpty();
+        }
     }
 }

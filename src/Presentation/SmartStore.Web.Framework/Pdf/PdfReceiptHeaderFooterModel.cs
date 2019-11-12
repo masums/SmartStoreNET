@@ -1,5 +1,5 @@
 ﻿using SmartStore.Core.Domain.Common;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 using SmartStore.Web.Framework.Pdf;
 
 namespace SmartStore.Web.Framework.Pdf
@@ -15,6 +15,8 @@ namespace SmartStore.Web.Framework.Pdf
 		public CompanyInformationSettings MerchantCompanyInfo { get; set; }
 		public BankConnectionSettings MerchantBankAccount { get; set; }
 		public ContactDataSettings MerchantContactData { get; set; }
+
+		public string MerchantFormattedAddress { get; set; }
 
 		public PdfHeaderFooterVariables Variables { get; set; }
     }

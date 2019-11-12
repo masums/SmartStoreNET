@@ -1,15 +1,18 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Web.Mvc;
 using SmartStore.Admin.Models.Catalog;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Logging;
+using SmartStore.Core.Security;
 using SmartStore.Services.Catalog;
 using SmartStore.Services.Localization;
-using SmartStore.Services.Security;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Controllers;
+using SmartStore.Web.Framework.Filters;
+using SmartStore.Web.Framework.Security;
 using Telerik.Web.Mvc;
 
 namespace SmartStore.Admin.Controllers
@@ -17,285 +20,307 @@ namespace SmartStore.Admin.Controllers
     [AdminAuthorize]
     public class SpecificationAttributeController : AdminControllerBase
     {
-        #region Fields
-
         private readonly ISpecificationAttributeService _specificationAttributeService;
         private readonly ILanguageService _languageService;
         private readonly ILocalizedEntityService _localizedEntityService;
-        private readonly ILocalizationService _localizationService;
         private readonly ICustomerActivityService _customerActivityService;
-        private readonly IPermissionService _permissionService;
 		private readonly AdminAreaSettings _adminAreaSettings;
 
-        #endregion Fields
-
-        #region Constructors
-
-        public SpecificationAttributeController(ISpecificationAttributeService specificationAttributeService,
-            ILanguageService languageService, ILocalizedEntityService localizedEntityService,
-            ILocalizationService localizationService, ICustomerActivityService customerActivityService,
-            IPermissionService permissionService,
+        public SpecificationAttributeController(
+            ISpecificationAttributeService specificationAttributeService,
+            ILanguageService languageService,
+            ILocalizedEntityService localizedEntityService,
+            ICustomerActivityService customerActivityService,
 			AdminAreaSettings adminAreaSettings)
         {
-            this._specificationAttributeService = specificationAttributeService;
-            this._languageService = languageService;
-            this._localizedEntityService = localizedEntityService;
-            this._localizationService = localizationService;
-            this._customerActivityService = customerActivityService;
-            this._permissionService = permissionService;
-			this._adminAreaSettings = adminAreaSettings;
+            _specificationAttributeService = specificationAttributeService;
+            _languageService = languageService;
+            _localizedEntityService = localizedEntityService;
+            _customerActivityService = customerActivityService;
+			_adminAreaSettings = adminAreaSettings;
         }
-
-        #endregion
         
         #region Utilities
 
-        [NonAction]
-        public void UpdateAttributeLocales(SpecificationAttribute specificationAttribute, SpecificationAttributeModel model)
+        private void UpdateAttributeLocales(SpecificationAttribute specificationAttribute, SpecificationAttributeModel model)
         {
             foreach (var localized in model.Locales)
             {
                 _localizedEntityService.SaveLocalizedValue(specificationAttribute, x => x.Name, localized.Name, localized.LanguageId);
-            }
+				_localizedEntityService.SaveLocalizedValue(specificationAttribute, x => x.Alias, localized.Alias, localized.LanguageId);
+			}
         }
 
-        [NonAction]
-        public void UpdateOptionLocales(SpecificationAttributeOption specificationAttributeOption, SpecificationAttributeOptionModel model)
+        private void UpdateOptionLocales(SpecificationAttributeOption specificationAttributeOption, SpecificationAttributeOptionModel model)
         {
             foreach (var localized in model.Locales)
             {
                 _localizedEntityService.SaveLocalizedValue(specificationAttributeOption, x => x.Name, localized.Name, localized.LanguageId);
-            }
+				_localizedEntityService.SaveLocalizedValue(specificationAttributeOption, x => x.Alias, localized.Alias, localized.LanguageId);
+			}
         }
 
-		private void AddMultipleOptionNames(SpecificationAttributeOptionModel model)
+		private bool AddMultipleOptionNames(SpecificationAttributeOptionModel model)
 		{
 			var values = model.Name.SplitSafe(";");
-			int order = model.DisplayOrder;
+			var alias = model.Alias.SplitSafe(";");
+			var order = model.DisplayOrder;
 
-			for (int i = 0; i < values.Length; ++i)
+			for (var i = 0; i < values.Length; ++i)
 			{
-				var sao = new SpecificationAttributeOption()
+				var sao = new SpecificationAttributeOption
 				{
-					Name = values[i].Trim(),
+					Name = values.SafeGet(i).Trim(),
+					Alias = alias.SafeGet(i).Trim(),
 					DisplayOrder = order++,
 					SpecificationAttributeId = model.SpecificationAttributeId
 				};
 
-				_specificationAttributeService.InsertSpecificationAttributeOption(sao);
-
-				foreach (var localized in model.Locales.Where(l => l.Name.HasValue()))
+				try
 				{
-					var localizedValues = localized.Name.SplitSafe(";");
-					string value = (i < localizedValues.Length ? localizedValues[i].Trim() : sao.Name);
-
-					_localizedEntityService.SaveLocalizedValue(sao, x => x.Name, value, localized.LanguageId);
+					_specificationAttributeService.InsertSpecificationAttributeOption(sao);
 				}
+				catch (Exception ex)
+				{
+					ModelState.AddModelError("", ex.Message);
+					return false;
+				}
+
+                try
+                {
+                    // Save localized properties.
+                    foreach (var localized in model.Locales.Where(l => l.Name.HasValue()))
+                    {
+                        var localizedValues = localized.Name.SplitSafe(";");
+                        var value = (i < localizedValues.Length ? localizedValues[i].Trim() : sao.Name);
+
+                        _localizedEntityService.SaveLocalizedValue(sao, x => x.Name, value, localized.LanguageId);
+                    }
+
+                    foreach (var localized in model.Locales.Where(l => l.Alias.HasValue()))
+                    {
+                        var localizedAlias = localized.Alias.SplitSafe(";");
+                        var value = localizedAlias.SafeGet(i).Trim();
+
+                        if (value.HasValue())
+                        {
+                            _localizedEntityService.SaveLocalizedValue(sao, x => x.Alias, value, localized.LanguageId);
+                        }
+                    }
+                }
+                catch { }
 			}
+
+			return true;
 		}
 
         #endregion
         
         #region Specification attributes
 
-        //list
         public ActionResult Index()
         {
             return RedirectToAction("List");
         }
 
+        [Permission(Permissions.Catalog.Attribute.Read)]
         public ActionResult List()
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
 			ViewData["GridPageSize"] = _adminAreaSettings.GridPageSize;
 
 			return View();
         }
 
         [HttpPost, GridAction(EnableCustomBinding = true)]
+        [Permission(Permissions.Catalog.Attribute.Read)]
         public ActionResult List(GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
+			var gridModel = new GridModel<SpecificationAttributeModel>();
 
 			var data = _specificationAttributeService.GetSpecificationAttributes()
+				.Expand(x => x.SpecificationAttributeOptions)
 				.ForCommand(command)
-				.Select(x => x.ToModel())
+				.Select(x =>
+				{
+					var model = x.ToModel();
+					model.OptionCount = x.SpecificationAttributeOptions.Count;
+
+					return model;
+				})
 				.ToList();
 
-            var gridModel = new GridModel<SpecificationAttributeModel>
-            {
-                Data = data.PagedForCommand(command),
-                Total = data.Count
-            };
+			gridModel.Data = data.PagedForCommand(command);
+			gridModel.Total = data.Count;
 
             return new JsonResult
             {
                 Data = gridModel
             };
         }
-        
-        //create
+
+        [Permission(Permissions.Catalog.Attribute.Create)]
         public ActionResult Create()
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
             var model = new SpecificationAttributeModel();
-            //locales
-            AddLocales(_languageService, model.Locales);
+
+			AddLocales(_languageService, model.Locales);
+
             return View(model);
         }
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
+        [Permission(Permissions.Catalog.Attribute.Create)]
         public ActionResult Create(SpecificationAttributeModel model, bool continueEditing)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
             if (ModelState.IsValid)
             {
                 var specificationAttribute = model.ToEntity();
-                _specificationAttributeService.InsertSpecificationAttribute(specificationAttribute);
-                UpdateAttributeLocales(specificationAttribute, model);
 
-                //activity log
-                _customerActivityService.InsertActivity("AddNewSpecAttribute", _localizationService.GetResource("ActivityLog.AddNewSpecAttribute"), specificationAttribute.Name);
+				try
+				{
+					_specificationAttributeService.InsertSpecificationAttribute(specificationAttribute);
+				}
+				catch (Exception ex)
+				{
+					ModelState.AddModelError("", ex.Message);
+					return View(model);
+				}
 
-                NotifySuccess(_localizationService.GetResource("Admin.Catalog.Attributes.SpecificationAttributes.Added"));
+				try
+				{
+					UpdateAttributeLocales(specificationAttribute, model);
+				}
+				catch (Exception ex)
+				{
+					continueEditing = true;
+					NotifyError(ex.Message);
+				}
+
+				_customerActivityService.InsertActivity("AddNewSpecAttribute", T("ActivityLog.AddNewSpecAttribute"), specificationAttribute.Name);
+
+                NotifySuccess(T("Admin.Catalog.Attributes.SpecificationAttributes.Added"));
                 return continueEditing ? RedirectToAction("Edit", new { id = specificationAttribute.Id }) : RedirectToAction("List");
             }
 
-            //If we got this far, something failed, redisplay form
             return View(model);
         }
 
-        //edit
+        [Permission(Permissions.Catalog.Attribute.Read)]
         public ActionResult Edit(int id)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
             var specificationAttribute = _specificationAttributeService.GetSpecificationAttributeById(id);
             if (specificationAttribute == null)
-                //No specification attribute found with the specified id
+            {
                 return RedirectToAction("List");
+            }
 
             var model = specificationAttribute.ToModel();
-            //locales
-            AddLocales(_languageService, model.Locales, (locale, languageId) =>
+
+			AddLocales(_languageService, model.Locales, (locale, languageId) =>
             {
                 locale.Name = specificationAttribute.GetLocalized(x => x.Name, languageId, false, false);
-            });
+				locale.Alias = specificationAttribute.GetLocalized(x => x.Alias, languageId, false, false);
+			});
 
             return View(model);
         }
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
+        [Permission(Permissions.Catalog.Attribute.Update)]
         public ActionResult Edit(SpecificationAttributeModel model, bool continueEditing)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
             var specificationAttribute = _specificationAttributeService.GetSpecificationAttributeById(model.Id);
             if (specificationAttribute == null)
-                //No specification attribute found with the specified id
+            {
                 return RedirectToAction("List");
+            }
 
             if (ModelState.IsValid)
             {
                 specificationAttribute = model.ToEntity(specificationAttribute);
-                _specificationAttributeService.UpdateSpecificationAttribute(specificationAttribute);
 
-                UpdateAttributeLocales(specificationAttribute, model);
+				try
+				{
+					_specificationAttributeService.UpdateSpecificationAttribute(specificationAttribute);
 
-                //activity log
-                _customerActivityService.InsertActivity("EditSpecAttribute", _localizationService.GetResource("ActivityLog.EditSpecAttribute"), specificationAttribute.Name);
+					UpdateAttributeLocales(specificationAttribute, model);
+				}
+				catch (Exception ex)
+				{
+					ModelState.AddModelError("", ex.Message);
+					return View(model);
+				}
 
-                NotifySuccess(_localizationService.GetResource("Admin.Catalog.Attributes.SpecificationAttributes.Updated"));
+                _customerActivityService.InsertActivity("EditSpecAttribute", T("ActivityLog.EditSpecAttribute"), specificationAttribute.Name);
+
+                NotifySuccess(T("Admin.Catalog.Attributes.SpecificationAttributes.Updated"));
                 return continueEditing ? RedirectToAction("Edit", specificationAttribute.Id) : RedirectToAction("List");
             }
 
-            //If we got this far, something failed, redisplay form
             return View(model);
         }
 
-        //delete
         [HttpPost, ActionName("Delete")]
+        [Permission(Permissions.Catalog.Attribute.Delete)]
         public ActionResult DeleteConfirmed(int id)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
             var specificationAttribute = _specificationAttributeService.GetSpecificationAttributeById(id);
             if (specificationAttribute == null)
-                //No specification attribute found with the specified id
+            {
                 return RedirectToAction("List");
+            }
 
             _specificationAttributeService.DeleteSpecificationAttribute(specificationAttribute);
 
-            //activity log
-            _customerActivityService.InsertActivity("DeleteSpecAttribute", _localizationService.GetResource("ActivityLog.DeleteSpecAttribute"), specificationAttribute.Name);
+            _customerActivityService.InsertActivity("DeleteSpecAttribute", T("ActivityLog.DeleteSpecAttribute"), specificationAttribute.Name);
 
-            NotifySuccess(_localizationService.GetResource("Admin.Catalog.Attributes.SpecificationAttributes.Deleted"));
+            NotifySuccess(T("Admin.Catalog.Attributes.SpecificationAttributes.Deleted"));
             return RedirectToAction("List");
         }
 
 		[HttpPost]
-		public ActionResult ProductMappingEdit(int specificationAttributeId, string field, bool value)
+        [Permission(Permissions.Catalog.Attribute.Delete)]
+        public ActionResult DeleteSelected(ICollection<int> selectedIds)
 		{
-			_specificationAttributeService.UpdateProductSpecificationMapping(specificationAttributeId, field, value);
-
-			return Json(new
+			if (selectedIds != null && selectedIds.Count > 0)
 			{
-				message = _localizationService.GetResource("Admin.Common.DataEditSuccess"),
-				notificationType = "success"
-			});
+				var attributes = _specificationAttributeService.GetSpecificationAttributesByIds(selectedIds.ToArray()).ToList();
+				var deletedNames = string.Join(", ", attributes.Select(x => x.Name));
+
+				attributes.Each(x => _specificationAttributeService.DeleteSpecificationAttribute(x));
+
+				_customerActivityService.InsertActivity("DeleteSpecAttribute", T("ActivityLog.DeleteSpecAttribute"), deletedNames);
+			}
+
+			return Json(new { Result = true });
 		}
 
         #endregion
 
         #region Specification attribute options
 
-        //list
         [HttpPost, GridAction(EnableCustomBinding = true)]
+        [Permission(Permissions.Catalog.Attribute.Read)]
         public ActionResult OptionList(int specificationAttributeId, GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
+			var gridModel = new GridModel<SpecificationAttributeOptionModel>();
+			var options = _specificationAttributeService.GetSpecificationAttributeOptionsBySpecificationAttribute(specificationAttributeId);
 
-            var options = _specificationAttributeService.GetSpecificationAttributeOptionsBySpecificationAttribute(specificationAttributeId);
-            var gridModel = new GridModel<SpecificationAttributeOptionModel>
-            {
-                Data = options.Select(x => 
-                    {
-                        var model = x.ToModel();
-                        //locales
-                        //AddLocales(_languageService, model.Locales, (locale, languageId) =>
-                        //{
-                        //    locale.Name = x.GetLocalized(y => y.Name, languageId, false, false);
-                        //});
-                        return model;
-                    }),
-                Total = options.Count()
-            };
+			gridModel.Data = options.Select(x => x.ToModel());
+			gridModel.Total = options.Count();
+
             return new JsonResult
             {
                 Data = gridModel
             };
         }
 
-        //create
+        [Permission(Permissions.Catalog.Attribute.EditOption)]
         public ActionResult OptionCreatePopup(int specificationAttributeId)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
             var model = new SpecificationAttributeOptionModel();
             model.SpecificationAttributeId = specificationAttributeId;
-            //locales
+
             AddLocales(_languageService, model.Locales);
 
 			ViewBag.MultipleEnabled = true;
@@ -304,27 +329,43 @@ namespace SmartStore.Admin.Controllers
         }
 
         [HttpPost]
+        [Permission(Permissions.Catalog.Attribute.EditOption)]
         public ActionResult OptionCreatePopup(string btnId, string formId, SpecificationAttributeOptionModel model)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
             var specificationAttribute = _specificationAttributeService.GetSpecificationAttributeById(model.SpecificationAttributeId);
             if (specificationAttribute == null)
+            {
                 return RedirectToAction("List");
+            }
 
             if (ModelState.IsValid)
             {
 				if (model.Multiple)
 				{
-					AddMultipleOptionNames(model);
+                    if (!AddMultipleOptionNames(model))
+                    {
+                        return View(model);
+                    }
 				}
 				else
 				{
 					var sao = model.ToEntity();
 
-					_specificationAttributeService.InsertSpecificationAttributeOption(sao);
-					UpdateOptionLocales(sao, model);
+					try
+					{
+						_specificationAttributeService.InsertSpecificationAttributeOption(sao);
+					}
+					catch (Exception ex)
+					{
+						ModelState.AddModelError("", ex.Message);
+						return View(model);
+					}
+
+                    try
+                    {
+                        UpdateOptionLocales(sao, model);
+                    }
+                    catch { }
 				}
 
                 ViewBag.RefreshPage = true;
@@ -333,48 +374,54 @@ namespace SmartStore.Admin.Controllers
                 return View(model);
             }
 
-            //If we got this far, something failed, redisplay form
             return View(model);
         }
 
-        //edit
+        [Permission(Permissions.Catalog.Attribute.Read)]
         public ActionResult OptionEditPopup(int id)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
             var sao = _specificationAttributeService.GetSpecificationAttributeOptionById(id);
             if (sao == null)
-                //No specification attribute option found with the specified id
+            {
                 return RedirectToAction("List");
+            }
 
             var model = sao.ToModel();
-            //locales
+
             AddLocales(_languageService, model.Locales, (locale, languageId) =>
             {
                 locale.Name = sao.GetLocalized(x => x.Name, languageId, false, false);
-            });
+				locale.Alias = sao.GetLocalized(x => x.Alias, languageId, false, false);
+			});
 
             return View(model);
         }
 
         [HttpPost]
+        [Permission(Permissions.Catalog.Attribute.EditOption)]
         public ActionResult OptionEditPopup(string btnId, string formId, SpecificationAttributeOptionModel model)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
-
             var sao = _specificationAttributeService.GetSpecificationAttributeOptionById(model.Id);
             if (sao == null)
-                //No specification attribute option found with the specified id
+            {
                 return RedirectToAction("List");
+            }
 
             if (ModelState.IsValid)
             {
                 sao = model.ToEntity(sao);
-                _specificationAttributeService.UpdateSpecificationAttributeOption(sao);
 
-                UpdateOptionLocales(sao, model);
+				try
+				{
+					_specificationAttributeService.UpdateSpecificationAttributeOption(sao);
+
+					UpdateOptionLocales(sao, model);
+				}
+				catch (Exception ex)
+				{
+					ModelState.AddModelError("", ex.Message);
+					return View(model);
+				}
 
                 ViewBag.RefreshPage = true;
                 ViewBag.btnId = btnId;
@@ -382,64 +429,57 @@ namespace SmartStore.Admin.Controllers
                 return View(model);
             }
 
-            //If we got this far, something failed, redisplay form
             return View(model);
         }
 
-        //delete
         [GridAction(EnableCustomBinding = true)]
+        [Permission(Permissions.Catalog.Attribute.EditOption)]
         public ActionResult OptionDelete(int optionId, int specificationAttributeId, GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
+			var sao = _specificationAttributeService.GetSpecificationAttributeOptionById(optionId);
 
-            var sao = _specificationAttributeService.GetSpecificationAttributeOptionById(optionId);
-            if (sao == null)
-                throw new ArgumentException("No specification attribute option found with the specified id");
-
-            _specificationAttributeService.DeleteSpecificationAttributeOption(sao);
+			_specificationAttributeService.DeleteSpecificationAttributeOption(sao);
 
             return OptionList(specificationAttributeId, command);
         }
 
-
-        //ajax
+        // Ajax.
         [AcceptVerbs(HttpVerbs.Get)]
-        public ActionResult GetOptionsByAttributeId(string attributeId)
+        public ActionResult GetOptionsByAttributeId(int attributeId)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
-                return AccessDeniedView();
+            var options = _specificationAttributeService.GetSpecificationAttributeOptionsBySpecificationAttribute(attributeId);
+            var result = 
+				from o in options
+				select new { id = o.Id, name = o.Name, text = o.Name };
 
-            // This action method gets called via an ajax request
-            if (String.IsNullOrEmpty(attributeId))
-                throw new ArgumentNullException("attributeId");
-
-            var options = _specificationAttributeService.GetSpecificationAttributeOptionsBySpecificationAttribute(Convert.ToInt32(attributeId));
-            var result = (from o in options
-                          select new { id = o.Id, name = o.Name, text = o.Name }).ToList();
-            return Json(result, JsonRequestBehavior.AllowGet);
+            return Json(result.ToList(), JsonRequestBehavior.AllowGet);
         }
 
         [HttpPost]
+        [Permission(Permissions.Catalog.Attribute.Update)]
         public ActionResult SetAttributeValue(string pk, string value, string name, FormCollection form)
         {
-            try
-            {
-                //name is the entity id of product specification attribute mapping
-                var specificationAttribute = _specificationAttributeService.GetProductSpecificationAttributeById(Convert.ToInt32(name));
-                specificationAttribute.SpecificationAttributeOptionId = Convert.ToInt32(value);
-                _specificationAttributeService.UpdateProductSpecificationAttribute(specificationAttribute);
-                Response.StatusCode = 200;
+			var success = false;
+			var message = string.Empty;
 
-                // we give back the name to xeditable to overwrite the grid data in success event when a grid element got updated
-                return Json(new { name = specificationAttribute.SpecificationAttributeOption.Name });
-            }
-            catch (Exception ex)
-            {
-                return new HttpStatusCodeResult(501, ex.Message);
-            }
+			// name is the entity id of product specification attribute mapping.
+			var attribute = _specificationAttributeService.GetProductSpecificationAttributeById(Convert.ToInt32(name));
+
+			try
+			{
+				attribute.SpecificationAttributeOptionId = Convert.ToInt32(value);
+
+				_specificationAttributeService.UpdateProductSpecificationAttribute(attribute);
+				success = true;
+			}
+			catch (Exception ex)
+			{
+				message = ex.Message;
+			}
+
+			// we give back the name to xeditable to overwrite the grid data in success event when a grid element got updated.
+			return Json(new { success, message, name = attribute.SpecificationAttributeOption?.Name });
         }
-
 
         #endregion
     }

@@ -1,64 +1,69 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Web.Mvc;
 using SmartStore.Admin.Models.Directory;
 using SmartStore.Core.Domain.Directory;
-using SmartStore.Services.Configuration;
+using SmartStore.Core.Domain.Stores;
+using SmartStore.Core.Plugins;
+using SmartStore.Core.Security;
+using SmartStore.Services;
 using SmartStore.Services.Directory;
 using SmartStore.Services.Helpers;
 using SmartStore.Services.Localization;
-using SmartStore.Services.Security;
+using SmartStore.Services.Payments;
 using SmartStore.Services.Stores;
+using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Controllers;
+using SmartStore.Web.Framework.Filters;
 using SmartStore.Web.Framework.Plugins;
+using SmartStore.Web.Framework.Security;
 using Telerik.Web.Mvc;
 
 namespace SmartStore.Admin.Controllers
 {
     [AdminAuthorize]
-    public class CurrencyController :  AdminControllerBase
+    public class CurrencyController : AdminControllerBase
     {
         #region Fields
 
         private readonly ICurrencyService _currencyService;
         private readonly CurrencySettings _currencySettings;
-        private readonly ISettingService _settingService;
         private readonly IDateTimeHelper _dateTimeHelper;
-        private readonly ILocalizationService _localizationService;
-        private readonly IPermissionService _permissionService;
         private readonly ILocalizedEntityService _localizedEntityService;
         private readonly ILanguageService _languageService;
-		private readonly IStoreService _storeService;
-		private readonly IStoreMappingService _storeMappingService;
-		private readonly PluginMediator _pluginMediator;
+        private readonly IStoreMappingService _storeMappingService;
+        private readonly PluginMediator _pluginMediator;
+        private readonly ICommonServices _services;
+        private readonly IPaymentService _paymentService;
 
         #endregion
 
         #region Constructors
 
-        public CurrencyController(ICurrencyService currencyService, 
-            CurrencySettings currencySettings, ISettingService settingService,
-            IDateTimeHelper dateTimeHelper, ILocalizationService localizationService,
-            IPermissionService permissionService,
-            ILocalizedEntityService localizedEntityService, ILanguageService languageService,
-            IStoreService storeService, 
+        public CurrencyController(
+            ICurrencyService currencyService,
+            CurrencySettings currencySettings,
+            IDateTimeHelper dateTimeHelper,
+            ILocalizedEntityService localizedEntityService,
+            ILanguageService languageService,
             IStoreMappingService storeMappingService,
-			PluginMediator pluginMediator)
+            PluginMediator pluginMediator,
+            ICommonServices services,
+            IPaymentService paymentService)
         {
-            this._currencyService = currencyService;
-            this._currencySettings = currencySettings;
-            this._settingService = settingService;
-            this._dateTimeHelper = dateTimeHelper;
-            this._localizationService = localizationService;
-            this._permissionService = permissionService;
-            this._localizedEntityService = localizedEntityService;
-            this._languageService = languageService;
-			this._storeService = storeService;
-			this._storeMappingService = storeMappingService;
-			this._pluginMediator = pluginMediator;
+            _currencyService = currencyService;
+            _currencySettings = currencySettings;
+            _dateTimeHelper = dateTimeHelper;
+            _localizedEntityService = localizedEntityService;
+            _languageService = languageService;
+            _storeMappingService = storeMappingService;
+            _pluginMediator = pluginMediator;
+            _services = services;
+            _paymentService = paymentService;
         }
-        
+
         #endregion
 
         #region Utilities
@@ -75,28 +80,91 @@ namespace SmartStore.Admin.Controllers
             }
         }
 
-		[NonAction]
-		private void PrepareStoresMappingModel(CurrencyModel model, Currency currency, bool excludeProperties)
-		{
-			if (model == null)
-				throw new ArgumentNullException("model");
+        private void PrepareCurrencyModel(CurrencyModel model, Currency currency, bool excludeProperties)
+        {
+            Guard.NotNull(model, nameof(model));
 
-			model.AvailableStores = _storeService
-				.GetAllStores()
-				.Select(s => s.ToModel())
-				.ToList();
-			if (!excludeProperties)
-			{
-				if (currency != null)
-				{
-					model.SelectedStoreIds = _storeMappingService.GetStoresIdsWithAccess(currency);
-				}
-				else
-				{
-					model.SelectedStoreIds = new int[0];
-				}
-			}
-		}
+            var allStores = _services.StoreService.GetAllStores();
+            var paymentMethods = _paymentService.GetAllPaymentMethods();
+            var paymentProviders = _paymentService.LoadAllPaymentMethods().ToDictionarySafe(x => x.Metadata.SystemName);
+
+            foreach (var paymentMethod in paymentMethods.Where(x => x.RoundOrderTotalEnabled))
+            {
+                string friendlyName = null;
+                Provider<IPaymentMethod> provider;
+                if (paymentProviders.TryGetValue(paymentMethod.PaymentMethodSystemName, out provider))
+                {
+                    friendlyName = _pluginMediator.GetLocalizedFriendlyName(provider.Metadata);
+                }
+
+                model.RoundOrderTotalPaymentMethods[paymentMethod.PaymentMethodSystemName] = friendlyName ?? paymentMethod.PaymentMethodSystemName;
+            }
+
+            if (currency != null)
+            {
+                model.PrimaryStoreCurrencyStores = allStores
+                    .Where(x => x.PrimaryStoreCurrencyId == currency.Id)
+                    .Select(x => new SelectListItem
+                    {
+                        Text = x.Name,
+                        Value = Url.Action("Edit", "Store", new { id = x.Id })
+                    })
+                    .ToList();
+
+                model.PrimaryExchangeRateCurrencyStores = allStores
+                    .Where(x => x.PrimaryExchangeRateCurrencyId == currency.Id)
+                    .Select(x => new SelectListItem
+                    {
+                        Text = x.Name,
+                        Value = Url.Action("Edit", "Store", new { id = x.Id })
+                    })
+                    .ToList();
+            }
+
+            if (!excludeProperties)
+            {
+                model.SelectedStoreIds = _storeMappingService.GetStoresIdsWithAccess(currency);
+            }
+        }
+
+        private CurrencyModel CreateCurrencyListModel(Currency currency)
+        {
+            var store = _services.StoreContext.CurrentStore;
+            var model = currency.ToModel();
+
+            model.IsPrimaryStoreCurrency = store.PrimaryStoreCurrencyId == model.Id;
+            model.IsPrimaryExchangeRateCurrency = store.PrimaryExchangeRateCurrencyId == model.Id;
+
+            return model;
+        }
+
+        private bool IsAttachedToStore(Currency currency, IList<Store> stores, bool force)
+        {
+            var attachedStore = stores.FirstOrDefault(x => x.PrimaryStoreCurrencyId == currency.Id || x.PrimaryExchangeRateCurrencyId == currency.Id);
+
+            if (attachedStore != null)
+            {
+                if (force || (!force && !currency.Published))
+                {
+                    NotifyError(T("Admin.Configuration.Currencies.DeleteOrPublishStoreConflict", attachedStore.Name));
+                    return true;
+                }
+
+                // Must store limitations include the store where the currency is attached as primary or exchange rate currency?
+                //if (currency.LimitedToStores)
+                //{
+                //	if (selectedStoreIds == null)
+                //		selectedStoreIds = _storeMappingService.GetStoreMappingsFor("Currency", currency.Id).Select(x => x.StoreId).ToArray();
+
+                //	if (!selectedStoreIds.Contains(attachedStore.Id))
+                //	{
+                //		NotifyError(T("Admin.Configuration.Currencies.StoreLimitationConflict", attachedStore.Name));
+                //		return true;
+                //	}
+                //}
+            }
+            return false;
+        }
 
         #endregion
 
@@ -107,264 +175,284 @@ namespace SmartStore.Admin.Controllers
             return RedirectToAction("List");
         }
 
+        [Permission(Permissions.Configuration.Currency.Read)]
         public ActionResult List(bool liveRates = false)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrencies))
-                return AccessDeniedView();
+            var language = _services.WorkContext.WorkingLanguage;
+            var allCurrencies = _currencyService.GetAllCurrencies(true)
+                .ToDictionarySafe(x => x.CurrencyCode.EmptyNull().ToUpper(), x => x);
 
-            var currenciesModel = _currencyService.GetAllCurrencies(true).Select(x => x.ToModel()).ToList();
-            foreach (var currency in currenciesModel)
-                currency.IsPrimaryExchangeRateCurrency = currency.Id == _currencySettings.PrimaryExchangeRateCurrencyId ? true : false;
-            foreach (var currency in currenciesModel)
-                currency.IsPrimaryStoreCurrency = currency.Id == _currencySettings.PrimaryStoreCurrencyId ? true : false;
+            var models = allCurrencies.Select(x => CreateCurrencyListModel(x.Value)).ToList();
+
             if (liveRates)
             {
                 try
                 {
-                    var primaryExchangeCurrency = _currencyService.GetCurrencyById(_currencySettings.PrimaryExchangeRateCurrencyId);
+                    var primaryExchangeCurrency = _services.StoreContext.CurrentStore.PrimaryExchangeRateCurrency;
                     if (primaryExchangeCurrency == null)
-                        throw new SmartException("Primary exchange rate currency is not set");
+                        throw new SmartException(T("Admin.System.Warnings.ExchangeCurrency.NotSet"));
 
-                    ViewBag.Rates = _currencyService.GetCurrencyLiveRates(primaryExchangeCurrency.CurrencyCode);
+                    var rates = _currencyService.GetCurrencyLiveRates(primaryExchangeCurrency.CurrencyCode);
+
+                    // get localized name of currencies
+                    var currencyNames = allCurrencies.ToDictionarySafe(
+                        x => x.Key,
+                        x => x.Value.GetLocalized(y => y.Name, language, true, false).Value
+                    );
+
+                    // fallback to english name where no localized currency name exists
+                    foreach (var info in CultureInfo.GetCultures(CultureTypes.AllCultures).Where(x => !x.IsNeutralCulture))
+                    {
+                        try
+                        {
+                            var region = new RegionInfo(info.LCID);
+
+                            if (!currencyNames.ContainsKey(region.ISOCurrencySymbol))
+                                currencyNames.Add(region.ISOCurrencySymbol, region.CurrencyEnglishName);
+                        }
+                        catch { }
+                    }
+
+                    // provide rate with currency name and whether it is available in store
+                    rates.Each(x =>
+                    {
+                        x.IsStoreCurrency = allCurrencies.ContainsKey(x.CurrencyCode);
+
+                        if (x.Name.IsEmpty() && currencyNames.ContainsKey(x.CurrencyCode))
+                            x.Name = currencyNames[x.CurrencyCode];
+                    });
+
+                    ViewBag.Rates = rates;
                 }
-                catch (Exception exc)
+                catch (Exception exception)
                 {
-                    NotifyError(exc, false);
+                    NotifyError(exception, false);
                 }
             }
+
+            ViewBag.AutoUpdateEnabled = _currencySettings.AutoUpdateEnabled;
             ViewBag.ExchangeRateProviders = new List<SelectListItem>();
+
             foreach (var erp in _currencyService.LoadAllExchangeRateProviders())
             {
-                ViewBag.ExchangeRateProviders.Add(new SelectListItem()
+                ViewBag.ExchangeRateProviders.Add(new SelectListItem
                 {
                     Text = _pluginMediator.GetLocalizedFriendlyName(erp.Metadata),
-					Value = erp.Metadata.SystemName,
-					Selected = erp.Metadata.SystemName.Equals(_currencySettings.ActiveExchangeRateProviderSystemName, StringComparison.InvariantCultureIgnoreCase)
+                    Value = erp.Metadata.SystemName,
+                    Selected = erp.Metadata.SystemName.Equals(_currencySettings.ActiveExchangeRateProviderSystemName, StringComparison.InvariantCultureIgnoreCase)
                 });
             }
-            ViewBag.AutoUpdateEnabled = _currencySettings.AutoUpdateEnabled;
-            var gridModel = new GridModel<CurrencyModel>
+
+            return View(new GridModel<CurrencyModel>
             {
-                Data = currenciesModel,
-                Total = currenciesModel.Count()
-            };
-            return View(gridModel);
+                Data = models,
+                Total = models.Count()
+            });
         }
 
+        [Permission(Permissions.Configuration.Currency.Update)]
         public ActionResult ApplyRate(string currencyCode, decimal rate)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrencies))
-                return AccessDeniedView();
-
-            Currency currency = _currencyService.GetCurrencyByCode(currencyCode);
+            var currency = _currencyService.GetCurrencyByCode(currencyCode);
             if (currency != null)
             {
                 currency.Rate = rate;
-                currency.UpdatedOnUtc = DateTime.UtcNow;
+
                 _currencyService.UpdateCurrency(currency);
+
+                NotifySuccess(T("Admin.Common.TaskSuccessfullyProcessed"));
             }
-            return RedirectToAction("List","Currency", new { liveRates=true });
+
+            return RedirectToAction("List", "Currency", new { liveRates = true });
         }
 
         [HttpPost]
+        [Permission(Permissions.Configuration.Currency.Update)]
         public ActionResult Save(FormCollection formValues)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrencies))
-                return AccessDeniedView();
-
             _currencySettings.ActiveExchangeRateProviderSystemName = formValues["exchangeRateProvider"];
             _currencySettings.AutoUpdateEnabled = formValues["autoUpdateEnabled"].Equals("false") ? false : true;
-            _settingService.SaveSetting(_currencySettings);
+            _services.Settings.SaveSetting(_currencySettings);
             return RedirectToAction("List", "Currency");
         }
 
         [HttpPost, GridAction(EnableCustomBinding = true)]
+        [Permission(Permissions.Configuration.Currency.Read)]
         public ActionResult List(GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrencies))
-                return AccessDeniedView();
+            var model = new GridModel<CurrencyModel>();
 
             var currencies = _currencyService.GetAllCurrencies(true);
-            var gridModel = new GridModel<CurrencyModel>
-            {
-                Data = currencies.Select(x => x.ToModel()),
-                Total = currencies.Count()
-            };
+
+            model.Data = currencies.Select(x => CreateCurrencyListModel(x));
+            model.Total = currencies.Count();
+
             return new JsonResult
             {
-                Data = gridModel
+                Data = model
             };
-        }
-        
-        public ActionResult MarkAsPrimaryExchangeRateCurrency(int id)
-        {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrencies))
-                return AccessDeniedView();
-
-            _currencySettings.PrimaryExchangeRateCurrencyId = id;
-            _settingService.SaveSetting(_currencySettings);
-            return RedirectToAction("List");
-        }
-
-        public ActionResult MarkAsPrimaryStoreCurrency(int id)
-        {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrencies))
-                return AccessDeniedView();
-
-            _currencySettings.PrimaryStoreCurrencyId = id;
-            _settingService.SaveSetting(_currencySettings);
-            return RedirectToAction("List");
         }
 
         #endregion
 
         #region Create / Edit / Delete
 
+        [Permission(Permissions.Configuration.Currency.Create)]
         public ActionResult Create()
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrencies))
-                return AccessDeniedView();
-
             var model = new CurrencyModel();
-            //locales
             AddLocales(_languageService, model.Locales);
-			//Stores
-			PrepareStoresMappingModel(model, null, false);
-            //default values
+            PrepareCurrencyModel(model, null, false);
+
+            // Default values
             model.Published = true;
             model.Rate = 1;
+
             return View(model);
         }
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
+        [Permission(Permissions.Configuration.Currency.Create)]
         public ActionResult Create(CurrencyModel model, bool continueEditing)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrencies))
-                return AccessDeniedView();
-
             if (ModelState.IsValid)
             {
                 var currency = model.ToEntity();
-                currency.CreatedOnUtc = DateTime.UtcNow;
-                currency.UpdatedOnUtc = DateTime.UtcNow;
-                
-				_currencyService.InsertCurrency(currency);
-                
-				//locales
-                UpdateLocales(currency, model);
-				
-				//Stores
-				_storeMappingService.SaveStoreMappings<Currency>(currency, model.SelectedStoreIds);
 
-                NotifySuccess(_localizationService.GetResource("Admin.Configuration.Currencies.Added"));
+                _currencyService.InsertCurrency(currency);
+
+                UpdateLocales(currency, model);
+                SaveStoreMappings(currency, model.SelectedStoreIds);
+
+                NotifySuccess(T("Admin.Configuration.Currencies.Added"));
                 return continueEditing ? RedirectToAction("Edit", new { id = currency.Id }) : RedirectToAction("List");
             }
 
-            //If we got this far, something failed, redisplay form
-
-			//Stores
-			PrepareStoresMappingModel(model, null, true);
+            PrepareCurrencyModel(model, null, true);
 
             return View(model);
         }
-        
+
+        [Permission(Permissions.Configuration.Currency.Read)]
         public ActionResult Edit(int id)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrencies))
-                return AccessDeniedView();
-
             var currency = _currencyService.GetCurrencyById(id);
             if (currency == null)
                 return RedirectToAction("List");
 
             var model = currency.ToModel();
             model.CreatedOn = _dateTimeHelper.ConvertToUserTime(currency.CreatedOnUtc, DateTimeKind.Utc);
-            
-			//locales
+
             AddLocales(_languageService, model.Locales, (locale, languageId) =>
             {
                 locale.Name = currency.GetLocalized(x => x.Name, languageId, false, false);
             });
 
-			foreach (var ending in model.DomainEndings.SplitSafe(","))
-			{
-				var item = model.AvailableDomainEndings.FirstOrDefault(x => x.Value.IsCaseInsensitiveEqual(ending));
-				if (item == null)
-					model.AvailableDomainEndings.Add(new SelectListItem() { Text = ending, Value = ending, Selected = true });
-				else
-					item.Selected = true;
-			}
+            foreach (var ending in model.DomainEndings.SplitSafe(","))
+            {
+                var item = model.AvailableDomainEndings.FirstOrDefault(x => x.Value.IsCaseInsensitiveEqual(ending));
+                if (item == null)
+                {
+                    model.AvailableDomainEndings.Add(new SelectListItem { Text = ending, Value = ending, Selected = true });
+                }
+                else
+                {
+                    item.Selected = true;
+                }
 
-			//Stores
-			PrepareStoresMappingModel(model, currency, false);
+            }
+
+            model.DomainEndingsArray = model.DomainEndings.SplitSafe(",").ToArray();
+
+            PrepareCurrencyModel(model, currency, false);
 
             return View(model);
         }
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
+        [Permission(Permissions.Configuration.Currency.Update)]
         public ActionResult Edit(CurrencyModel model, bool continueEditing)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrencies))
-                return AccessDeniedView();
-
             var currency = _currencyService.GetCurrencyById(model.Id);
             if (currency == null)
+            {
                 return RedirectToAction("List");
+            }
 
             if (ModelState.IsValid)
             {
                 currency = model.ToEntity(currency);
-                currency.UpdatedOnUtc = DateTime.UtcNow;
-    
-				_currencyService.UpdateCurrency(currency);
-                
-				//locales
-                UpdateLocales(currency, model);
-				
-				//Stores
-				_storeMappingService.SaveStoreMappings<Currency>(currency, model.SelectedStoreIds);
+                currency.DomainEndings = string.Join(",", model.DomainEndingsArray ?? new string[0]);
 
-                NotifySuccess(_localizationService.GetResource("Admin.Configuration.Currencies.Updated"));
-                return continueEditing ? RedirectToAction("Edit", new { id = currency.Id }) : RedirectToAction("List");
+                if (!IsAttachedToStore(currency, _services.StoreService.GetAllStores(), false))
+                {
+                    _currencyService.UpdateCurrency(currency);
+
+                    UpdateLocales(currency, model);
+                    SaveStoreMappings(currency, model.SelectedStoreIds);
+
+                    NotifySuccess(T("Admin.Configuration.Currencies.Updated"));
+                    return continueEditing ? RedirectToAction("Edit", new { id = currency.Id }) : RedirectToAction("List");
+                }
             }
 
-            //If we got this far, something failed, redisplay form
             model.CreatedOn = _dateTimeHelper.ConvertToUserTime(currency.CreatedOnUtc, DateTimeKind.Utc);
 
-			//Stores
-			PrepareStoresMappingModel(model, currency, true);
+            PrepareCurrencyModel(model, currency, true);
 
             return View(model);
         }
-        
+
         [HttpPost, ActionName("Delete")]
+        [Permission(Permissions.Configuration.Currency.Delete)]
         public ActionResult DeleteConfirmed(int id)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrencies))
-                return AccessDeniedView();
-
             var currency = _currencyService.GetCurrencyById(id);
             if (currency == null)
                 return RedirectToAction("List");
-            
+
             try
             {
-                if (currency.Id == _currencySettings.PrimaryStoreCurrencyId)
-                    throw new SmartException(_localizationService.GetResource("Admin.Configuration.Currencies.CantDeletePrimary"));
+                if (!IsAttachedToStore(currency, _services.StoreService.GetAllStores(), true))
+                {
+                    _currencyService.DeleteCurrency(currency);
 
-                if (currency.Id == _currencySettings.PrimaryExchangeRateCurrencyId)
-                    throw new SmartException(_localizationService.GetResource("Admin.Configuration.Currencies.CantDeleteExchange"));
-
-                _currencyService.DeleteCurrency(currency);
-
-                NotifySuccess(_localizationService.GetResource("Admin.Configuration.Currencies.Deleted"));
-                return RedirectToAction("List");
+                    NotifySuccess(_services.Localization.GetResource("Admin.Configuration.Currencies.Deleted"));
+                    return RedirectToAction("List");
+                }
             }
             catch (Exception exc)
             {
                 NotifyError(exc);
-                return RedirectToAction("Edit", new { id = currency.Id });
             }
+
+            return RedirectToAction("Edit", new { id = currency.Id });
+        }
+
+        public ActionResult GetCustomFormattingExample(int currencyId, string customFormat)
+        {
+            var example = string.Empty;
+            var error = string.Empty;
+
+            if (customFormat.HasValue())
+            {
+                try
+                {
+                    var currency = _currencyService.GetCurrencyById(currencyId);
+                    var clone = currency.Clone();
+                    clone.Id = 0;
+                    clone.CustomFormatting = customFormat;
+
+                    var money = new Money(1234.45M, clone);
+                    example = money.ToString();
+                }
+                catch (Exception ex)
+                {
+                    error = ex.Message;
+                }
+            }
+
+            return Json(new { example, error }, JsonRequestBehavior.AllowGet);
         }
 
         #endregion

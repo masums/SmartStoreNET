@@ -1,21 +1,14 @@
-﻿using System.Collections.Generic;
-using SmartStore.Web.Framework.Mvc;
+﻿using SmartStore.Services.Localization;
+using SmartStore.Web.Framework.Modelling;
 using SmartStore.Web.Models.Media;
 
 namespace SmartStore.Web.Models.Catalog
 {
     public partial class ManufacturerOverviewModel : EntityModelBase
     {
-        public ManufacturerOverviewModel()
-        {
-            PictureModel = new PictureModel();
-        }
-
-        public string Name { get; set; }
-        public string SeName { get; set; }
-        public string Description { get; set; }
-        
-        //picture
-        public PictureModel PictureModel { get; set; }
+        public LocalizedValue<string> Name { get; set; }
+        public LocalizedValue<string> Description { get; set; }
+		public string SeName { get; set; }
+		public PictureModel Picture { get; set; }
     }
 }

@@ -4,7 +4,7 @@ using System.Web.Mvc;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Localization;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Catalog
 {
@@ -50,7 +50,7 @@ namespace SmartStore.Admin.Models.Catalog
 		[SmartResourceDisplayName("Admin.Catalog.Products.BundleItems.Fields.Published")]
 		public bool Published { get; set; }
 
-		[SmartResourceDisplayName("Admin.Catalog.Products.BundleItems.Fields.DisplayOrder")]
+		[SmartResourceDisplayName("Common.DisplayOrder")]
 		public int DisplayOrder { get; set; }
 
 		[SmartResourceDisplayName("Common.CreatedOn")]

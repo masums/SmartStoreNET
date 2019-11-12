@@ -2,42 +2,22 @@
 @using SmartStore.Web.Framework.Pdf;
 
 @{
-	Layout = "~/Views/Shared/_Print.cshtml";
-	
-	var company = Model.MerchantCompanyInfo;
-	var bank = Model.MerchantBankAccount;
-	var contact = Model.MerchantContactData;
-	
-}
+    Layout = ViewBag.IsPartial == true ? "" : "_Print";
 
-@functions {
-	private IHtmlString JoinValues(string[] values, string separator = " ")
-	{
-		var normalized = values.Where(x => x.HasValue());
-		return MvcHtmlString.Create(String.Join(separator, normalized));
-	}
+    var company = Model.MerchantCompanyInfo;
+    var bank = Model.MerchantBankAccount;
+    var contact = Model.MerchantContactData;
+
 }
 
 <footer>
-	@Html.Widget("invoice_footer_before")
+	
+    @{ Html.RenderWidget("invoice_footer_before"); }
+
 	<table class="text-muted text-smallest">
 		<tr>
 			<td style="width: 33%;">
-				@if (company.CompanyName.HasValue())
-				{
-					<div>@company.CompanyName</div>
-				}
-				@{
-					var fullName = JoinValues(new string[] { company.Salutation, company.Title, company.Firstname, company.Lastname });
-				}
-				@if (fullName.ToString().HasValue())
-				{
-					<div>@fullName</div>
-				}				
-				
-				<div>@JoinValues(new string[] { company.Street, company.Street2 }, " &middot; ")</div>
-				<div>@JoinValues(new string[] { company.ZipCode, company.City })</div>
-				<div>@JoinValues(new string[] { company.CountryName, company.StateName }, ", ")</div>
+				@Html.Raw(Model.MerchantFormattedAddress)
 			</td>
 			<td style="width: 33%;">
 				<div>@T("PDFInvoice.Footer.Url", Model.StoreUrl)</div>
@@ -94,6 +74,8 @@
 			</td>
 		</tr>
 	</table>
-	@Html.Widget("invoice_footer_after")
+
+	@{ Html.RenderWidget("invoice_footer_after"); }
+
 </footer>
 

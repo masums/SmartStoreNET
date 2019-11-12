@@ -1,80 +1,43 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using SmartStore.Collections;
 using SmartStore.Core;
-using SmartStore.Core.Caching;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Events;
-using SmartStore.Data;
 using SmartStore.Services.Orders;
+using SmartStore.Data.Caching;
 
 namespace SmartStore.Services.Common
 {
-    /// <summary>
-    /// Generic attribute service
-    /// </summary>
     public partial class GenericAttributeService : IGenericAttributeService
     {
-        #region Constants
-        
-        private const string GENERICATTRIBUTE_KEY = "SmartStore.genericattribute.{0}-{1}";
-        private const string GENERICATTRIBUTE_PATTERN_KEY = "SmartStore.genericattribute.";
-        #endregion
-
-        #region Fields
-
-        private readonly IRepository<GenericAttribute> _genericAttributeRepository;
-        private readonly ICacheManager _cacheManager;
+		private readonly IRepository<GenericAttribute> _genericAttributeRepository;
         private readonly IEventPublisher _eventPublisher;
 		private readonly IRepository<Order> _orderRepository;
+		private readonly IDictionary<string, Dictionary<string, object>> _valueCache;
 
-        #endregion
-
-        #region Ctor
-
-        /// <summary>
-        /// Ctor
-        /// </summary>
-        /// <param name="cacheManager">Cache manager</param>
-        /// <param name="genericAttributeRepository">Generic attribute repository</param>
-        /// <param name="eventPublisher">Event published</param>
-		/// <param name="orderRepository">Order repository</param>
-        public GenericAttributeService(ICacheManager cacheManager,
+		public GenericAttributeService(
             IRepository<GenericAttribute> genericAttributeRepository,
             IEventPublisher eventPublisher,
 			IRepository<Order> orderRepository)
         {
-            this._cacheManager = cacheManager;
-            this._genericAttributeRepository = genericAttributeRepository;
-            this._eventPublisher = eventPublisher;
-			this._orderRepository = orderRepository;
-        }
+            _genericAttributeRepository = genericAttributeRepository;
+            _eventPublisher = eventPublisher;
+			_orderRepository = orderRepository;
+			_valueCache = new Dictionary<string, Dictionary<string, object>>();
+		}
 
-        #endregion
-        
-        #region Methods
-
-        /// <summary>
-        /// Deletes an attribute
-        /// </summary>
-        /// <param name="attribute">Attribute</param>
         public virtual void DeleteAttribute(GenericAttribute attribute)
         {
-            if (attribute == null)
-                throw new ArgumentNullException("attribute");
+			Guard.NotNull(attribute, nameof(attribute));
 
 			int entityId = attribute.EntityId;
 			string keyGroup = attribute.KeyGroup;
 
             _genericAttributeRepository.Delete(attribute);
-
-            //cache
-            _cacheManager.RemoveByPattern(GENERICATTRIBUTE_PATTERN_KEY);
-
-            //event notifications
-            _eventPublisher.EntityDeleted(attribute);
 
 			if (keyGroup.IsCaseInsensitiveEqual("Order") && entityId != 0)
 			{
@@ -83,11 +46,6 @@ namespace SmartStore.Services.Common
 			}
         }
 
-        /// <summary>
-        /// Gets an attribute
-        /// </summary>
-        /// <param name="attributeId">Attribute identifier</param>
-        /// <returns>An attribute</returns>
         public virtual GenericAttribute GetAttributeById(int attributeId)
         {
             if (attributeId == 0)
@@ -97,22 +55,11 @@ namespace SmartStore.Services.Common
             return attribute;
         }
 
-        /// <summary>
-        /// Inserts an attribute
-        /// </summary>
-        /// <param name="attribute">attribute</param>
         public virtual void InsertAttribute(GenericAttribute attribute)
         {
-            if (attribute == null)
-                throw new ArgumentNullException("attribute");
+			Guard.NotNull(attribute, nameof(attribute));
 
-            _genericAttributeRepository.Insert(attribute);
-            
-            //cache
-            _cacheManager.RemoveByPattern(GENERICATTRIBUTE_PATTERN_KEY);
-
-            //event notifications
-            _eventPublisher.EntityInserted(attribute);
+			_genericAttributeRepository.Insert(attribute);
 
 			if (attribute.KeyGroup.IsCaseInsensitiveEqual("Order") && attribute.EntityId != 0)
 			{
@@ -121,22 +68,11 @@ namespace SmartStore.Services.Common
 			}
         }
 
-        /// <summary>
-        /// Updates the attribute
-        /// </summary>
-        /// <param name="attribute">Attribute</param>
         public virtual void UpdateAttribute(GenericAttribute attribute)
         {
-            if (attribute == null)
-                throw new ArgumentNullException("attribute");
+			Guard.NotNull(attribute, nameof(attribute));
 
-            _genericAttributeRepository.Update(attribute);
-
-            //cache
-            _cacheManager.RemoveByPattern(GENERICATTRIBUTE_PATTERN_KEY);
-
-            //event notifications
-            _eventPublisher.EntityUpdated(attribute);
+			_genericAttributeRepository.Update(attribute);
 
 			if (attribute.KeyGroup.IsCaseInsensitiveEqual("Order") && attribute.EntityId != 0)
 			{
@@ -145,97 +81,147 @@ namespace SmartStore.Services.Common
 			}
         }
 
-        /// <summary>
-        /// Get attributes
-        /// </summary>
-        /// <param name="entityId">Entity identifier</param>
-        /// <param name="keyGroup">Key group</param>
-        /// <returns>Get attributes</returns>
-		public virtual IList<GenericAttribute> GetAttributesForEntity(int entityId, string keyGroup)
+		public virtual IList<GenericAttribute> GetAttributesForEntity(int entityId, string entityName)
         {
-            string key = string.Format(GENERICATTRIBUTE_KEY, entityId, keyGroup);
-            return _cacheManager.Get(key, () =>
-            {
-                var query = from ga in _genericAttributeRepository.Table
-                            where ga.EntityId == entityId &&
-                            ga.KeyGroup == keyGroup
-                            select ga;
-                var attributes = query.ToList();
-                return attributes;
-            });
-        }
+			var query = from ga in _genericAttributeRepository.Table
+						where ga.EntityId == entityId && ga.KeyGroup == entityName
+						select ga;
 
-		/// <summary>
-		/// Get queryable attributes
-		/// </summary>
-		/// <param name="key">The key</param>
-		/// <param name="keyGroup">The key group</param>
-		/// <returns>Queryable attributes</returns>
-		public virtual IQueryable<GenericAttribute> GetAttributes(string key, string keyGroup)
+			return query.ToListCached("db.ga.{0}-{1}".FormatInvariant(entityId, entityName));
+		}
+
+		public virtual Multimap<int, GenericAttribute> GetAttributesForEntity(int[] entityIds, string entityName)
+		{
+			Guard.NotNull(entityIds, nameof(entityIds));
+
+			var query = _genericAttributeRepository.TableUntracked
+				.Where(x => entityIds.Contains(x.EntityId) && x.KeyGroup == entityName);
+
+			var map = query
+				.ToList()
+				.ToMultimap(x => x.EntityId, x => x);
+
+			return map;
+		}
+
+		public virtual TProp GetAttribute<TProp>(string entityName, int entityId, string key, int storeId = 0)
+		{
+			if (entityName == null)
+				throw new ArgumentNullException(nameof(entityName));
+
+			if (key == null)
+				throw new ArgumentNullException(nameof(key));
+
+			var entityKey = entityName.ToLowerInvariant() + entityId;
+			if (!_valueCache.TryGetValue(entityKey, out var attrs))
+			{
+				var list = GetAttributesForEntity(entityId, entityName);
+				if (list.Count > 0)
+				{
+					attrs = list.ToDictionarySafe(k => k.Key.ToLowerInvariant() + k.StoreId, v => (object)v.Value);
+				}
+				_valueCache[entityKey] = attrs;
+			}
+
+			TProp result = default;
+
+			if (attrs != null)
+			{
+				var entryKey = key.ToLowerInvariant() + storeId;
+				if (attrs.TryGetValue(entryKey, out var rawValue))
+				{
+					if (rawValue.GetType() == typeof(TProp))
+					{
+						result = (TProp)rawValue;
+					}
+					else
+					{
+						result = rawValue.Convert<TProp>();
+						// to skip repeated value type conversion
+						attrs[entryKey] = result;
+					}
+				}
+			}
+
+			return result;
+		}
+
+		public virtual IQueryable<GenericAttribute> GetAttributes(string key, string entityName)
 		{
 			var query =
 				from ga in _genericAttributeRepository.Table
-				where ga.Key == key && ga.KeyGroup == keyGroup
+				where ga.Key == key && ga.KeyGroup == entityName
 				select ga;
 
 			return query;
 		}
 
-        /// <summary>
-        /// Save attribute value
-        /// </summary>
-        /// <typeparam name="TPropType">Property type</typeparam>
-        /// <param name="entity">Entity</param>
-        /// <param name="key">Key</param>
-        /// <param name="value">Value</param>
-		/// <param name="storeId">Store identifier; pass 0 if this attribute will be available for all stores</param>
-		public virtual void SaveAttribute<TPropType>(BaseEntity entity, string key, TPropType value, int storeId = 0)
+		public virtual void SaveAttribute<TProp>(BaseEntity entity, string key, TProp value, int storeId = 0)
         {
-            if (entity == null)
-                throw new ArgumentNullException("entity");
+			Guard.NotNull(entity, nameof(entity));
 
-            string keyGroup = entity.GetUnproxiedEntityType().Name;
-
-			var props = GetAttributesForEntity(entity.Id, keyGroup)
-				 .Where(x => x.StoreId == storeId)
-				 .ToList();
-            var prop = props.FirstOrDefault(ga =>
-                ga.Key.Equals(key, StringComparison.InvariantCultureIgnoreCase)); //should be culture invariant
-
-            string valueStr = value.Convert<string>();
-
-            if (prop != null)
-            {
-                if (string.IsNullOrWhiteSpace(valueStr))
-                {
-                    //delete
-                    DeleteAttribute(prop);
-                }
-                else
-                {
-                    //update
-                    prop.Value = valueStr;
-                    UpdateAttribute(prop);
-                }
-            }
-            else
-            {
-                if (!string.IsNullOrWhiteSpace(valueStr))
-                {
-                    //insert
-                    prop = new GenericAttribute()
-                    {
-                        EntityId = entity.Id,
-                        Key = key,
-                        KeyGroup = keyGroup,
-                        Value = valueStr,
-						StoreId = storeId
-                    };
-                    InsertAttribute(prop);
-                }
-            }
+			SaveAttribute(entity.Id, key, entity.GetUnproxiedType().Name, value, storeId);
         }
 
-        #endregion
-    }
+		public virtual void SaveAttribute<TProp>(int entityId, string key, string entityName, TProp value, int storeId = 0)
+		{
+			Guard.NotZero(entityId, nameof(entityId));
+
+			var valueStr = value.Convert<string>();
+			var props = GetAttributesForEntity(entityId, entityName);
+
+			// should be culture invariant
+			var prop = props.FirstOrDefault(ga => ga.StoreId == storeId && ga.Key.Equals(key, StringComparison.InvariantCultureIgnoreCase));
+
+			if (prop != null)
+			{
+				if (string.IsNullOrWhiteSpace(valueStr))
+				{
+					// delete
+					DeleteAttribute(prop);
+					CacheTryRemove(entityName, entityId, prop);
+				}
+				else
+				{
+					// update
+					prop.Value = valueStr;
+					UpdateAttribute(prop);
+					CacheTryAddOrUpdate(entityName, entityId, prop);
+				}
+			}
+			else
+			{
+				if (!string.IsNullOrWhiteSpace(valueStr))
+				{
+					// insert
+					prop = new GenericAttribute
+					{
+						EntityId = entityId,
+						Key = key,
+						KeyGroup = entityName,
+						Value = valueStr,
+						StoreId = storeId
+					};
+
+					InsertAttribute(prop);
+
+					CacheTryAddOrUpdate(entityName, entityId, prop);
+				}
+			}
+		}
+
+		private void CacheTryRemove(string entityName, int entityId, GenericAttribute attr)
+		{
+			var entityKey = entityName.ToLowerInvariant() + entityId;
+			var entryKey = attr.Key.ToLowerInvariant() + attr.StoreId;
+			_valueCache.Get(entityKey).TryRemove(entryKey, out _);
+		}
+
+		private void CacheTryAddOrUpdate(string entityName, int entityId, GenericAttribute attr)
+		{
+			var entityKey = entityName.ToLowerInvariant() + entityId;
+			var entryKey = attr.Key.ToLowerInvariant() + attr.StoreId;
+			_valueCache.Get(entityKey).TryAdd(entryKey, attr.Value, true);
+		}
+	}
 }

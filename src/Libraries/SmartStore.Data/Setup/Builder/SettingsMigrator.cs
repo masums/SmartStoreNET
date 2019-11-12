@@ -17,7 +17,7 @@ namespace SmartStore.Data.Setup
 
 		public SettingsMigrator(SmartObjectContext ctx)
 		{
-			Guard.ArgumentNotNull(() => ctx);
+			Guard.NotNull(ctx, nameof(ctx));
 
 			_ctx = ctx;
 			_settings = _ctx.Set<Setting>();
@@ -25,7 +25,7 @@ namespace SmartStore.Data.Setup
 
 		public void Migrate(IEnumerable<SettingEntry> entries)
 		{
-			Guard.ArgumentNotNull(() => entries);
+			Guard.NotNull(entries, nameof(entries));
 
 			if (!entries.Any())
 				return;
@@ -61,7 +61,8 @@ namespace SmartStore.Data.Setup
 					if (HasSettings(entry.Key, false))
 						continue; // skip existing (we don't perform updates)
 
-					_settings.Add(new Setting { 
+					_settings.Add(new Setting
+					{ 
 						Name = entry.Key,
 						Value = entry.Value,
 						StoreId = 0

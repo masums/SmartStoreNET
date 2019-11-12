@@ -1,21 +1,16 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Text;
-using System.Web;
 using NReco.PdfGenerator;
 using SmartStore.Core.Logging;
+using SmartStore.Utilities;
 
 namespace SmartStore.Services.Pdf
 {
 	public class WkHtmlToPdfConverter : IPdfConverter
 	{
-		private readonly HttpContextBase _httpContext;
-
-		public WkHtmlToPdfConverter(HttpContextBase httpContext)
+		public WkHtmlToPdfConverter()
 		{
-			this._httpContext = httpContext;
 			Logger = NullLogger.Instance;
 		}
 
@@ -24,7 +19,7 @@ namespace SmartStore.Services.Pdf
 
 		public byte[] Convert(PdfConvertSettings settings)
 		{
-			Guard.ArgumentNotNull(() => settings);
+			Guard.NotNull(settings, nameof(settings));
 			if (settings.Page == null)
 			{
 				throw Error.InvalidOperation("The 'Page' property of the 'settings' argument cannot be null.");
@@ -35,19 +30,21 @@ namespace SmartStore.Services.Pdf
 				var converter = CreateWkConverter(settings);
 
 				var input = settings.Page.Process("page");
-
+				
 				if (settings.Page.Kind == PdfContentKind.Url)
 				{
+					Logger.DebugFormat("Generating PDF from URL '{0}'. CustomWkHtmlPageArgs: {1}", input, converter.CustomWkHtmlPageArgs);
 					return converter.GeneratePdfFromFile(input, null);
 				}
 				else
 				{
+					Logger.DebugFormat("Generating PDF from HTML. CustomWkHtmlPageArgs: {0}", converter.CustomWkHtmlPageArgs);
 					return converter.GeneratePdf(input, null);
 				}
 			}
 			catch (Exception ex)
 			{
-				Logger.Error("Html to Pdf conversion error", ex);
+				Logger.Error(ex, "Html to Pdf conversion error");
 				throw;
 			}
 			finally
@@ -76,6 +73,7 @@ namespace SmartStore.Services.Pdf
 				PageHeight = settings.PageHeight,
 				PageWidth = settings.PageWidth,
 				Size = (PageSize)(int)settings.Size,
+				PdfToolPath = FileSystemHelper.TempDir("wkhtmltopdf")
 			};
 
 			if (settings.Margins != null)
@@ -131,7 +129,7 @@ namespace SmartStore.Services.Pdf
 				var path = settings.Header.Process("header");
 				if (path.HasValue())
 				{
-					sb.AppendFormat(" --header-html \"{0}\" ", path);
+					sb.AppendFormat(" --header-html \"{0}\"", path);
 					settings.Header.WriteArguments("header", sb);
 				}
 			}
@@ -146,7 +144,7 @@ namespace SmartStore.Services.Pdf
 				var path = settings.Footer.Process("footer");
 				if (path.HasValue())
 				{
-					sb.AppendFormat(" --footer-html \"{0}\" ", path);
+					sb.AppendFormat(" --footer-html \"{0}\"", path);
 					settings.Footer.WriteArguments("footer", sb);
 				}
 			}

@@ -12,7 +12,22 @@ namespace SmartStore.Services.Configuration
     /// </summary>
     public partial interface ISettingService
     {
-        /// <summary>
+		/// <summary>
+		/// Creates a unit of work in which cache eviction is suppressed
+		/// </summary>
+		/// <param name="clearCache">Specifies whether the cache should be evicted completely on batch disposal</param>
+		/// <returns>A disposable unit of work</returns>
+		IDisposable BeginScope(bool clearCache = true);
+
+		/// <summary>
+		/// Gets a value indicating whether settings have changed during a request, making cache eviction necessary.
+		/// </summary>
+		/// <remarks>
+		/// Cache eviction sets this member to <c>false</c>
+		/// </remarks>
+		bool HasChanges { get; }
+		
+		/// <summary>
         /// Gets a setting by identifier
         /// </summary>
         /// <param name="settingId">Setting identifier</param>
@@ -56,15 +71,22 @@ namespace SmartStore.Services.Configuration
 		/// <param name="storeId">Store identifier for which settigns should be loaded</param>
 		T LoadSetting<T>(int storeId = 0) where T : ISettings, new();
 
-        /// <summary>
-        /// Set setting value
-        /// </summary>
-        /// <typeparam name="T">Type</typeparam>
-        /// <param name="key">Key</param>
-        /// <param name="value">Value</param>
+		/// <summary>
+		/// Load settings
+		/// </summary>
+		/// <param name="settingType">Setting class type</param>
+		/// <param name="storeId">Store identifier for which settigns should be loaded</param>
+		ISettings LoadSetting(Type settingType, int storeId = 0);
+
+		/// <summary>
+		/// Set setting value
+		/// </summary>
+		/// <typeparam name="T">Type</typeparam>
+		/// <param name="key">Key</param>
+		/// <param name="value">Value</param>
 		/// <param name="storeId">Store identifier</param>
-        /// <param name="clearCache">A value indicating whether to clear cache after setting update</param>
-        void SetSetting<T>(string key, T value, int storeId = 0, bool clearCache = true);
+		/// <param name="clearCache">A value indicating whether to clear cache after setting update</param>
+		void SetSetting<T>(string key, T value, int storeId = 0, bool clearCache = true);
 
         /// <summary>
         /// Save settings object
@@ -73,6 +95,13 @@ namespace SmartStore.Services.Configuration
 		/// <param name="settings">Setting instance</param>
 		/// <param name="storeId">Store identifier</param>
 		void SaveSetting<T>(T settings, int storeId = 0) where T : ISettings, new();
+
+		/// <summary>
+		/// Save settings object
+		/// </summary>
+		/// <param name="settings">Setting instance</param>
+		/// <param name="storeId">Store identifier</param>
+		void SaveSetting(ISettings settings, int storeId = 0);
 
 		/// <summary>
 		/// Save settings object

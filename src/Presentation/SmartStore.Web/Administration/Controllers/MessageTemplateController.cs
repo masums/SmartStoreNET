@@ -1,89 +1,75 @@
 ﻿using System;
 using System.Linq;
+using System.Threading.Tasks;
+using System.Web.Caching;
 using System.Web.Mvc;
 using SmartStore.Admin.Models.Messages;
-using SmartStore.Collections;
 using SmartStore.Core.Domain.Messages;
+using SmartStore.Core.Email;
+using SmartStore.Core.Security;
+using SmartStore.Data.Utilities;
+using SmartStore.Services;
 using SmartStore.Services.Localization;
+using SmartStore.Services.Media;
 using SmartStore.Services.Messages;
-using SmartStore.Services.Security;
 using SmartStore.Services.Stores;
 using SmartStore.Web.Framework.Controllers;
+using SmartStore.Web.Framework.Filters;
+using SmartStore.Web.Framework.Modelling;
+using SmartStore.Web.Framework.Security;
 using Telerik.Web.Mvc;
 
 namespace SmartStore.Admin.Controllers
 {
     [AdminAuthorize]
-    public class MessageTemplateController : AdminControllerBase
+    public partial class MessageTemplateController : AdminControllerBase
     {
         #region Fields
 
         private readonly IMessageTemplateService _messageTemplateService;
+        private readonly ICampaignService _campaignService;
+        private readonly IMessageFactory _messageFactory;
         private readonly IEmailAccountService _emailAccountService;
+        private readonly IEmailSender _emailSender;
         private readonly ILanguageService _languageService;
         private readonly ILocalizedEntityService _localizedEntityService;
         private readonly ILocalizationService _localizationService;
-        private readonly IMessageTokenProvider _messageTokenProvider;
-        private readonly IPermissionService _permissionService;
-		private readonly IStoreService _storeService;
-		private readonly IStoreMappingService _storeMappingService;
+        private readonly IStoreService _storeService;
+        private readonly IStoreMappingService _storeMappingService;
         private readonly EmailAccountSettings _emailAccountSettings;
-        #endregion Fields
+
+        #endregion
 
         #region Constructors
 
-        public MessageTemplateController(IMessageTemplateService messageTemplateService, 
-            IEmailAccountService emailAccountService, ILanguageService languageService, 
+        public MessageTemplateController(
+            IMessageTemplateService messageTemplateService,
+            ICampaignService campaignService,
+            IMessageFactory messageFactory,
+            IEmailAccountService emailAccountService,
+            IEmailSender emailSender,
+            ILanguageService languageService,
             ILocalizedEntityService localizedEntityService,
-            ILocalizationService localizationService, IMessageTokenProvider messageTokenProvider,
-			IPermissionService permissionService, IStoreService storeService,
-			IStoreMappingService storeMappingService,
-			EmailAccountSettings emailAccountSettings)
+            ILocalizationService localizationService,
+            IStoreService storeService,
+            IStoreMappingService storeMappingService,
+            EmailAccountSettings emailAccountSettings)
         {
-            this._messageTemplateService = messageTemplateService;
-            this._emailAccountService = emailAccountService;
-            this._languageService = languageService;
-            this._localizedEntityService = localizedEntityService;
-            this._localizationService = localizationService;
-            this._messageTokenProvider = messageTokenProvider;
-            this._permissionService = permissionService;
-			this._storeService = storeService;
-			this._storeMappingService = storeMappingService;
-            this._emailAccountSettings = emailAccountSettings;
-        }
-
-        private void FillTokensTree(TreeNode<string> root, string[] tokens)
-        {
-            root.Clear();
-
-            //Array.Sort(tokens);
-
-            for (int i = 0; i < tokens.Length; i++)
-            {
-                // remove '%' from '%Order.ID%''
-                string token = tokens[i].Trim('%');
-                // split 'Order.ID' to [ Order, ID ] parts
-                var parts = token.Split('.');
-
-                var node = root;
-                // iterate parts
-                foreach (var part in parts)
-                {
-                    var found = node.Find(part);
-                    if (found == null)
-                    {
-                        node = node.Append(part);
-                    }
-                    else
-                    {
-                        node = found;
-                    }
-                }
-            }
+            _messageTemplateService = messageTemplateService;
+            _campaignService = campaignService;
+            _messageFactory = messageFactory;
+            _emailAccountService = emailAccountService;
+            _emailSender = emailSender;
+            _languageService = languageService;
+            _localizedEntityService = localizedEntityService;
+            _localizationService = localizationService;
+            _storeService = storeService;
+            _storeMappingService = storeMappingService;
+            _emailAccountSettings = emailAccountSettings;
         }
 
         #endregion
-        
+
         #region Utilities
 
         [NonAction]
@@ -91,120 +77,110 @@ namespace SmartStore.Admin.Controllers
         {
             foreach (var localized in model.Locales)
             {
-                _localizedEntityService.SaveLocalizedValue(mt,
-                                                           x => x.BccEmailAddresses,
-                                                           localized.BccEmailAddresses,
-                                                           localized.LanguageId);
+                int lid = localized.LanguageId;
 
-                _localizedEntityService.SaveLocalizedValue(mt,
-                                                           x => x.Subject,
-                                                           localized.Subject,
-                                                           localized.LanguageId);
+                MediaHelper.UpdateDownloadTransientState(mt.GetLocalized(x => x.Attachment1FileId, lid, false, false), localized.Attachment1FileId, true);
+                MediaHelper.UpdateDownloadTransientState(mt.GetLocalized(x => x.Attachment2FileId, lid, false, false), localized.Attachment2FileId, true);
+                MediaHelper.UpdateDownloadTransientState(mt.GetLocalized(x => x.Attachment3FileId, lid, false, false), localized.Attachment3FileId, true);
 
-                _localizedEntityService.SaveLocalizedValue(mt,
-                                                           x => x.Body,
-                                                           localized.Body,
-                                                           localized.LanguageId);
-
-                _localizedEntityService.SaveLocalizedValue(mt,
-                                                           x => x.EmailAccountId,
-                                                           localized.EmailAccountId,
-                                                           localized.LanguageId);
+                _localizedEntityService.SaveLocalizedValue(mt, x => x.To, localized.To, lid);
+                _localizedEntityService.SaveLocalizedValue(mt, x => x.ReplyTo, localized.ReplyTo, lid);
+                _localizedEntityService.SaveLocalizedValue(mt, x => x.BccEmailAddresses, localized.BccEmailAddresses, lid);
+                _localizedEntityService.SaveLocalizedValue(mt, x => x.Subject, localized.Subject, lid);
+                _localizedEntityService.SaveLocalizedValue(mt, x => x.Body, localized.Body, lid);
+                _localizedEntityService.SaveLocalizedValue(mt, x => x.EmailAccountId, localized.EmailAccountId, lid);
+                _localizedEntityService.SaveLocalizedValue(mt, x => x.Attachment1FileId, localized.Attachment1FileId, lid);
+                _localizedEntityService.SaveLocalizedValue(mt, x => x.Attachment2FileId, localized.Attachment2FileId, lid);
+                _localizedEntityService.SaveLocalizedValue(mt, x => x.Attachment3FileId, localized.Attachment3FileId, lid);
             }
         }
 
+        [NonAction]
+        private void PrepareStoresMappingModel(MessageTemplateModel model, MessageTemplate messageTemplate, bool excludeProperties)
+        {
+            Guard.NotNull(model, nameof(model));
 
-		[NonAction]
-		private void PrepareStoresMappingModel(MessageTemplateModel model, MessageTemplate messageTemplate, bool excludeProperties)
-		{
-			if (model == null)
-				throw new ArgumentNullException("model");
-
-			model.AvailableStores = _storeService
-				.GetAllStores()
-				.Select(s => s.ToModel())
-				.ToList();
-			if (!excludeProperties)
-			{
-				if (messageTemplate != null)
-				{
-					model.SelectedStoreIds = _storeMappingService.GetStoresIdsWithAccess(messageTemplate);
-				}
-				else
-				{
-					model.SelectedStoreIds = new int[0];
-				}
-			}
-		}
+            if (!excludeProperties)
+            {
+                model.SelectedStoreIds = _storeMappingService.GetStoresIdsWithAccess(messageTemplate);
+            }
+        }
         
+        private void PrepareLastModelTree(MessageTemplate template)
+        {
+            ViewBag.LastModelTreeJson = template.LastModelTree;
+            ViewBag.LastModelTree = Services.Resolve<IMessageModelProvider>().GetLastModelTree(template);
+        }
+
         #endregion
-        
-        #region Methods
+
+        #region List / Edit / Delete
 
         public ActionResult Index()
         {
             return RedirectToAction("List");
         }
 
+        [Permission(Permissions.Cms.MessageTemplate.Read)]
         public ActionResult List()
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageMessageTemplates))
-                return AccessDeniedView();
+            var model = new MessageTemplateListModel();
 
-			var model = new MessageTemplateListModel();
+            foreach (var s in _storeService.GetAllStores())
+            {
+                model.AvailableStores.Add(new SelectListItem { Text = s.Name, Value = s.Id.ToString() });
+            }
 
-			//stores
-			model.AvailableStores.Add(new SelectListItem() { Text = _localizationService.GetResource("Admin.Common.All"), Value = "0" });
-			foreach (var s in _storeService.GetAllStores())
-				model.AvailableStores.Add(new SelectListItem() { Text = s.Name, Value = s.Id.ToString() });
-
-			return View(model);
+            return View(model);
         }
 
         [HttpPost, GridAction(EnableCustomBinding = true)]
-		public ActionResult List(GridCommand command, MessageTemplateListModel model)
+        [Permission(Permissions.Cms.MessageTemplate.Read)]
+        public ActionResult List(GridCommand command, MessageTemplateListModel model)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageMessageTemplates))
-                return AccessDeniedView();
+            var gridModel = new GridModel<MessageTemplateModel>();
 
-			var messageTemplates = _messageTemplateService.GetAllMessageTemplates(model.SearchStoreId);
-			var gridModel = new GridModel<MessageTemplateModel>
-			{
-				Data = messageTemplates.Select(x => x.ToModel()),
-				Total = messageTemplates.Count
-			};
+            var messageTemplates = _messageTemplateService.GetAllMessageTemplates(model.SearchStoreId);
+
+            gridModel.Data = messageTemplates.Select(x => x.ToModel());
+            gridModel.Total = messageTemplates.Count;
+
             return new JsonResult
             {
                 Data = gridModel
             };
         }
 
+        [Permission(Permissions.Cms.MessageTemplate.Read)]
         public ActionResult Edit(int id)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageMessageTemplates))
-                return AccessDeniedView();
-
             var messageTemplate = _messageTemplateService.GetMessageTemplateById(id);
             if (messageTemplate == null)
                 return RedirectToAction("List");
 
             var model = messageTemplate.ToModel();
+            PrepareLastModelTree(messageTemplate);
 
-            FillTokensTree(model.TokensTree, _messageTokenProvider.GetListOfAllowedTokens());
-
-            //available email accounts
+            // available email accounts
             foreach (var ea in _emailAccountService.GetAllEmailAccounts())
+            {
                 model.AvailableEmailAccounts.Add(ea.ToModel());
-			
-			//Store
-			PrepareStoresMappingModel(model, messageTemplate, false);
-            
-			//locales
+            }
+
+            // Store
+            PrepareStoresMappingModel(model, messageTemplate, false);
+
+            // locales
             AddLocales(_languageService, model.Locales, (locale, languageId) =>
             {
+                locale.To = messageTemplate.GetLocalized(x => x.To, languageId, false, false);
+                locale.ReplyTo = messageTemplate.GetLocalized(x => x.ReplyTo, languageId, false, false);
                 locale.BccEmailAddresses = messageTemplate.GetLocalized(x => x.BccEmailAddresses, languageId, false, false);
                 locale.Subject = messageTemplate.GetLocalized(x => x.Subject, languageId, false, false);
                 locale.Body = messageTemplate.GetLocalized(x => x.Body, languageId, false, false);
+                locale.Attachment1FileId = messageTemplate.GetLocalized(x => x.Attachment1FileId, languageId, false, false);
+                locale.Attachment2FileId = messageTemplate.GetLocalized(x => x.Attachment2FileId, languageId, false, false);
+                locale.Attachment3FileId = messageTemplate.GetLocalized(x => x.Attachment3FileId, languageId, false, false);
 
                 var emailAccountId = messageTemplate.GetLocalized(x => x.EmailAccountId, languageId, false, false);
                 locale.EmailAccountId = emailAccountId > 0 ? emailAccountId : _emailAccountSettings.DefaultEmailAccountId;
@@ -213,85 +189,236 @@ namespace SmartStore.Admin.Controllers
             return View(model);
         }
 
-        [HttpPost, ParameterBasedOnFormNameAttribute("save-continue", "continueEditing")]
-		[FormValueRequired("save", "save-continue")]
-        public ActionResult Edit(MessageTemplateModel model, bool continueEditing)
+        [HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
+        [FormValueRequired("save", "save-continue")]
+        [ValidateInput(false)]
+        [Permission(Permissions.Cms.MessageTemplate.Update)]
+        public ActionResult Edit(MessageTemplateModel model, bool continueEditing, FormCollection form)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageMessageTemplates))
-                return AccessDeniedView();
-
             var messageTemplate = _messageTemplateService.GetMessageTemplateById(model.Id);
             if (messageTemplate == null)
+            {
                 return RedirectToAction("List");
-            
+            }
+
             if (ModelState.IsValid)
             {
                 messageTemplate = model.ToEntity(messageTemplate);
+
+                MediaHelper.UpdateDownloadTransientStateFor(messageTemplate, x => x.Attachment1FileId);
+                MediaHelper.UpdateDownloadTransientStateFor(messageTemplate, x => x.Attachment2FileId);
+                MediaHelper.UpdateDownloadTransientStateFor(messageTemplate, x => x.Attachment3FileId);
+
                 _messageTemplateService.UpdateMessageTemplate(messageTemplate);
-				
-				//Stores
-				_storeMappingService.SaveStoreMappings<MessageTemplate>(messageTemplate, model.SelectedStoreIds);
-                
-				//locales
+
+                SaveStoreMappings(messageTemplate, model.SelectedStoreIds);
                 UpdateLocales(messageTemplate, model);
 
-                NotifySuccess(_localizationService.GetResource("Admin.ContentManagement.MessageTemplates.Updated"));
+                Services.EventPublisher.Publish(new ModelBoundEvent(model, messageTemplate, form));
+
+                NotifySuccess(T("Admin.ContentManagement.MessageTemplates.Updated"));
                 return continueEditing ? RedirectToAction("Edit", messageTemplate.Id) : RedirectToAction("List");
             }
 
+            model.AvailableEmailAccounts = _emailAccountService.GetAllEmailAccounts()
+                .Select(x => x.ToModel())
+                .ToList();
 
-            //If we got this far, something failed, redisplay form
-            FillTokensTree(model.TokensTree, _messageTokenProvider.GetListOfAllowedTokens());
-            
-			//available email accounts
-            foreach (var ea in _emailAccountService.GetAllEmailAccounts())
-                model.AvailableEmailAccounts.Add(ea.ToModel());
-			
-			//Store
-			PrepareStoresMappingModel(model, messageTemplate, true);
+            PrepareLastModelTree(messageTemplate);
+            PrepareStoresMappingModel(model, messageTemplate, true);
+
             return View(model);
         }
 
-		[HttpPost]
-		public ActionResult Delete(int id)
-		{
-			if (!_permissionService.Authorize(StandardPermissionProvider.ManageMessageTemplates))
-				return AccessDeniedView();
+        [HttpPost]
+        [Permission(Permissions.Cms.MessageTemplate.Delete)]
+        public ActionResult Delete(int id)
+        {
+            var messageTemplate = _messageTemplateService.GetMessageTemplateById(id);
+            if (messageTemplate == null)
+                return RedirectToAction("List");
 
-			var messageTemplate = _messageTemplateService.GetMessageTemplateById(id);
-			if (messageTemplate == null)
-				return RedirectToAction("List");
+            _messageTemplateService.DeleteMessageTemplate(messageTemplate);
 
-			_messageTemplateService.DeleteMessageTemplate(messageTemplate);
-
-			NotifySuccess(_localizationService.GetResource("Admin.ContentManagement.MessageTemplates.Deleted"));
-			return RedirectToAction("List");
-		}
-
-		[HttpPost, ActionName("Edit")]
-		[FormValueRequired("message-template-copy")]
-		public ActionResult CopyTemplate(MessageTemplateModel model)
-		{
-			if (!_permissionService.Authorize(StandardPermissionProvider.ManageMessageTemplates))
-				return AccessDeniedView();
-
-			var messageTemplate = _messageTemplateService.GetMessageTemplateById(model.Id);
-			if (messageTemplate == null)
-				return RedirectToAction("List");
-
-			try
-			{
-				var newMessageTemplate = _messageTemplateService.CopyMessageTemplate(messageTemplate);
-				NotifySuccess("The message template has been copied successfully");
-				return RedirectToAction("Edit", new { id = newMessageTemplate.Id });
-			}
-			catch (Exception exc)
-			{
-				NotifyError(exc.Message);
-				return RedirectToAction("Edit", new { id = model.Id });
-			}
-		}
+            NotifySuccess(_localizationService.GetResource("Admin.ContentManagement.MessageTemplates.Deleted"));
+            return RedirectToAction("List");
+        }
 
         #endregion
+
+        #region Preview 
+
+        [Permission(Permissions.Cms.MessageTemplate.Read)]
+        public ActionResult Preview(int id, bool isCampaign = false)
+        {
+            var model = new MessageTemplatePreviewModel();
+                        
+            // TODO: (mc) Liquid > Display info about preview models
+            try
+            {
+                CreateMessageResult result = null;
+
+                if (isCampaign)
+                {
+                    var campaign = _campaignService.GetCampaignById(id);
+                    if (campaign == null)
+                    {
+                        model.Error = "The request campaign does not exist.";
+                        return View(model);
+                    }
+
+                    result = _campaignService.Preview(campaign);
+                }
+                else
+                {
+                    var template = _messageTemplateService.GetMessageTemplateById(id);
+                    if (template == null)
+                    {
+                        model.Error = "The requested message template does not exist.";
+                        return View(model);
+                    }
+
+                    var messageContext = new MessageContext
+                    {
+                        MessageTemplate = template,
+                        TestMode = true
+                    };
+
+                    result = _messageFactory.CreateMessage(messageContext, false);
+                }
+
+                var email = result.Email;
+
+                model.AccountEmail = email.EmailAccount?.Email ?? result.MessageContext.EmailAccount?.Email;
+                model.EmailAccountId = email.EmailAccountId;
+                model.Bcc = email.Bcc;
+                model.Body = email.Body;
+                model.From = email.From;
+                model.ReplyTo = email.ReplyTo;
+                model.Subject = email.Subject;
+                model.To = email.To;
+                model.Error = null;
+                model.Token = Guid.NewGuid().ToString();
+                model.BodyUrl = Url.Action("PreviewBody", new { token = model.Token });
+
+                HttpContext.Cache.Insert("mtpreview:" + model.Token, model, null, Cache.NoAbsoluteExpiration, TimeSpan.FromMinutes(1));
+            }
+            catch (Exception ex)
+            {
+                model.Error = ex.ToAllMessages();
+            }
+
+            return View(model);
+        }
+
+        [Permission(Permissions.Cms.MessageTemplate.Read)]
+        public ActionResult PreviewBody(string token)
+        {
+            var body = GetPreviewMailModel(token)?.Body;
+
+            if (body.IsEmpty())
+            {
+                body = "<div style='padding:20px;font-family:sans-serif;color:red'>{0}</div>".FormatCurrent(T("Admin.MessageTemplate.Preview.NoBody"));
+            }
+
+            return Content(body, "text/html");
+        }
+
+        [HttpPost]
+        public ActionResult PreservePreview(string token)
+        {
+            // While the preview window is open, the preview model should not expire.
+            GetPreviewMailModel(token);
+            return Content(token);
+        }
+
+        private MessageTemplatePreviewModel GetPreviewMailModel(string token)
+        {
+            return (MessageTemplatePreviewModel)HttpContext.Cache.Get("mtpreview:" + token);
+        }
+
+        #endregion
+
+        [HttpPost]
+        [Permission(Permissions.System.Message.Send)]
+        public async Task<ActionResult> SendTestMail(string token, string to)
+        {
+            var model = GetPreviewMailModel(token);
+            if (model == null)
+            {
+                return Json(new { success = false, message = "Preview result not available anymore. Try again." });
+            }
+
+            try
+            {
+                var account = _emailAccountService.GetEmailAccountById(model.EmailAccountId) ?? _emailAccountService.GetDefaultEmailAccount();
+                var msg = new EmailMessage(to, model.Subject, model.Body, model.From);
+                await _emailSender.SendEmailAsync(new SmtpContext(account), msg);
+                return Json(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                NotifyError(ex);
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+        
+        [HttpPost, ActionName("Edit")]
+        [FormValueRequired("save-in-file")]
+        [Permission(Permissions.Cms.MessageTemplate.Update)]
+        public ActionResult SaveInFile(int id)
+        {
+            var template = _messageTemplateService.GetMessageTemplateById(id);
+            if (template == null)
+            {
+                return RedirectToAction("List");
+            }
+
+            try
+            {
+                var converter = new MessageTemplateConverter(Services.DbContext);
+                converter.Save(template, Services.WorkContext.WorkingLanguage);
+            }
+            catch (Exception ex)
+            {
+                NotifyError(ex);
+            }
+
+            return RedirectToAction("Edit", template.Id);
+        }
+
+        [HttpPost, ActionName("Edit")]
+        [FormValueRequired("message-template-copy")]
+        [Permission(Permissions.Cms.MessageTemplate.Create)]
+        public ActionResult CopyTemplate(MessageTemplateModel model)
+        {
+            var messageTemplate = _messageTemplateService.GetMessageTemplateById(model.Id);
+            if (messageTemplate == null)
+                return RedirectToAction("List");
+
+            try
+            {
+                var newMessageTemplate = _messageTemplateService.CopyMessageTemplate(messageTemplate);
+                NotifySuccess(_localizationService.GetResource("Admin.ContentManagement.MessageTemplates.SuccessfullyCopied"));
+                return RedirectToAction("Edit", new { id = newMessageTemplate.Id });
+            }
+            catch (Exception exc)
+            {
+                NotifyError(exc.Message);
+                return RedirectToAction("Edit", new { id = model.Id });
+            }
+        }
+
+        [Permission(Permissions.Cms.MessageTemplate.Create)]
+        public ActionResult ImportAllTemplates()
+        {
+            // Hidden action for admins.
+            var converter = new MessageTemplateConverter(Services.DbContext);
+            converter.ImportAll(Services.WorkContext.WorkingLanguage);
+
+            NotifySuccess("All file based message templates imported successfully.");
+
+            return RedirectToAction("List");
+        }
     }
 }

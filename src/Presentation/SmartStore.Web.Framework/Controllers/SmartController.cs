@@ -1,34 +1,44 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Runtime.Serialization.Formatters.Binary;
 using System.Web;
 using System.Web.Mvc;
-using System.Web.Routing;
-using SmartStore.Core;
-using SmartStore.Core.Infrastructure;
+using SmartStore.Core.Localization;
 using SmartStore.Core.Logging;
-using SmartStore.Web.Framework.Controllers;
-using SmartStore.Web.Framework.Security;
-using SmartStore.Web.Framework.UI;
+using SmartStore.Services;
+using SmartStore.Web.Framework.Filters;
+using SmartStore.Web.Framework.Localization;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Web.Framework.Controllers
 {
-	[SetWorkingCulture]
-	[Notify]
+	[SetWorkingCulture(Order = -1)]
+	[JsonNet(Order = -1)]
+	[Notify(Order = 100)]
 	public abstract partial class SmartController : Controller
 	{
-		private readonly Lazy<INotifier> _notifier;
-
 		protected SmartController()
 		{
 			this.Logger = NullLogger.Instance;
-			this._notifier = EngineContext.Current.Resolve<Lazy<INotifier>>();
+			this.T = NullLocalizer.Instance;
 		}
 
+		public ILogger Logger
+		{
+			get;
+			set;
+		}
 
-		public ILogger Logger { get; set; }
-		
+		public Localizer T
+		{
+			get;
+			set;
+		}
+
+		public ICommonServices Services
+		{
+			get;
+			set;
+		}
+
 		/// <summary>
 		/// Pushes an info message to the notification queue
 		/// </summary>
@@ -36,7 +46,7 @@ namespace SmartStore.Web.Framework.Controllers
 		/// <param name="durable">A value indicating whether the message should be persisted for the next request</param>
 		protected virtual void NotifyInfo(string message, bool durable = true)
 		{
-			_notifier.Value.Information(message, durable);
+			Services.Notifier.Information(message, durable);
 		}
 
 		/// <summary>
@@ -46,7 +56,7 @@ namespace SmartStore.Web.Framework.Controllers
 		/// <param name="durable">A value indicating whether the message should be persisted for the next request</param>
 		protected virtual void NotifyWarning(string message, bool durable = true)
 		{
-			_notifier.Value.Warning(message, durable);
+			Services.Notifier.Warning(message, durable);
 		}
 
 		/// <summary>
@@ -56,7 +66,7 @@ namespace SmartStore.Web.Framework.Controllers
 		/// <param name="durable">A value indicating whether the message should be persisted for the next request</param>
 		protected virtual void NotifySuccess(string message, bool durable = true)
 		{
-			_notifier.Value.Success(message, durable);
+			Services.Notifier.Success(message, durable);
 		}
 
 		/// <summary>
@@ -66,7 +76,7 @@ namespace SmartStore.Web.Framework.Controllers
 		/// <param name="durable">A value indicating whether the message should be persisted for the next request</param>
 		protected virtual void NotifyError(string message, bool durable = true)
 		{
-			_notifier.Value.Error(message, durable);
+			Services.Notifier.Error(message, durable);
 		}
 
 		/// <summary>
@@ -82,17 +92,109 @@ namespace SmartStore.Web.Framework.Controllers
 				LogException(exception);
 			}
 
-			_notifier.Value.Error(exception.Message, durable);
+			Services.Notifier.Error(HttpUtility.HtmlEncode(exception.ToAllMessages()), durable);
 		}
 
-		protected virtual ActionResult RedirectToReferrer()
+		/// <summary>
+		/// Pushes an error message to the notification queue that the access to a resource has been denied
+		/// </summary>
+		/// <param name="durable">A value indicating whether a message should be persisted for the next request</param>
+		/// <param name="log">A value indicating whether the message should be logged</param>
+		protected virtual void NotifyAccessDenied(bool durable = true, bool log = true)
 		{
-			if (Request.UrlReferrer != null && Request.UrlReferrer.ToString().HasValue())
+			var message = T("Admin.AccessDenied.Description");
+
+			if (log)
 			{
-				return Redirect(Request.UrlReferrer.ToString());
+				Logger.Error(message);
 			}
 
-			return RedirectToRoute("HomePage");
+			Services.Notifier.Error(message, durable);
+		}
+
+		protected ActionResult RedirectToReferrer()
+		{
+			return RedirectToReferrer(null, () => RedirectToRoute("HomePage"));
+		}
+
+		protected ActionResult RedirectToReferrer(string referrer)
+		{
+			return RedirectToReferrer(referrer, () => RedirectToRoute("HomePage"));
+		}
+
+		protected ActionResult RedirectToReferrer(string referrer, string fallbackUrl)
+		{
+			// addressing "Open Redirection Vulnerability" (prevent cross-domain redirects / phishing)
+			if (fallbackUrl.HasValue() && !Url.IsLocalUrl(fallbackUrl))
+			{
+				fallbackUrl = null;
+			}
+
+			return RedirectToReferrer(
+				referrer, 
+				fallbackUrl.HasValue() ? () => Redirect(fallbackUrl) : (Func<ActionResult>)null);
+		}
+
+		protected virtual ActionResult RedirectToReferrer(string referrer, Func<ActionResult> fallbackResult)
+		{
+			bool skipLocalCheck = false;
+
+			if (referrer.IsEmpty() && Request.UrlReferrer != null && Request.UrlReferrer.ToString().HasValue())
+			{
+				referrer = Request.UrlReferrer.ToString();
+				if (referrer.HasValue())
+				{
+					var domain1 = (new Uri(referrer)).GetLeftPart(UriPartial.Authority);
+					var domain2 = this.Request.Url.GetLeftPart(UriPartial.Authority);
+					if (domain1.IsCaseInsensitiveEqual(domain2))
+					{
+						// always allow fully qualified urls from local host
+						skipLocalCheck = true;
+					}
+					else
+					{
+						referrer = null;
+					}
+				}
+			}
+
+			// addressing "Open Redirection Vulnerability" (prevent cross-domain redirects / phishing)
+			if (referrer.HasValue() && !skipLocalCheck && !Url.IsLocalUrl(referrer))
+			{
+				referrer = null;
+			}
+
+			if (referrer.HasValue())
+			{
+				return Redirect(referrer);
+			}
+
+			if (fallbackResult != null)
+			{
+				return fallbackResult();
+			}
+
+			return HttpNotFound();
+		}
+
+		/// <summary>
+		/// Redirects to the configuration page of a plugin or a provider.
+		/// </summary>
+		/// <param name="systemName">The system name of the plugin or the provider.</param>
+		/// <param name="isPlugin"><c>true</c> plugin configuration, <c>false</c> provider configuration.</param>
+		protected virtual ActionResult RedirectToConfiguration(string systemName, bool isPlugin = true)
+		{
+			Guard.NotEmpty(systemName, nameof(systemName));
+
+			var actionName = isPlugin ? "ConfigurePlugin" : "ConfigureProvider";
+
+			if (ControllerContext.IsChildAction)
+			{
+				var url = Url.Action(actionName, "Plugin", new { systemName, area = "Admin" });
+				return new PermissiveRedirectResult(url);
+			}
+
+			return RedirectToAction(actionName, "Plugin", new { systemName, area = "Admin" });
 		}
 
 		/// <summary>
@@ -112,13 +214,33 @@ namespace SmartStore.Web.Framework.Controllers
 		/// <summary>
 		/// Log exception
 		/// </summary>
-		/// <param name="exc">Exception</param>
-		private void LogException(Exception exc)
+		/// <param name="ex">Exception</param>
+		private void LogException(Exception ex)
 		{
-			var workContext = EngineContext.Current.Resolve<IWorkContext>();
-
-			var customer = workContext.CurrentCustomer;
-			Logger.Error(exc.Message, exc, customer);
+			Logger.Error(ex);
 		}
+
+		///// <summary>
+		///// Creates a <see cref="JsonResult"/> object that serializes the specified object to JavaScript Object Notation (JSON) format using the content type, 
+		///// content encoding, and the JSON request behavior.
+		///// </summary>
+		///// <param name="data">The JavaScript object graph to serialize.</param>
+		///// <param name="contentType">The content type (MIME type).</param>
+		///// <param name="contentEncoding">The content encoding.</param>
+		///// <param name="behavior">The JSON request behavior</param>
+		///// <returns>The result object that serializes the specified object to JSON format.</returns>
+		///// <remarks>
+		///// This overridden method internally uses the Json.NET library for serialization.
+		///// </remarks>
+		//protected override JsonResult Json(object data, string contentType, Encoding contentEncoding, JsonRequestBehavior behavior)
+		//{
+		//	return new JsonNetResult(Services.DateTimeHelper)
+		//	{
+		//		Data = data,
+		//		ContentType = contentType,
+		//		ContentEncoding = contentEncoding,
+		//		JsonRequestBehavior = behavior
+		//	};
+		//}
 	}
 }

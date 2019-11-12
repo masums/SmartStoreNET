@@ -1,22 +1,20 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
+using NUnit.Framework;
+using Rhino.Mocks;
 using SmartStore.Core;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Domain.Customers;
+using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Tax;
-using SmartStore.Core.Infrastructure;
+using SmartStore.Core.Events;
 using SmartStore.Core.Plugins;
 using SmartStore.Services.Common;
-using SmartStore.Core.Events;
+using SmartStore.Services.Directory;
 using SmartStore.Services.Tax;
 using SmartStore.Tests;
-using NUnit.Framework;
-using Rhino.Mocks;
-using SmartStore.Core.Domain.Orders;
-using SmartStore.Services.Configuration;
-using SmartStore.Services.Directory;
+using SmartStore.Core.Domain.Directory;
 
 namespace SmartStore.Services.Tests.Tax
 {
@@ -29,7 +27,6 @@ namespace SmartStore.Services.Tests.Tax
 		ShoppingCartSettings _cartSettings;
         IEventPublisher _eventPublisher;
         ITaxService _taxService;
-		ISettingService _settingService;
 		IGeoCountryLookup _geoCountryLookup;
 
         [SetUp]
@@ -46,15 +43,14 @@ namespace SmartStore.Services.Tests.Tax
             //default tax address
             _addressService.Expect(x => x.GetAddressById(_taxSettings.DefaultTaxAddressId)).Return(new Address() { Id = _taxSettings.DefaultTaxAddressId });
 
-            var pluginFinder = new PluginFinder();
+            var pluginFinder = PluginFinder.Current;
 
             _eventPublisher = MockRepository.GenerateMock<IEventPublisher>();
             _eventPublisher.Expect(x => x.Publish(Arg<object>.Is.Anything));
 
-			_settingService = MockRepository.GenerateMock<ISettingService>();
 			_geoCountryLookup = MockRepository.GenerateMock<IGeoCountryLookup>();
 
-			_taxService = new TaxService(_addressService, _workContext, _taxSettings, _cartSettings, pluginFinder, _settingService, _geoCountryLookup, this.ProviderManager);
+			_taxService = new TaxService(_addressService, _workContext, _taxSettings, _cartSettings, pluginFinder, _geoCountryLookup, this.ProviderManager);
         }
 
         [Test]
@@ -131,13 +127,14 @@ namespace SmartStore.Services.Tests.Tax
         public void Can_get_productPrice_priceIncludesTax_includingTax()
         {
             var customer = new Customer();
+			var currency = new Currency();
             var product = new Product();
 
             decimal taxRate;
-            _taxService.GetProductPrice(product, 0, 1000M, true, customer, true, out taxRate).ShouldEqual(1000);
-            _taxService.GetProductPrice(product, 0, 1000M, true, customer, false, out taxRate).ShouldEqual(1100);
-            _taxService.GetProductPrice(product, 0, 1000M, false, customer, true, out taxRate).ShouldEqual(909.0909090909090909090909091M);
-            _taxService.GetProductPrice(product, 0, 1000M, false, customer, false, out taxRate).ShouldEqual(1000);
+            _taxService.GetProductPrice(product, 0, 1000M, true, customer, currency, true, out taxRate).ShouldEqual(1000);
+            _taxService.GetProductPrice(product, 0, 1000M, true, customer, currency, false, out taxRate).ShouldEqual(1100);
+            _taxService.GetProductPrice(product, 0, 1000M, false, customer, currency, true, out taxRate).ShouldEqual(909.0909090909090909090909091M);
+            _taxService.GetProductPrice(product, 0, 1000M, false, customer, currency, false, out taxRate).ShouldEqual(1000);
         }
 
         [Test]
@@ -148,13 +145,11 @@ namespace SmartStore.Services.Tests.Tax
             string name, address;
             Exception exception;
 
-            VatNumberStatus vatNumberStatus1 = _taxService.DoVatCheck("GB", "523 2392 69",
-                out name, out address, out exception);
-            vatNumberStatus1.ShouldEqual(VatNumberStatus.Valid);
-            exception.ShouldBeNull();
-
-            VatNumberStatus vatNumberStatus2 = _taxService.DoVatCheck("GB", "000 0000 00",
-                out name, out address, out exception);
+            VatNumberStatus vatNumberStatus1 = _taxService.DoVatCheck("GB", "523 2392 69", out name, out address, out exception);
+			exception.ShouldBeNull();
+			vatNumberStatus1.ShouldEqual(VatNumberStatus.Valid);
+            
+            VatNumberStatus vatNumberStatus2 = _taxService.DoVatCheck("GB", "000 0000 00", out name, out address, out exception);
             vatNumberStatus2.ShouldEqual(VatNumberStatus.Invalid);
             exception.ShouldBeNull();
         }

@@ -1,16 +1,12 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Web.Mvc;
 using System.Web.Routing;
-using SmartStore.Web.Framework.Seo;
 
 namespace SmartStore.Web.Framework.Localization
 {
-
     public static class LocalizedRouteExtensions
     {
-
         #region RouteCollection extensions
 
         public static Route MapLocalizedRoute(this RouteCollection routes, string name, string url)
@@ -64,21 +60,6 @@ namespace SmartStore.Web.Framework.Localization
             routes.Add(name, route);
 
             return route;
-        }
-        
-        public static void ClearSeoFriendlyUrlsCachedValueForRoutes(this RouteCollection routes)
-        {
-            if (routes == null)
-            {
-                throw new ArgumentNullException("routes");
-            }
-            foreach (var route in routes)
-            {
-                if (route is LocalizedRoute)
-                {
-                    ((LocalizedRoute) route).ClearSeoFriendlyUrlsCachedValue();
-                }
-            }
         }
 
         #endregion

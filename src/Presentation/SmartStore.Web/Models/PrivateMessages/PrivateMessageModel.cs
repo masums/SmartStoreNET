@@ -1,7 +1,6 @@
-﻿using System;
-using FluentValidation.Attributes;
-using SmartStore.Web.Framework.Mvc;
-using SmartStore.Web.Validators.PrivateMessages;
+﻿using FluentValidation.Attributes;
+using SmartStore.Web.Framework.Modelling;
+using System;
 
 namespace SmartStore.Web.Models.PrivateMessages
 {

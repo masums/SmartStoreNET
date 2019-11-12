@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using SmartStore.Collections;
 using SmartStore.Core;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Shipping;
 using SmartStore.Core.Events;
-using SmartStore.Core.Plugins;
 using SmartStore.Services.Orders;
 
 namespace SmartStore.Services.Shipping
@@ -62,9 +62,6 @@ namespace SmartStore.Services.Shipping
 
             _shipmentRepository.Delete(shipment);
 
-            //event notifications
-            _eventPublisher.EntityDeleted(shipment);
-
 			if (orderId != 0)
 			{
 				var order = _orderRepository.GetById(orderId);
@@ -84,7 +81,7 @@ namespace SmartStore.Services.Shipping
 		public virtual IPagedList<Shipment> GetAllShipments(string trackingNumber, DateTime? createdFrom, DateTime? createdTo, 
             int pageIndex, int pageSize)
         {
-            var query = _shipmentRepository.Expand(_shipmentRepository.Table, x => x.Order);
+            var query = _shipmentRepository.Table.Expand(x => x.Order);
 			if (!String.IsNullOrEmpty(trackingNumber))
 				query = query.Where(s => s.TrackingNumber.Contains(trackingNumber));
             if (createdFrom.HasValue)
@@ -108,20 +105,33 @@ namespace SmartStore.Services.Shipping
             if (shipmentIds == null || shipmentIds.Length == 0)
                 return new List<Shipment>();
 
-            var query = from o in _shipmentRepository.Expand(_shipmentRepository.Table, x => x.Order)
+			var query = from o in _shipmentRepository.Table.Expand(x => x.Order)
                         where shipmentIds.Contains(o.Id)
                         select o;
+
             var shipments = query.ToList();
-            //sort by passed identifiers
-            var sortedOrders = new List<Shipment>();
-            foreach (int id in shipmentIds)
-            {
-                var shipment = shipments.Find(x => x.Id == id);
-                if (shipment != null)
-                    sortedOrders.Add(shipment);
-            }
-            return sortedOrders;
-        }
+
+			// sort by passed identifier sequence
+			return shipments.OrderBySequence(shipmentIds).ToList();
+		}
+
+		public virtual Multimap<int, Shipment> GetShipmentsByOrderIds(int[] orderIds)
+		{
+			Guard.NotNull(orderIds, nameof(orderIds));
+
+			var query =
+				from x in _shipmentRepository.TableUntracked.Expand(x => x.ShipmentItems)
+				where orderIds.Contains(x.OrderId)
+				select x;
+
+			var map = query
+				.OrderBy(x => x.OrderId)
+				.ThenBy(x => x.CreatedOnUtc)
+				.ToList()
+				.ToMultimap(x => x.OrderId, x => x);
+
+			return map;
+		}
 
         /// <summary>
         /// Gets a shipment
@@ -149,7 +159,6 @@ namespace SmartStore.Services.Shipping
             _shipmentRepository.Insert(shipment);
 
             //event notification
-            _eventPublisher.EntityInserted(shipment);
 			_eventPublisher.PublishOrderUpdated(shipment.Order);
         }
 
@@ -165,7 +174,6 @@ namespace SmartStore.Services.Shipping
             _shipmentRepository.Update(shipment);
 
             //event notification
-            _eventPublisher.EntityUpdated(shipment);
 			_eventPublisher.PublishOrderUpdated(shipment.Order);
         }
 
@@ -183,9 +191,6 @@ namespace SmartStore.Services.Shipping
 			int orderId = shipmentItem.Shipment.OrderId;
 
             _siRepository.Delete(shipmentItem);
-
-            //event notifications
-            _eventPublisher.EntityDeleted(shipmentItem);
 
 			if (orderId != 0)
 			{
@@ -219,9 +224,19 @@ namespace SmartStore.Services.Shipping
 
             _siRepository.Insert(shipmentItem);
 
-            //event notifications
-            _eventPublisher.EntityInserted(shipmentItem);
-			_eventPublisher.PublishOrderUpdated(shipmentItem.Shipment.Order);
+			if (shipmentItem.Shipment != null && shipmentItem.Shipment.Order != null)
+			{
+				_eventPublisher.PublishOrderUpdated(shipmentItem.Shipment.Order);
+			}
+			else
+			{
+				var shipment = _shipmentRepository.Table
+					.Expand(x => x.Order)
+					.FirstOrDefault(x => x.Id == shipmentItem.ShipmentId);
+
+				if (shipment != null)
+					_eventPublisher.PublishOrderUpdated(shipment.Order);	
+			}
         }
 
         /// <summary>
@@ -235,9 +250,19 @@ namespace SmartStore.Services.Shipping
 
             _siRepository.Update(shipmentItem);
 
-            //event notifications
-            _eventPublisher.EntityUpdated(shipmentItem);
-			_eventPublisher.PublishOrderUpdated(shipmentItem.Shipment.Order);
+			if (shipmentItem.Shipment != null && shipmentItem.Shipment.Order != null)
+			{
+				_eventPublisher.PublishOrderUpdated(shipmentItem.Shipment.Order);
+			}
+			else
+			{
+				var shipment = _shipmentRepository.Table
+					.Expand(x => x.Order)
+					.FirstOrDefault(x => x.Id == shipmentItem.ShipmentId);
+
+				if (shipment != null)
+					_eventPublisher.PublishOrderUpdated(shipment.Order);
+			}
         }
         
 		#endregion

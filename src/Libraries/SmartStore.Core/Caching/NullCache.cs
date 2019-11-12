@@ -1,5 +1,9 @@
 using System;
 using SmartStore.Utilities;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
 namespace SmartStore.Core.Caching
 {
     /// <summary>
@@ -7,15 +11,24 @@ namespace SmartStore.Core.Caching
     /// </summary>
     public partial class NullCache : ICacheManager
     {
-
-		private readonly static ICacheManager s_instance = new NullCache();
+		private static readonly ICacheManager s_instance = new NullCache();
 
 		public static ICacheManager Instance
 		{
 			get { return s_instance; }
 		}
 
-		public T Get<T>(string key, Func<T> acquirer, int? cacheTime = null)
+		public bool IsDistributedCache
+		{
+			get { return false; }
+		}
+
+		public T Get<T>(string key, bool independent = false)
+		{
+			return default(T);
+		}
+
+		public T Get<T>(string key, Func<T> acquirer, TimeSpan? duration = null, bool independent = false)
 		{
 			if (acquirer == null)
 			{
@@ -24,47 +37,46 @@ namespace SmartStore.Core.Caching
 			return acquirer();
 		}
 
+		public Task<T> GetAsync<T>(string key, Func<Task<T>> acquirer, TimeSpan? duration = null, bool independent = false)
+		{
+			if (acquirer == null)
+			{
+				return Task.FromResult(default(T));
+			}
+			return acquirer();
+		}
 
-		public void Set(string key, object value, int? cacheTime = null)
+
+		public ISet GetHashSet(string key, Func<IEnumerable<string>> acquirer = null)
+		{
+			return new MemorySet(this);
+		}
+
+		public void Put(string key, object value, TimeSpan? duration = null, IEnumerable<string> dependencies = null)
 		{
 		}
 
-        /// <summary>
-        /// Gets a value indicating whether the value associated with the specified key is cached
-        /// </summary>
-        /// <param name="key">key</param>
-        /// <returns>Result</returns>
         public bool Contains(string key)
         {
             return false;
         }
 
-        /// <summary>
-        /// Removes the value with the specified key from the cache
-        /// </summary>
-        /// <param name="key">/key</param>
         public void Remove(string key)
         {
         }
 
-        /// <summary>
-        /// Removes items by pattern
-        /// </summary>
-        /// <param name="pattern">pattern</param>
-        public void RemoveByPattern(string pattern)
+		public IEnumerable<string> Keys(string pattern)
+		{
+			return new string[0];
+		}
+
+		public int RemoveByPattern(string pattern)
         {
+			return 0;
         }
 
-        /// <summary>
-        /// Clear all cache data
-        /// </summary>
         public void Clear()
         {
         }
-
-		public IDisposable EnterWriteLock()
-		{
-			return ActionDisposable.Empty;
-		}
 	}
 }

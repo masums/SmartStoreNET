@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Mvc;
+using SmartStore.Utilities;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Common
 {
@@ -43,19 +44,33 @@ namespace SmartStore.Admin.Models.Common
         public IList<LoadedAssembly> LoadedAssemblies { get; set; }
 
 		[SmartResourceDisplayName("Admin.System.SystemInfo.DatabaseSize")]
-		public double DatabaseSize { get; set; }
+		public long DatabaseSize { get; set; }
 		public string DatabaseSizeString
 		{
 			get
 			{
-				return (DatabaseSize == 0.0 ? "" : "{0:0.00} MB".FormatWith(DatabaseSize));
+				return (DatabaseSize == 0 ? "" : Prettifier.BytesToString(DatabaseSize));
+			}
+		}
+
+		[SmartResourceDisplayName("Admin.System.SystemInfo.UsedMemorySize")]
+		public long UsedMemorySize { get; set; }
+		public string UsedMemorySizeString
+		{
+			get
+			{
+				return Prettifier.BytesToString(UsedMemorySize);
 			}
 		}
 
 		[SmartResourceDisplayName("Admin.System.SystemInfo.DataProviderFriendlyName")]
 		public string DataProviderFriendlyName { get; set; }
 
-        public class LoadedAssembly : ModelBase
+		public bool ShrinkDatabaseEnabled { get; set; }
+
+		public IDictionary<string, long> MemoryCacheStats { get; set; }
+
+		public class LoadedAssembly : ModelBase
         {
             public string FullName { get; set; }
             public string Location { get; set; }

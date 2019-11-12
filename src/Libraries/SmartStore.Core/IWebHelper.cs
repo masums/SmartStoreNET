@@ -13,11 +13,21 @@ namespace SmartStore.Core
         /// <returns>URL referrer</returns>
         string GetUrlReferrer();
 
-        /// <summary>
-        /// Get context IP address
-        /// </summary>
-        /// <returns>URL referrer</returns>
-        string GetCurrentIpAddress();
+		/// <summary>
+		/// Gets a unique client identifier
+		/// </summary>
+		/// <returns>A unique identifier</returns>
+		/// <remarks>
+		/// The client identifier is a hashed combination of client ip address and user agent.
+		/// This method returns <c>null</c> if IP or user agent (or both) cannot be determined.
+		/// </remarks>
+		string GetClientIdent();
+
+		/// <summary>
+		/// Get context IP address
+		/// </summary>
+		/// <returns>URL referrer</returns>
+		string GetCurrentIpAddress();
 
         /// <summary>
         /// Gets this page name
@@ -116,24 +126,7 @@ namespace SmartStore.Core
         /// </summary>
         /// <param name="makeRedirect">A value indicating whether </param>
         /// <param name="redirectUrl">Redirect URL; empty string if you want to redirect to the current page URL</param>
-        void RestartAppDomain(bool makeRedirect = false, string redirectUrl = "");
-
-        /// <summary>
-        /// Get a value indicating whether the request is made by search engine (web crawler)
-        /// </summary>
-        /// <param name="context">HTTP context</param>
-        /// <returns>Result</returns>
-        bool IsSearchEngine(HttpContextBase context);
-
-        /// <summary>
-        /// Gets a value that indicates whether the client is being redirected to a new location
-        /// </summary>
-        bool IsRequestBeingRedirected { get; }
-
-        /// <summary>
-        /// Gets or sets a value that indicates whether the client is being redirected to a new location using POST
-        /// </summary>
-        bool IsPostBeingDone { get; set; }
-
+		/// <param name="aggressive">Usually <c>true</c> after a new plugin was installed (nukes the MVC cache)</param>
+		void RestartAppDomain(bool makeRedirect = false, string redirectUrl = "", bool aggressive = false);
     }
 }

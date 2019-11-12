@@ -1,20 +1,20 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Data.Entity.Core.Objects;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 
 namespace SmartStore.Core
-{
-    
+{  
     /// <summary>
     /// Base class for entities
     /// </summary>
     [DataContract]
-    public abstract partial class BaseEntity
-    {
-		private int? _cachedHashcode;
-		
+    public abstract partial class BaseEntity : IEquatable<BaseEntity>
+    {	
 		/// <summary>
         /// Gets or sets the entity identifier
         /// </summary>
@@ -22,58 +22,73 @@ namespace SmartStore.Core
 		[DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int Id { get; set; }
 
+		[SuppressMessage("ReSharper", "PossibleNullReferenceException")]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public virtual string GetEntityName()
+		{
+			return GetUnproxiedType().Name;
+		}
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Type GetUnproxiedType()
         {
-			var t = GetType();
-			if (t.AssemblyQualifiedName.StartsWith("System.Data.Entity."))
-			{
-				// it's a proxied type
-				t = t.BaseType;
-			}
-			return t;
-        }
+			#region Old
+			//var t = GetType();
+			//if (t.AssemblyQualifiedName.StartsWith("System.Data.Entity."))
+			//{
+			//	// it's a proxied type
+			//	t = t.BaseType;
+			//}
+
+			//return t;
+			#endregion
+
+			return ObjectContext.GetObjectType(GetType());
+		}
 
 		/// <summary>
-		/// Transient objects are not associated with an item already in storage.  For instance,
+		/// Transient objects are not associated with an item already in storage. For instance,
 		/// a Product entity is transient if its Id is 0.
 		/// </summary>
-		public virtual bool IsTransient
+		public virtual bool IsTransientRecord()
 		{
-			get { return Id == 0; }
+			return Id == 0;
 		}
 
 		public override bool Equals(object obj)
 		{
-			return Equals(obj as BaseEntity);
+			return this.Equals(obj as BaseEntity);
 		}
 
-        protected virtual bool Equals(BaseEntity other)
-        {
-            if (other == null)
-                return false;
+		bool IEquatable<BaseEntity>.Equals(BaseEntity other)
+		{
+			return this.Equals(other);
+		}
 
-            if (ReferenceEquals(this, other))
-                return true;
+		protected virtual bool Equals(BaseEntity other)
+		{
+			if (other == null)
+				return false;
 
-            if (HasSameNonDefaultIds(other))
-            {
-                var otherType = other.GetUnproxiedType();
-                var thisType = this.GetUnproxiedType();
-                return thisType.Equals(otherType);
-            }
+			if (ReferenceEquals(this, other))
+				return true;
 
-            return false;
-        }
-
-        public override int GetHashCode()
-        {
-			// once hashcode is generated, never change it!
-			if (_cachedHashcode.HasValue)
-				return _cachedHashcode.Value;
-
-			if (this.IsTransient)
+			if (HasSameNonDefaultIds(other))
 			{
-				_cachedHashcode = base.GetHashCode();
+				var otherType = other.GetUnproxiedType();
+				var thisType = GetUnproxiedType();
+				return thisType.Equals(otherType);
+			}
+
+			return false;
+		}
+
+		[SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
+	    public override int GetHashCode()
+        {
+			if (IsTransientRecord())
+			{
+				return base.GetHashCode();
 			}
 			else
 			{
@@ -82,12 +97,10 @@ namespace SmartStore.Core
 					// It's possible for two objects to return the same hash code based on
 					// identically valued properties, even if they're of two different types,
 					// so we include the object's type in the hash calculation
-					int hashCode = GetUnproxiedType().GetHashCode();
-					_cachedHashcode = (hashCode * 31) ^ Id.GetHashCode();
+					var hashCode = GetUnproxiedType().GetHashCode();
+					return (hashCode * 31) ^ Id.GetHashCode();
 				}
 			}
-
-			return _cachedHashcode.Value;
         }
 
         public static bool operator ==(BaseEntity x, BaseEntity y)
@@ -102,7 +115,7 @@ namespace SmartStore.Core
 
 		private bool HasSameNonDefaultIds(BaseEntity other)
 		{
-			return !this.IsTransient && !other.IsTransient && this.Id == other.Id;
+			return !this.IsTransientRecord() && !other.IsTransientRecord() && this.Id == other.Id;
 		}
-    }
+	}
 }

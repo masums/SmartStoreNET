@@ -1,15 +1,21 @@
 using System.Collections.Generic;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Localization;
+using SmartStore.Core.Domain.Stores;
 
 namespace SmartStore.Core.Domain.Orders
 {
-    /// <summary>
-    /// Represents a checkout attribute
-    /// </summary>
-    public partial class CheckoutAttribute : BaseEntity, ILocalizedEntity
-    {
+	/// <summary>
+	/// Represents a checkout attribute
+	/// </summary>
+	public partial class CheckoutAttribute : BaseEntity, ILocalizedEntity, IStoreMappingSupported
+	{
         private ICollection<CheckoutAttributeValue> _checkoutAttributeValues;
+
+		public CheckoutAttribute()
+		{
+			this.IsActive = true;
+		}
 
         /// <summary>
         /// Gets or sets the name
@@ -50,11 +56,21 @@ namespace SmartStore.Core.Domain.Orders
         /// Gets or sets the display order
         /// </summary>
         public int DisplayOrder { get; set; }
-        
-        /// <summary>
-        /// Gets the attribute control type
-        /// </summary>
-        public AttributeControlType AttributeControlType
+
+		/// <summary>
+		/// Gets or sets whether the checkout attribute is active
+		/// </summary>
+		public bool IsActive { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether the entity is limited/restricted to certain stores
+		/// </summary>
+		public bool LimitedToStores { get; set; }
+
+		/// <summary>
+		/// Gets the attribute control type
+		/// </summary>
+		public AttributeControlType AttributeControlType
         {
             get
             {
@@ -65,6 +81,7 @@ namespace SmartStore.Core.Domain.Orders
                 this.AttributeControlTypeId = (int)value;
             }
         }
+
         /// <summary>
         /// Gets the checkout attribute values
         /// </summary>

@@ -1,4 +1,3 @@
-
 using System;
 using System.Diagnostics;
 using System.Xml;
@@ -6,10 +5,7 @@ using SmartStore.Core.Domain.Catalog;
 
 namespace SmartStore.Services.Catalog
 {
-    /// <summary>
-    /// Extensions
-    /// </summary>
-    public static class ProductAttributeExtensions
+	public static class ProductAttributeExtensions
     {
         /// <summary>
         /// A value indicating whether this product variant attribute should have values
@@ -27,10 +23,10 @@ namespace SmartStore.Services.Catalog
                 productVariantAttribute.AttributeControlType == AttributeControlType.FileUpload)
                 return false;
 
-            //other attribute controle types support values
+            // All other attribute control types support values.
             return true;
         }
-
+		
 		public static string AddProductAttribute(this ProductVariantAttribute pva, string attributes, string value)
 		{
 			string result = string.Empty;
@@ -91,5 +87,5 @@ namespace SmartStore.Services.Catalog
 			}
 			return result;
 		}
-    }
+	}
 }

@@ -1,170 +1,144 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using SmartStore.Core;
 using SmartStore.Core.Data;
+using SmartStore.Core.Domain.Security;
 using SmartStore.Core.Domain.Stores;
 using SmartStore.Core.Domain.Topics;
-using SmartStore.Core.Events;
+using SmartStore.Data.Caching;
+using SmartStore.Services.Stores;
 
 namespace SmartStore.Services.Topics
 {
-    /// <summary>
-    /// Topic service
-    /// </summary>
     public partial class TopicService : ITopicService
     {
-        #region Fields
-
-        private readonly IRepository<Topic> _topicRepository;
+		private readonly ICommonServices _services;
+		private readonly IRepository<Topic> _topicRepository;
 		private readonly IRepository<StoreMapping> _storeMappingRepository;
-        private readonly IEventPublisher _eventPublisher;
+		private readonly IStoreMappingService _storeMappingService;
+		private readonly IRepository<AclRecord> _aclRepository;
 
-        #endregion
-
-        #region Ctor
-
-        public TopicService(IRepository<Topic> topicRepository,
+		public TopicService(
+			ICommonServices services,
+			IRepository<Topic> topicRepository,
 			IRepository<StoreMapping> storeMappingRepository,
-			IEventPublisher eventPublisher)
+			IStoreMappingService storeMappingService,
+			IRepository<AclRecord> aclRepository)
         {
-            _topicRepository = topicRepository;
+			_services = services;
+			_topicRepository = topicRepository;
 			_storeMappingRepository = storeMappingRepository;
-            _eventPublisher = eventPublisher;
+			_storeMappingService = storeMappingService;
+			_aclRepository = aclRepository;
 
 			this.QuerySettings = DbQuerySettings.Default;
 		}
 
 		public DbQuerySettings QuerySettings { get; set; }
 
-        #endregion
-
-        #region Methods
-
-        /// <summary>
-        /// Deletes a topic
-        /// </summary>
-        /// <param name="topic">Topic</param>
         public virtual void DeleteTopic(Topic topic)
         {
-            if (topic == null)
-                throw new ArgumentNullException("topic");
+			Guard.NotNull(topic, nameof(topic));
 
-            _topicRepository.Delete(topic);
-
-            //event notification
-            _eventPublisher.EntityDeleted(topic);
+			_topicRepository.Delete(topic);
         }
 
-        /// <summary>
-        /// Gets a topic
-        /// </summary>
-        /// <param name="topicId">The topic identifier</param>
-        /// <returns>Topic</returns>
         public virtual Topic GetTopicById(int topicId)
         {
             if (topicId == 0)
                 return null;
 
-            return _topicRepository.GetById(topicId);
+            return _topicRepository.GetByIdCached(topicId, "db.topic.id-" + topicId);
         }
 
-        /// <summary>
-        /// Gets a topic
-        /// </summary>
-        /// <param name="systemName">The topic system name</param>
-		/// <param name="storeId">Store identifier</param>
-        /// <returns>Topic</returns>
-		public virtual Topic GetTopicBySystemName(string systemName, int storeId)
+		public virtual Topic GetTopicBySystemName(string systemName, int storeId = 0, bool checkPermission = true)
         {
-            if (String.IsNullOrEmpty(systemName))
-                return null;
+			if (systemName.IsEmpty())
+				return null;
 
-			var query = _topicRepository.Table;
-			query = query.Where(t => t.SystemName == systemName);
-			query = query.OrderBy(t => t.Id);
+			var query = BuildTopicsQuery(systemName, storeId, !checkPermission);
+			var rolesIdent = checkPermission 
+				? "0" 
+				: _services.WorkContext.CurrentCustomer.GetRolesIdent();
+			
+			var result = query.FirstOrDefaultCached("db.topic.bysysname-{0}-{1}-{2}".FormatInvariant(systemName, storeId, rolesIdent));
 
-			//Store mapping
+			return result;
+        }
+
+		public virtual IPagedList<Topic> GetAllTopics(int storeId = 0, int pageIndex = 0, int pageSize = int.MaxValue, bool showHidden = false)
+        {
+			var query = BuildTopicsQuery(null, storeId, showHidden);
+			return new PagedList<Topic>(query, pageIndex, pageSize);
+		}
+
+		protected virtual IQueryable<Topic> BuildTopicsQuery(string systemName, int storeId, bool showHidden = false)
+		{
+			var entityName = nameof(Topic);
+			var joinApplied = false;
+
+			var query = _topicRepository.Table.Where(x => showHidden || x.IsPublished);
+
+			if (systemName.HasValue())
+			{
+				query = query.Where(x => x.SystemName == systemName);
+			}
+
+			// Store mapping
 			if (storeId > 0 && !QuerySettings.IgnoreMultiStore)
 			{
 				query = from t in query
-						join sm in _storeMappingRepository.Table
-						on new { c1 = t.Id, c2 = "Topic" } equals new { c1 = sm.EntityId, c2 = sm.EntityName } into t_sm
-						from sm in t_sm.DefaultIfEmpty()
-						where !t.LimitedToStores || storeId == sm.StoreId
+						join m in _storeMappingRepository.Table
+						on new { c1 = t.Id, c2 = "Topic" } equals new { c1 = m.EntityId, c2 = m.EntityName } into tm
+						from m in tm.DefaultIfEmpty()
+						where !t.LimitedToStores || storeId == m.StoreId
 						select t;
 
-				//only distinct items (group by ID)
+				joinApplied = true;
+			}
+
+			// ACL (access control list)
+			if (!showHidden && !QuerySettings.IgnoreAcl)
+			{
+				var allowedCustomerRolesIds = _services.WorkContext.CurrentCustomer.CustomerRoles.Where(x => x.Active).Select(x => x.Id).ToList();
+
+				query = from c in query
+						join a in _aclRepository.Table
+						on new { c1 = c.Id, c2 = entityName } equals new { c1 = a.EntityId, c2 = a.EntityName } into ca
+						from a in ca.DefaultIfEmpty()
+						where !c.SubjectToAcl || allowedCustomerRolesIds.Contains(a.CustomerRoleId)
+						select c;
+
+				joinApplied = true;
+			}
+
+			if (joinApplied)
+			{
+				// Only distinct topics (group by ID)
 				query = from t in query
 						group t by t.Id into tGroup
 						orderby tGroup.Key
 						select tGroup.FirstOrDefault();
-				query = query.OrderBy(t => t.Id);
 			}
 
-			return query.FirstOrDefault();
-        }
-
-        /// <summary>
-        /// Gets all topics
-        /// </summary>
-		/// <param name="storeId">Store identifier; pass 0 to load all records</param>
-        /// <returns>Topics</returns>
-		public virtual IList<Topic> GetAllTopics(int storeId)
-        {
-			var query = _topicRepository.Table;
 			query = query.OrderBy(t => t.Priority).ThenBy(t => t.SystemName);
 
-			//Store mapping
-			if (storeId > 0 && !QuerySettings.IgnoreMultiStore)
-			{
-				query = from t in query
-						join sm in _storeMappingRepository.Table
-						on new { c1 = t.Id, c2 = "Topic" } equals new { c1 = sm.EntityId, c2 = sm.EntityName } into t_sm
-						from sm in t_sm.DefaultIfEmpty()
-						where !t.LimitedToStores || storeId == sm.StoreId
-						select t;
+			return query;
+		}
 
-				//only distinct items (group by ID)
-				query = from t in query
-						group t by t.Id	into tGroup
-						orderby tGroup.Key
-						select tGroup.FirstOrDefault();
-				query = query.OrderBy(t => t.SystemName);
-			}
-
-			return query.ToList();
-        }
-
-        /// <summary>
-        /// Inserts a topic
-        /// </summary>
-        /// <param name="topic">Topic</param>
         public virtual void InsertTopic(Topic topic)
         {
-            if (topic == null)
-                throw new ArgumentNullException("topic");
+			Guard.NotNull(topic, nameof(topic));
 
-            _topicRepository.Insert(topic);
-
-            //event notification
-            _eventPublisher.EntityInserted(topic);
+			_topicRepository.Insert(topic);
         }
 
-        /// <summary>
-        /// Updates the topic
-        /// </summary>
-        /// <param name="topic">Topic</param>
         public virtual void UpdateTopic(Topic topic)
         {
-            if (topic == null)
-                throw new ArgumentNullException("topic");
+			Guard.NotNull(topic, nameof(topic));
 
-            _topicRepository.Update(topic);
-
-            //event notification
-            _eventPublisher.EntityUpdated(topic);
+			_topicRepository.Update(topic);
         }
-
-        #endregion
     }
 }

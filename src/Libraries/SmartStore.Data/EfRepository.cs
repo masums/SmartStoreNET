@@ -2,19 +2,17 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data.Entity;
-using System.Data.Entity.Infrastructure;
 using System.Data.Entity.Validation;
-using System.Data.Entity.Core.Objects;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using SmartStore.Core;
 using SmartStore.Core.Data;
+using SmartStore.Data.Caching;
+using EfState = System.Data.Entity.EntityState;
 
 namespace SmartStore.Data
 {
-    /// <summary>
-    /// Entity Framework repository
-    /// </summary>
     public partial class EfRepository<T> : IRepository<T> where T : BaseEntity
     {
         private readonly IDbContext _context;
@@ -23,7 +21,6 @@ namespace SmartStore.Data
         public EfRepository(IDbContext context)
         {
             this._context = context;
-            this.AutoCommitEnabled = true;
         }
 
         #region interface members
@@ -36,54 +33,75 @@ namespace SmartStore.Data
 				{
 					return this.Entities.AsNoTracking();
 				}
+
 				return this.Entities;
             }
         }
 
         public virtual IQueryable<T> TableUntracked
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
                 return this.Entities.AsNoTracking();
             }
         }
 
-        public T Create()
+        public virtual ICollection<T> Local
+		{
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+			{
+				return this.Entities.Local;
+			}
+		}
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public virtual T Create()
         {
             return this.Entities.Create();
         }
 
-        public T GetById(object id)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public virtual T GetById(object id)
         {
             return this.Entities.Find(id);
         }
 
-        public void Insert(T entity)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public virtual T Attach(T entity)
+		{
+			return this.Entities.Attach(entity);
+		}
+
+		public virtual void Insert(T entity)
         {
-            if (entity == null)
-                throw new ArgumentNullException("entity");
+			Guard.NotNull(entity, nameof(entity));
 
-            this.Entities.Add(entity);
+			this.Entities.Add(entity);
 
-            if (this.AutoCommitEnabled)
-                _context.SaveChanges();
+			if (this.AutoCommitEnabledInternal)
+			{
+				_context.SaveChanges();
+			}
         }
 
-        public void InsertRange(IEnumerable<T> entities, int batchSize = 100)
+		public virtual void InsertRange(IEnumerable<T> entities, int batchSize = 100)
         {
             try
             {
-                if (entities == null)
-                    throw new ArgumentNullException("entities");
+				Guard.NotNull(entities, nameof(entities));
 
-                if (entities.Any())
+				if (entities.Any())
                 {
                     if (batchSize <= 0)
                     {
-                        // insert all in one step
-                        entities.Each(x => this.Entities.Add(x));
-                        if (this.AutoCommitEnabled)
-                            _context.SaveChanges();
+						// insert all in one step
+						this.Entities.AddRange(entities);
+						if (this.AutoCommitEnabledInternal)
+						{
+							_context.SaveChanges();
+						}   
                     }
                     else
                     {
@@ -95,8 +113,10 @@ namespace SmartStore.Data
                             saved = false;
                             if (i % batchSize == 0)
                             {
-                                if (this.AutoCommitEnabled)
-                                    _context.SaveChanges();
+								if (this.AutoCommitEnabledInternal)
+								{
+									_context.SaveChanges();
+								}  
                                 i = 0;
                                 saved = true;
                             }
@@ -105,8 +125,10 @@ namespace SmartStore.Data
 
                         if (!saved)
                         {
-                            if (this.AutoCommitEnabled)
-                                _context.SaveChanges();
+							if (this.AutoCommitEnabledInternal)
+							{
+								_context.SaveChanges();
+							} 
                         }
                     }
                 }
@@ -117,88 +139,117 @@ namespace SmartStore.Data
             }
         }
 
-        public void Update(T entity)
+		public virtual void Update(T entity)
         {
-            if (entity == null)
-                throw new ArgumentNullException("entity");
+			Guard.NotNull(entity, nameof(entity));
 
-            if (this.AutoCommitEnabled)
-            {
-				if (!InternalContext.Configuration.AutoDetectChangesEnabled)
-				{
-					InternalContext.Entry(entity).State = System.Data.Entity.EntityState.Modified;
-				}
-				_context.SaveChanges();
-            }
-            else
-            {
-                try
-                {
-                    this.Entities.Attach(entity);
-                    InternalContext.Entry(entity).State = System.Data.Entity.EntityState.Modified;
-                }
-                finally { }
-            }
-        }
+			ChangeStateToModifiedIfApplicable(entity);
 
-        public void Delete(T entity)
-        {
-            if (entity == null)
-                throw new ArgumentNullException("entity");
-
-            if (InternalContext.Entry(entity).State == System.Data.Entity.EntityState.Detached)
-            {
-                this.Entities.Attach(entity);
-            }
-
-            this.Entities.Remove(entity);
-
-            if (this.AutoCommitEnabled)
-                _context.SaveChanges();
-        }
-
-        public IQueryable<T> Expand(IQueryable<T> query, string path)
-        {
-            Guard.ArgumentNotNull(query, "query");
-            Guard.ArgumentNotEmpty(path, "path");
-
-            return query.Include(path);
-        }
-
-        public IQueryable<T> Expand<TProperty>(IQueryable<T> query, Expression<Func<T, TProperty>> path)
-        {
-            Guard.ArgumentNotNull(query, "query");
-            Guard.ArgumentNotNull(path, "path");
-
-            return query.Include(path);
-        }
-
-		public bool IsModified(T entity)
-		{
-			Guard.ArgumentNotNull(() => entity);
-			var ctx = InternalContext;
-			var entry = ctx.Entry(entity);
-
-			if (entry != null)
+			if (this.AutoCommitEnabledInternal)
 			{
-				var modified = entry.State == System.Data.Entity.EntityState.Modified;
-				return modified;
+				_context.SaveChanges();
+			}
+        }
+
+		public virtual void UpdateRange(IEnumerable<T> entities)
+		{
+			Guard.NotNull(entities, nameof(entities));
+
+			foreach (var entity in entities)
+			{
+				ChangeStateToModifiedIfApplicable(entity);
 			}
 
-			return false;
+			if (this.AutoCommitEnabledInternal)
+			{
+				_context.SaveChanges();
+			}
 		}
 
-        public IDictionary<string, object> GetModifiedProperties(T entity)
+		private void ChangeStateToModifiedIfApplicable(T entity)
+		{
+			if (entity.IsTransientRecord())
+				return;
+
+			var entry = InternalContext.Entry(entity);
+
+			if (entry.State == EfState.Detached)
+			{
+				// Entity was detached before or was explicitly constructed.
+				// This unfortunately sets all properties to modified.
+				entry.State = EfState.Modified;
+			}
+			else if (entry.State == EfState.Unchanged)
+			{
+				// We simply do nothing here, because it is ensured now that DetectChanges()
+				// gets implicitly called prior SaveChanges().
+
+				//if (this.AutoCommitEnabledInternal && !ctx.Configuration.AutoDetectChangesEnabled)
+				//{
+				//	_context.DetectChanges();
+				//}
+			}
+		}
+
+		public virtual void Delete(T entity)
         {
-			return InternalContext.GetModifiedProperties(entity);
+			Guard.NotNull(entity, nameof(entity));
+
+			InternalContext.Entry(entity).State = EfState.Deleted;
+
+			if (this.AutoCommitEnabledInternal)
+			{
+				_context.SaveChanges();
+			}   
         }
 
-        public IDbContext Context
+		public virtual void DeleteRange(IEnumerable<T> entities)
+		{
+			Guard.NotNull(entities, nameof(entities));
+
+			foreach (var entity in entities)
+			{
+				InternalContext.Entry(entity).State = EfState.Deleted;
+			}
+
+			if (this.AutoCommitEnabledInternal)
+			{
+				_context.SaveChanges();
+			}	
+		}
+
+		[Obsolete("Use the extension method from 'SmartStore.Core, SmartStore.Core.Data' instead")]
+        public IQueryable<T> Expand(IQueryable<T> query, string path)
+        {
+            Guard.NotNull(query, "query");
+            Guard.NotEmpty(path, "path");
+
+            return query.Include(path);
+        }
+
+		[Obsolete("Use the extension method from 'SmartStore.Core, SmartStore.Core.Data' instead")]
+        public IQueryable<T> Expand<TProperty>(IQueryable<T> query, Expression<Func<T, TProperty>> path)
+        {
+            Guard.NotNull(query, "query");
+            Guard.NotNull(path, "path");
+
+            return query.Include(path);
+        }
+
+		public virtual IDbContext Context
         {
             get { return _context; }
         }
 
-        public bool AutoCommitEnabled { get; set; }
+        public bool? AutoCommitEnabled { get; set; }
+
+		private bool AutoCommitEnabledInternal
+		{
+			get
+			{
+				return this.AutoCommitEnabled ?? _context.AutoCommitEnabled;
+			}
+		}
 
         #endregion
 
@@ -217,6 +268,7 @@ namespace SmartStore.Data
                 {
                     _entities = _context.Set<T>();
                 }
+
                 return _entities as DbSet<T>;
             }
         }

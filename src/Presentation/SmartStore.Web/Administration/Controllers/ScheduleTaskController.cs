@@ -1,217 +1,319 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Web.Mvc;
-using System.Threading.Tasks;
-using System.Reflection;
-using SmartStore.Admin.Models.Directory;
 using SmartStore.Admin.Models.Tasks;
-using SmartStore.Core.Domain.Directory;
-using SmartStore.Core.Domain.Tasks;
-using SmartStore.Core.Localization;
-using SmartStore.Services.Configuration;
-using SmartStore.Services.Directory;
-using SmartStore.Services.Helpers;
-using SmartStore.Services.Localization;
-using SmartStore.Services.Security;
-using SmartStore.Services.Tasks;
-using SmartStore.Web.Framework;
-using SmartStore.Web.Framework.Controllers;
-using Telerik.Web.Mvc;
 using SmartStore.Core.Async;
-using Autofac;
-using SmartStore.Core.Logging;
-using SmartStore.Core.Plugins;
+using SmartStore.Core.Domain.Common;
+using SmartStore.Core.Domain.Tasks;
+using SmartStore.Core.Security;
+using SmartStore.Services.Tasks;
+using SmartStore.Web.Framework.Controllers;
+using SmartStore.Web.Framework.Filters;
+using SmartStore.Web.Framework.Security;
+using Telerik.Web.Mvc;
 
 namespace SmartStore.Admin.Controllers
 {
     [AdminAuthorize]
     public partial class ScheduleTaskController : AdminControllerBase
     {
-        #region Fields
-
 		private readonly IScheduleTaskService _scheduleTaskService;
-        private readonly IPermissionService _permissionService;
-        private readonly IDateTimeHelper _dateTimeHelper;
+        private readonly ITaskScheduler _taskScheduler;
+		private readonly IAsyncState _asyncState;
+        private readonly AdminModelHelper _adminModelHelper;
+        private readonly AdminAreaSettings _adminAreaSettings;
+        private readonly CommonSettings _commonSettings;
 
-        #endregion
-
-        #region Constructors
-
-		public ScheduleTaskController(IScheduleTaskService scheduleTaskService, IPermissionService permissionService, IDateTimeHelper dateTimeHelper)
+        public ScheduleTaskController(
+            IScheduleTaskService scheduleTaskService, 
+            ITaskScheduler taskScheduler, 
+			IAsyncState asyncState,
+            AdminModelHelper adminModelHelper,
+            AdminAreaSettings adminAreaSettings,
+            CommonSettings commonSettings)
         {
-            this._scheduleTaskService = scheduleTaskService;
-            this._permissionService = permissionService;
-            this._dateTimeHelper = dateTimeHelper;
-			T = NullLocalizer.Instance;
+            _scheduleTaskService = scheduleTaskService;
+			_taskScheduler = taskScheduler;
+			_asyncState = asyncState;
+            _adminModelHelper = adminModelHelper;
+            _adminAreaSettings = adminAreaSettings;
+            _commonSettings = commonSettings;
         }
 
-        #endregion
-
-		public Localizer T { get; set; }
-
-        #region Utility
-
-		private bool IsTaskInstalled(ScheduleTask task)
+		private string GetTaskMessage(ScheduleTask task, string resourceKey)
 		{
-			var type = Type.GetType(task.Type);
-			if (type != null)
+			string message = null;
+
+			var taskClassName = task.Type
+				.SplitSafe(",")
+				.SafeGet(0)
+				.SplitSafe(".")
+				.LastOrDefault();
+
+			if (taskClassName.HasValue())
 			{
-				return PluginManager.IsActivePluginAssembly(type.Assembly);
+				message = Services.Localization.GetResource(string.Concat(resourceKey, ".", taskClassName), logIfNotFound: false, returnEmptyIfNotFound: true);
 			}
-			return false;
+
+			if (message.IsEmpty())
+			{
+				message = T(resourceKey);
+			}
+
+			return message;
 		}
 
-        [NonAction]
-        protected ScheduleTaskModel PrepareScheduleTaskModel(ScheduleTask task)
-        {
-            var model = new ScheduleTaskModel()
-            {
-                Id = task.Id,
-                Name = task.Name,
-                Seconds = task.Seconds,
-                Enabled = task.Enabled,
-                StopOnError = task.StopOnError,
-                LastStartUtc = task.LastStartUtc.HasValue ? _dateTimeHelper.ConvertToUserTime(task.LastStartUtc.Value, DateTimeKind.Utc).ToString("G") : "",
-                LastEndUtc = task.LastEndUtc.HasValue ? _dateTimeHelper.ConvertToUserTime(task.LastEndUtc.Value, DateTimeKind.Utc).ToString("G") : "",
-                LastSuccessUtc = task.LastSuccessUtc.HasValue ? _dateTimeHelper.ConvertToUserTime(task.LastSuccessUtc.Value, DateTimeKind.Utc).ToString("G") : "",
-				LastError = task.LastError.EmptyNull(),
-				IsRunning =	task.IsRunning,		//task.LastStartUtc.GetValueOrDefault() > task.LastEndUtc.GetValueOrDefault(),
-				Duration = ""
-            };
-
-			var span = TimeSpan.Zero;
-			if (task.LastStartUtc.HasValue)
-			{
-				span = model.IsRunning ? DateTime.UtcNow - task.LastStartUtc.Value : task.LastEndUtc.Value - task.LastStartUtc.Value;
-				model.Duration = span.ToString("g");
-			}
-
-            return model;
-        }
-
-        #endregion
-
-        #region Methods
-
-        public ActionResult Index()
+		public ActionResult Index()
         {
             return RedirectToAction("List");
         }
 
+        [Permission(Permissions.System.ScheduleTask.Read)]
         public ActionResult List()
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageScheduleTasks))
-                return AccessDeniedView();
+            var models = new List<ScheduleTaskModel>();
+            var tasks = _scheduleTaskService.GetAllTasks(true);
+            var lastHistoryEntries = _scheduleTaskService.GetHistoryEntries(0, int.MaxValue, 0, true, true).ToDictionarySafe(x => x.ScheduleTaskId);
 
-            return View();
+            foreach (var task in tasks.Where(x => x.IsVisible()))
+            {
+                lastHistoryEntries.TryGetValue(task.Id, out var lastEntry);
+                var model = _adminModelHelper.CreateScheduleTaskModel(task, lastEntry);
+                if (model != null)
+                {
+                    models.Add(model);
+                }
+            }
+
+            return View(models);
         }
 
-        [HttpPost, GridAction(EnableCustomBinding = true)]
-        public ActionResult List(GridCommand command)
-        {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageScheduleTasks))
-                return AccessDeniedView();
-			
-            var models = _scheduleTaskService.GetAllTasks(true)
-				.Where(IsTaskInstalled)
-                .Select(PrepareScheduleTaskModel)
-                .ToList();
-            var model = new GridModel<ScheduleTaskModel>
+		[HttpPost]
+        public ActionResult GetRunningTasks()
+		{
+            // We better not check permission here.
+            var runningHistoryEntries = _scheduleTaskService.GetHistoryEntries(0, int.MaxValue, 0, true, true, true);
+            if (!runningHistoryEntries.Any())
             {
-                Data = models,
-                Total = models.Count
-            };
+                return Json(new EmptyResult());
+            }
+
+            var models = runningHistoryEntries
+                .Select(x => new
+                {
+                    id = x.ScheduleTaskId,
+                    percent = x.ProgressPercent,
+                    message = x.ProgressMessage
+                })
+                .ToArray();
+
+            return Json(models);
+        }
+
+        [HttpPost]
+		public ActionResult GetTaskRunInfo(int id /* taskId */)
+		{
+            // We better not check permission here.
+            var model = _adminModelHelper.CreateScheduleTaskModel(id);
+            if (model == null)
+            {
+                return HttpNotFound();
+            }
+
+			return Json(new 
+			{
+				lastRunHtml = this.RenderPartialViewToString("~/Administration/Views/ScheduleTask/_LastRun.cshtml", model),
+				nextRunHtml = this.RenderPartialViewToString("~/Administration/Views/ScheduleTask/_NextRun.cshtml", model)
+			});
+		}
+
+        [Permission(Permissions.System.ScheduleTask.Execute)]
+        public ActionResult RunJob(int id, string returnUrl = "")
+		{
+			var taskParams = new Dictionary<string, string>
+			{
+				{ TaskExecutor.CurrentCustomerIdParamName, Services.WorkContext.CurrentCustomer.Id.ToString() },
+				{ TaskExecutor.CurrentStoreIdParamName, Services.StoreContext.CurrentStore.Id.ToString() }
+			};
+
+			_taskScheduler.RunSingleTask(id, taskParams);
+
+			// The most tasks are completed rather quickly. Wait a while...
+			Thread.Sleep(200);
+
+            // ...check and return suitable notifications
+            var lastEntry = _scheduleTaskService.GetLastHistoryEntryByTaskId(id);
+            if (lastEntry != null)
+            {
+                if (lastEntry.IsRunning)
+                {
+                    NotifyInfo(GetTaskMessage(lastEntry.ScheduleTask, "Admin.System.ScheduleTasks.RunNow.Progress"));
+                }
+                else
+                {
+                    if (lastEntry.Error.HasValue())
+                    {
+                        NotifyError(lastEntry.Error);
+                    }
+                    else
+                    {
+                        NotifySuccess(GetTaskMessage(lastEntry.ScheduleTask, "Admin.System.ScheduleTasks.RunNow.Success"));
+                    }
+                }
+            }
+
+			return RedirectToReferrer(returnUrl);
+		}
+
+        [Permission(Permissions.System.ScheduleTask.Update)]
+        public ActionResult CancelJob(int id /* scheduleTaskId */, string returnUrl = "")
+		{
+			if (_asyncState.Cancel<ScheduleTask>(id.ToString()))
+			{
+				NotifyWarning(T("Admin.System.ScheduleTasks.CancellationRequested"));
+			}
+
+			return RedirectToReferrer(returnUrl);
+		}
+
+        [Permission(Permissions.System.ScheduleTask.Read)]
+        public ActionResult Edit(int id /* taskId */, string returnUrl = null)
+		{
+            var model = _adminModelHelper.CreateScheduleTaskModel(id);
+            if (model == null)
+            {
+                return HttpNotFound();
+            }
+
+            ViewBag.ReturnUrl = returnUrl;
+            ViewBag.GridPageSize = _adminAreaSettings.GridPageSize;
+            ViewBag.HistoryCleanupNote = T("Admin.System.ScheduleTasks.HistoryCleanupNote", 
+                _commonSettings.MaxNumberOfScheduleHistoryEntries, 
+                _commonSettings.MaxScheduleHistoryAgeInDays).Text;
+
+            return View(model);
+		}
+
+		[HttpPost, ParameterBasedOnFormName("save-continue", "continueEditing")]
+		[ValidateAntiForgeryToken]
+        [Permission(Permissions.System.ScheduleTask.Update)]
+        public ActionResult Edit(ScheduleTaskModel model, bool continueEditing, string returnUrl = null)
+		{
+			ViewBag.ReturnUrl = returnUrl;
+
+			if (!ModelState.IsValid)
+			{
+				return View(model);
+			}
+
+			var reloadResult = RedirectToAction("Edit", new { id = model.Id, returnUrl = returnUrl });
+			var returnResult = returnUrl.HasValue() ? (ActionResult)Redirect(returnUrl) : (ActionResult)RedirectToAction("List");
+
+			var scheduleTask = _scheduleTaskService.GetTaskById(model.Id);
+			if (scheduleTask == null)
+			{
+				NotifyError("Schedule task cannot be loaded");
+				return reloadResult;
+			}
+
+			scheduleTask.Name = model.Name;
+			scheduleTask.Enabled = model.Enabled;
+			scheduleTask.StopOnError = model.StopOnError;
+			scheduleTask.CronExpression = model.CronExpression;
+			scheduleTask.NextRunUtc = model.Enabled 
+				? _scheduleTaskService.GetNextSchedule(scheduleTask) 
+				: null;
+
+			_scheduleTaskService.UpdateTask(scheduleTask);
+
+			NotifySuccess(T("Admin.System.ScheduleTasks.UpdateSuccess"));
+
+			if (continueEditing)
+				return reloadResult;
+
+			return returnResult;
+		}
+
+        [GridAction(EnableCustomBinding = true)]
+        [Permission(Permissions.System.ScheduleTask.Read)]
+        public ActionResult HistoryList(GridCommand command, int taskId)
+        {
+            var gridModel = new GridModel<ScheduleTaskHistoryModel>();
+            var history = _scheduleTaskService.GetHistoryEntries(command.Page - 1, command.PageSize, taskId);
+
+            gridModel.Total = history.TotalCount;
+            gridModel.Data = history.Select(x => _adminModelHelper.CreateScheduleTaskHistoryModel(x)).ToList();
 
             return new JsonResult
             {
-                Data = model
+                Data = gridModel
             };
         }
 
         [GridAction(EnableCustomBinding = true)]
-        public ActionResult TaskUpdate(ScheduleTaskModel model, GridCommand command)
+        [Permission(Permissions.System.ScheduleTask.Delete)]
+        public ActionResult DeleteHistoryEntry(int id, GridCommand command)
         {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageScheduleTasks))
-                return AccessDeniedView();
-
-            if (!ModelState.IsValid)
+            var historyEntry = _scheduleTaskService.GetHistoryEntryById(id);
+            if (historyEntry != null)
             {
-                //display the first model error
-                var modelStateErrors = this.ModelState.Values.SelectMany(x => x.Errors).Select(x => x.ErrorMessage);
-                return Content(modelStateErrors.FirstOrDefault());
+                _scheduleTaskService.DeleteHistoryEntry(historyEntry);
             }
 
-            var scheduleTask = _scheduleTaskService.GetTaskById(model.Id);
-            if (scheduleTask == null)
-                return Content("Schedule task cannot be loaded");
-
-            scheduleTask.Name = model.Name;
-            scheduleTask.Seconds = model.Seconds;
-            scheduleTask.Enabled = model.Enabled;
-            scheduleTask.StopOnError = model.StopOnError;
-
-			int max = Int32.MaxValue / 1000;
-
-			scheduleTask.Seconds = (model.Seconds > max ? max : model.Seconds);
-
-            _scheduleTaskService.UpdateTask(scheduleTask);
-
-            return List(command);
+            return HistoryList(command, historyEntry.ScheduleTaskId);
         }
 
-		public ActionResult RunJob(int id, string returnUrl = "")
+        [HttpPost]
+        [Permission(Permissions.System.ScheduleTask.Read)]
+        public ActionResult FutureSchedules(string expression)
 		{
-			if (!_permissionService.Authorize(StandardPermissionProvider.ManageScheduleTasks))
-				return AccessDeniedView();
-
-			returnUrl = returnUrl.NullEmpty() ?? Request.UrlReferrer.ToString();
-
-			var t = AsyncRunner.Run(c =>
+			try
 			{
-				try
-				{
-					var svc = c.Resolve<IScheduleTaskService>();
-
-					var scheduleTask = svc.GetTaskById(id);
-					if (scheduleTask == null)
-						throw new Exception("Schedule task cannot be loaded");
-
-					var job = new Job(scheduleTask);
-					job.Enabled = true;
-					job.Execute(c, false);
-				}
-				catch
-				{
-					try
-					{
-						_scheduleTaskService.EnsureTaskIsNotRunning(id);
-					}
-					catch (Exception) { }
-				}
-			});
-
-			// wait only 100 ms.
-			t.Wait(100);
-
-			if (t.IsCompleted)
-			{
-				if (!t.IsFaulted)
-				{
-					NotifySuccess(T("Admin.System.ScheduleTasks.RunNow.Completed"));
-				}
-				else
-				{
-					NotifyError(t.Exception.Flatten().InnerException);
-				}
+				var now = DateTime.Now;
+				var model = CronExpression.GetFutureSchedules(expression, now, now.AddYears(1), 20);
+				ViewBag.Description = CronExpression.GetFriendlyDescription(expression);
+				return PartialView(model);
 			}
-			else
+			catch (Exception ex)
 			{
-				NotifyInfo(T("Admin.System.ScheduleTasks.RunNow.Progress"));
+				ViewBag.CronScheduleParseError = ex.Message;
+				return PartialView(Enumerable.Empty<DateTime>());
 			}
-
-			return Redirect(returnUrl);
 		}
 
-        #endregion
+		[ChildActionOnly]
+		public ActionResult MinimalTask(int taskId, string returnUrl /* mandatory on purpose */, bool cancellable = true, bool reloadPage = false)
+		{
+            var model = _adminModelHelper.CreateScheduleTaskModel(taskId);
+            if (model == null)
+            {
+                return new EmptyResult();
+            }
+
+            ViewBag.CanUpdate = Services.Permissions.Authorize(Permissions.System.ScheduleTask.Update);
+            ViewBag.ReturnUrl = returnUrl;
+            ViewBag.Cancellable = cancellable;
+            ViewBag.ReloadPage = reloadPage;
+
+            return PartialView(model);
+		}
+
+		[HttpPost]
+		public ActionResult GetMinimalTaskWidget(int taskId, string returnUrl /* mandatory on purpose */)
+		{
+            var model = _adminModelHelper.CreateScheduleTaskModel(taskId);
+            if (model == null)
+            {
+                return new EmptyResult();
+            }
+
+            ViewBag.CanRead = Services.Permissions.Authorize(Permissions.System.ScheduleTask.Read);
+            ViewBag.CanExecute = Services.Permissions.Authorize(Permissions.System.ScheduleTask.Execute);
+            ViewBag.ReturnUrl = returnUrl;
+
+            return PartialView("_MinimalTaskWidget", model);
+		}
     }
 }

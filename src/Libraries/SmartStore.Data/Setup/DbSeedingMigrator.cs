@@ -1,17 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data.Entity;
-using System.Data.Entity.Infrastructure;
 using System.Data.Entity.Migrations;
 using System.Data.Entity.Migrations.Infrastructure;
 using System.Linq;
-using System.Text.RegularExpressions;
 using SmartStore.Core.Infrastructure;
 using SmartStore.Core.Logging;
+using SmartStore.Data.Migrations;
 
 namespace SmartStore.Data.Setup
 {
-	
 	/// <summary>
 	/// Provides advanced migrations by providing a seeding platform for each migration.
 	/// This allows for initial seed data after each new database version (for example when 
@@ -21,6 +19,16 @@ namespace SmartStore.Data.Setup
 	public class DbSeedingMigrator<TContext> : DbMigrator where TContext : DbContext
 	{
 		private ILogger _logger;
+		private static bool _isMigrating;
+		private static Exception _lastSeedException;
+
+		/// <summary>
+		/// Initializes a new instance of the DbMigrator class with the default (core db) configuration.
+		/// </summary>
+		public DbSeedingMigrator()
+			: this(new MigrationsConfiguration())
+		{
+		}
 
 		/// <summary>
 		/// Initializes a new instance of the DbMigrator class.
@@ -39,7 +47,7 @@ namespace SmartStore.Data.Setup
 				{
 					try
 					{
-						_logger = EngineContext.Current.Resolve<ILogger>();
+						_logger = EngineContext.Current.Resolve<ILoggerFactory>().GetLogger(this.GetType());
 					}
 					catch
 					{
@@ -51,26 +59,42 @@ namespace SmartStore.Data.Setup
 			}
 		}
 
+		public static bool IsMigrating
+		{
+			get
+			{
+				return _isMigrating;
+			}
+		}
+
 		/// <summary>
 		/// Migrates the database to the latest version
 		/// </summary>
 		/// <returns>The number of applied migrations</returns>
 		public int RunPendingMigrations(TContext context)
 		{
+			if (_lastSeedException != null)
+			{
+				// This can happen when a previous migration attempt failed with a rollback.
+				throw _lastSeedException;
+			}
+
 			var pendingMigrations = GetPendingMigrations().ToList();
 			if (!pendingMigrations.Any())
 				return 0;
-			
+		
 			var coreSeeders = new List<SeederEntry>();
 			var externalSeeders = new List<SeederEntry>();
 			var isCoreMigration = context is SmartObjectContext;
-			var initialMigration = this.GetDatabaseMigrations().LastOrDefault() ?? "[Initial]";
-			var lastSuccessfulMigration = initialMigration;
+			var databaseMigrations = this.GetDatabaseMigrations().ToArray();
+			var initialMigration = databaseMigrations.LastOrDefault() ?? "[Initial]";
+			var lastSuccessfulMigration = databaseMigrations.FirstOrDefault();
 
 			IDataSeeder<SmartObjectContext> coreSeeder = null;
 			IDataSeeder<TContext> externalSeeder = null;
 
 			int result = 0;
+			_isMigrating = true;
 
 			// Apply migrations
 			foreach (var migrationId in pendingMigrations)
@@ -106,6 +130,7 @@ namespace SmartStore.Data.Setup
 				{
 					if (context is SmartObjectContext)
 					{
+						_isMigrating = false;
 						throw;
 					}
 
@@ -117,6 +142,7 @@ namespace SmartStore.Data.Setup
 				catch (Exception ex)
 				{
 					result = 0;
+					_isMigrating = false;
 					throw new DbMigrationException(lastSuccessfulMigration, migrationId, ex.InnerException ?? ex, false);
 				}
 
@@ -148,7 +174,9 @@ namespace SmartStore.Data.Setup
 			// Apply external data seeders
 			RunSeeders<TContext>(externalSeeders, context);
 
-			Logger.Information("Database migration successful: {0} >> {1}".FormatInvariant(initialMigration, lastSuccessfulMigration));
+			_isMigrating = false;
+
+			Logger.Info("Database migration successful: {0} >> {1}".FormatInvariant(initialMigration, lastSuccessfulMigration));
 
 			return result;
 		}
@@ -168,17 +196,19 @@ namespace SmartStore.Data.Setup
 					if (seeder.RollbackOnFailure)
 					{
 						Update(seederEntry.PreviousMigrationId);
-						throw new DbMigrationException(seederEntry.PreviousMigrationId, seederEntry.MigrationId, ex.InnerException ?? ex, true);
+						_isMigrating = false;
+						_lastSeedException = new DbMigrationException(seederEntry.PreviousMigrationId, seederEntry.MigrationId, ex.InnerException ?? ex, true);
+						throw _lastSeedException;
 					}
 
-					Logger.Warning("Seed error in migration '{0}'. The error was ignored because no rollback was requested.".FormatInvariant(seederEntry.MigrationId), ex);
+					Logger.WarnFormat(ex, "Seed error in migration '{0}'. The error was ignored because no rollback was requested.", seederEntry.MigrationId);
 				}
 			}
 		}
 
 		private void LogError(string initialMigration, string targetMigration, Exception exception)
 		{
-			Logger.Error("Database migration error: {0} >> {1}".FormatInvariant(initialMigration, targetMigration), exception);
+			Logger.ErrorFormat(exception, "Database migration error: {0} >> {1}", initialMigration, targetMigration);
 		}
 
 		private class SeederEntry

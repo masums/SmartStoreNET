@@ -1,13 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Diagnostics;
 using System.Runtime.Serialization;
 using SmartStore.Core.Domain.Discounts;
-using SmartStore.Core.Domain.Localization;
 using SmartStore.Core.Domain.Media;
-using SmartStore.Core.Domain.Security;
-using SmartStore.Core.Domain.Seo;
-using SmartStore.Core.Domain.Stores;
 
 namespace SmartStore.Core.Domain.Catalog
 {
@@ -16,7 +14,7 @@ namespace SmartStore.Core.Domain.Catalog
     /// </summary>
     [DataContract]
 	[DebuggerDisplay("{Id}: {Name} (Parent: {ParentCategoryId})")]
-	public partial class Category : BaseEntity, ISoftDeletable, ILocalizedEntity, ISlugSupported, IAclSupported, IStoreMappingSupported
+	public partial class Category : BaseEntity, ICategoryNode, IAuditable, ISoftDeletable, IPagingOptions
     {
         private ICollection<Discount> _appliedDiscounts;
 
@@ -26,6 +24,12 @@ namespace SmartStore.Core.Domain.Catalog
         [DataMember]
         public string Name { get; set; }
 
+		/// <summary>
+		/// Gets or sets the full name (category page title)
+		/// </summary>
+		[DataMember]
+		public string FullName { get; set; }
+
         /// <summary>
         /// Gets or sets the description
         /// </summary>
@@ -33,11 +37,34 @@ namespace SmartStore.Core.Domain.Catalog
         public string Description { get; set; }
 
 		/// <summary>
-		/// Gets or sets the category alias 
-		/// (an optional key for advanced customization)
+		/// Gets or sets a description displayed at the bottom of the category page
 		/// </summary>
-		/// <remarks>codehint: sm-add</remarks>
 		[DataMember]
+		public string BottomDescription { get; set; }
+
+        /// <summary>
+        /// Gets or sets the external link expression. If set, any category menu item will navigate to the specified link.
+        /// </summary>
+        [DataMember]
+        public string ExternalLink { get; set; }
+
+        /// <summary>
+		/// Gets or sets a text displayed in a badge next to the category within menus
+		/// </summary>
+        [DataMember]
+        public string BadgeText { get; set; }
+
+        /// <summary>
+		/// Gets or sets the type of the badge within menus
+		/// </summary>
+        [DataMember]
+        public int BadgeStyle { get; set; }
+
+        /// <summary>
+        /// Gets or sets the category alias 
+        /// (an optional key for advanced customization)
+        /// </summary>
+        [DataMember]
 		public string Alias { get; set; }
 
         /// <summary>
@@ -86,13 +113,13 @@ namespace SmartStore.Core.Domain.Catalog
         /// Gets or sets the page size
         /// </summary>
 		[DataMember]
-		public int PageSize { get; set; }
+		public int? PageSize { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether customers can select the page size
         /// </summary>
 		[DataMember]
-		public bool AllowCustomersToSelectPageSize { get; set; }
+		public bool? AllowCustomersToSelectPageSize { get; set; }
 
         /// <summary>
         /// Gets or sets the available customer selectable page size options
@@ -100,15 +127,16 @@ namespace SmartStore.Core.Domain.Catalog
 		[DataMember]
 		public string PageSizeOptions { get; set; }
 
-        /// <summary>
-        /// Gets or sets the available price ranges
-        /// </summary>
-		[DataMember]
+		/// <summary>
+		/// Gets or sets the available price ranges
+		/// </summary>
+		[Obsolete("Price ranges are calculated automatically since version 3")]
+		[StringLength(400)]
 		public string PriceRanges { get; set; }
 
-        /// <summary>
-        /// Gets or sets a value indicating whether to show the category on home page
-        /// </summary>
+		/// <summary>
+		/// Gets or sets a value indicating whether to show the category on home page
+		/// </summary>
 		[DataMember]
 		public bool ShowOnHomePage { get; set; }
 
@@ -116,7 +144,7 @@ namespace SmartStore.Core.Domain.Catalog
         /// Gets or sets a value indicating whether this category has discounts applied
         /// <remarks>The same as if we run category.AppliedDiscounts.Count > 0
         /// We use this property for performance optimization:
-        /// if this property is set to false, then we do not need to load Applied Discounts navifation property
+        /// if this property is set to false, then we do not need to load Applied Discounts navigation property
         /// </remarks>
         /// </summary>
 		[DataMember]
@@ -143,6 +171,7 @@ namespace SmartStore.Core.Domain.Catalog
         /// <summary>
         /// Gets or sets a value indicating whether the entity has been deleted
         /// </summary>
+		[Index]
         public bool Deleted { get; set; }
 
         /// <summary>
@@ -162,6 +191,12 @@ namespace SmartStore.Core.Domain.Catalog
         /// </summary>
         [DataMember]
         public DateTime UpdatedOnUtc { get; set; }
+
+        /// <summary>
+        /// Gets or sets the date and time of instance update
+        /// </summary>
+        [DataMember]
+        public string DefaultViewMode { get; set; }
 
         /// <summary>
         /// Gets or sets the collection of applied discounts

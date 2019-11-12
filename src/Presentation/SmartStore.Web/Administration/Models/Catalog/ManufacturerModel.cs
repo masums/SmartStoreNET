@@ -2,30 +2,30 @@
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Web.Mvc;
+using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Models.Stores;
-using SmartStore.Admin.Validators.Catalog;
+using SmartStore.ComponentModel;
+using SmartStore.Core.Domain.Catalog;
+using SmartStore.Core.Domain.Discounts;
+using SmartStore.Services.Seo;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Localization;
-using SmartStore.Web.Framework.Mvc;
-using Telerik.Web.Mvc;
+using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.Admin.Models.Catalog
 {
     [Validator(typeof(ManufacturerValidator))]
-    public class ManufacturerModel : EntityModelBase, ILocalizedModel<ManufacturerLocalizedModel>
-    {
+    public class ManufacturerModel : TabbableModel, ILocalizedModel<ManufacturerLocalizedModel>
+	{
         public ManufacturerModel()
         {
-            if (PageSize < 1)
-            {
-                PageSize = 5;
-            }
             Locales = new List<ManufacturerLocalizedModel>();
             AvailableManufacturerTemplates = new List<SelectListItem>();
         }
 
-        [SmartResourceDisplayName("Admin.Catalog.Manufacturers.Fields.Name")]
+		public int GridPageSize { get; set; }
+
+		[SmartResourceDisplayName("Admin.Catalog.Manufacturers.Fields.Name")]
         [AllowHtml]
         public string Name { get; set; }
 
@@ -56,20 +56,16 @@ namespace SmartStore.Admin.Models.Catalog
 
         [UIHint("Picture")]
         [SmartResourceDisplayName("Admin.Catalog.Manufacturers.Fields.Picture")]
-        public int PictureId { get; set; }
+        public int? PictureId { get; set; }
 
         [SmartResourceDisplayName("Admin.Catalog.Manufacturers.Fields.PageSize")]
-        public int PageSize { get; set; }
+        public int? PageSize { get; set; }
 
         [SmartResourceDisplayName("Admin.Catalog.Manufacturers.Fields.AllowCustomersToSelectPageSize")]
-        public bool AllowCustomersToSelectPageSize { get; set; }
+        public bool? AllowCustomersToSelectPageSize { get; set; }
 
         [SmartResourceDisplayName("Admin.Catalog.Manufacturers.Fields.PageSizeOptions")]
         public string PageSizeOptions { get; set; }
-
-        [SmartResourceDisplayName("Admin.Catalog.Manufacturers.Fields.PriceRanges")]
-        [AllowHtml]
-        public string PriceRanges { get; set; }
 
         [SmartResourceDisplayName("Admin.Catalog.Manufacturers.Fields.Published")]
         public bool Published { get; set; }
@@ -77,7 +73,7 @@ namespace SmartStore.Admin.Models.Catalog
         [SmartResourceDisplayName("Admin.Catalog.Manufacturers.Fields.Deleted")]
         public bool Deleted { get; set; }
 
-        [SmartResourceDisplayName("Admin.Catalog.Manufacturers.Fields.DisplayOrder")]
+        [SmartResourceDisplayName("Common.DisplayOrder")]
         public int DisplayOrder { get; set; }
 
 		[SmartResourceDisplayName("Common.CreatedOn")]
@@ -88,17 +84,19 @@ namespace SmartStore.Admin.Models.Catalog
         
         public IList<ManufacturerLocalizedModel> Locales { get; set; }
 
-		//Store mapping
-		[SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
-		public bool LimitedToStores { get; set; }
+        // Store mapping.
+        [UIHint("Stores"), AdditionalMetadata("multiple", true)]
+        [SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
+        public int[] SelectedStoreIds { get; set; }
+        [SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
+        public bool LimitedToStores { get; set; }
 
-		[SmartResourceDisplayName("Admin.Common.Store.AvailableFor")]
-		public List<StoreModel> AvailableStores { get; set; }
-		public int[] SelectedStoreIds { get; set; }
+		public List<Discount> AvailableDiscounts { get; set; }
+		public int[] SelectedDiscountIds { get; set; }
 
-        #region Nested classes
+		#region Nested classes
 
-        public class ManufacturerProductModel : EntityModelBase
+		public class ManufacturerProductModel : EntityModelBase
         {
             public int ManufacturerId { get; set; }
 
@@ -120,40 +118,11 @@ namespace SmartStore.Admin.Models.Catalog
             [SmartResourceDisplayName("Admin.Catalog.Manufacturers.Products.Fields.IsFeaturedProduct")]
             public bool IsFeaturedProduct { get; set; }
 
-            [SmartResourceDisplayName("Admin.Catalog.Manufacturers.Products.Fields.DisplayOrder")]
+            [SmartResourceDisplayName("Common.DisplayOrder")]
             //we don't name it DisplayOrder because Telerik has a small bug 
             //"if we have one more editor with the same name on a page, it doesn't allow editing"
             //in our case it's category.DisplayOrder
             public int DisplayOrder1 { get; set; }
-        }
-
-        public class AddManufacturerProductModel : ModelBase
-        {
-            public AddManufacturerProductModel()
-            {
-                AvailableCategories = new List<SelectListItem>();
-                AvailableManufacturers = new List<SelectListItem>();
-				AvailableProductTypes = new List<SelectListItem>();
-            }
-            public GridModel<ProductModel> Products { get; set; }
-
-            [SmartResourceDisplayName("Admin.Catalog.Products.List.SearchProductName")]
-            [AllowHtml]
-            public string SearchProductName { get; set; }
-            [SmartResourceDisplayName("Admin.Catalog.Products.List.SearchCategory")]
-            public int SearchCategoryId { get; set; }
-            [SmartResourceDisplayName("Admin.Catalog.Products.List.SearchManufacturer")]
-            public int SearchManufacturerId { get; set; }
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchProductType")]
-			public int SearchProductTypeId { get; set; }
-
-            public IList<SelectListItem> AvailableCategories { get; set; }
-            public IList<SelectListItem> AvailableManufacturers { get; set; }
-			public IList<SelectListItem> AvailableProductTypes { get; set; }
-
-            public int ManufacturerId { get; set; }
-
-            public int[] SelectedProductIds { get; set; }
         }
 
         #endregion
@@ -186,5 +155,23 @@ namespace SmartStore.Admin.Models.Catalog
         [SmartResourceDisplayName("Admin.Catalog.Manufacturers.Fields.SeName")]
         [AllowHtml]
         public string SeName { get; set; }
+    }
+
+	public partial class ManufacturerValidator : AbstractValidator<ManufacturerModel>
+	{
+		public ManufacturerValidator()
+		{
+			RuleFor(x => x.Name).NotEmpty();
+		}
+	}
+
+    public class ManufacturerMapper :
+        IMapper<Manufacturer, ManufacturerModel>
+    {
+        public void Map(Manufacturer from, ManufacturerModel to)
+        {
+            MiniMapper.Map(from, to);
+            to.SeName = from.GetSeName(0, true, false);
+        }
     }
 }

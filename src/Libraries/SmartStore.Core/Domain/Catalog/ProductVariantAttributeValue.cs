@@ -1,5 +1,7 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Runtime.Serialization;
 using SmartStore.Core.Domain.Localization;
+using SmartStore.Core.Search;
 
 namespace SmartStore.Core.Domain.Catalog
 {
@@ -7,17 +9,17 @@ namespace SmartStore.Core.Domain.Catalog
     /// Represents a product variant attribute value
     /// </summary>
     [DataContract]
-	public partial class ProductVariantAttributeValue : BaseEntity, ILocalizedEntity
-    {
+	public partial class ProductVariantAttributeValue : BaseEntity, ILocalizedEntity, ISearchAlias
+	{
         /// <summary>
         /// Gets or sets the product variant attribute mapping identifier
         /// </summary>
 		[DataMember]
+		[Index("IX_ProductVariantAttributeValue_ProductVariantAttributeId_DisplayOrder", 1)]
 		public int ProductVariantAttributeId { get; set; }
 
         /// <summary>
         /// Gets or sets the product variant attribute alias 
-        /// (an optional key for advanced customization)
         /// </summary>
 		[DataMember]
 		public string Alias { get; set; }
@@ -26,13 +28,20 @@ namespace SmartStore.Core.Domain.Catalog
         /// Gets or sets the product variant attribute name
         /// </summary>
 		[DataMember]
+		[Index]
 		public string Name { get; set; }
 
         /// <summary>
-        /// Gets or sets the color RGB value (used with "Color squares" attribute type)
+        /// Gets or sets the Picture Id
         /// </summary>
 		[DataMember]
-		public virtual string ColorSquaresRgb { get; set; }
+        public int PictureId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the color RGB value (used with "Boxes" attribute type)
+        /// </summary>
+		[DataMember]
+		public string Color { get; set; }
 
         /// <summary>
         /// Gets or sets the price adjustment
@@ -56,12 +65,14 @@ namespace SmartStore.Core.Domain.Catalog
         /// Gets or sets the display order
         /// </summary>
 		[DataMember]
+		[Index("IX_ProductVariantAttributeValue_ProductVariantAttributeId_DisplayOrder", 2)]
 		public int DisplayOrder { get; set; }
 
 		/// <summary>
 		/// Gets or sets the type Id
 		/// </summary>
 		[DataMember]
+		[Index]
 		public int ValueTypeId { get; set; }
 
 		/// <summary>

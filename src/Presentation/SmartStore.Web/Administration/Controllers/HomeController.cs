@@ -9,8 +9,10 @@ using SmartStore.Admin.Models.Common;
 using SmartStore.Core;
 using SmartStore.Core.Domain.Common;
 using SmartStore.Services;
+using SmartStore.Services.Common;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Controllers;
+using SmartStore.Web.Framework.Security;
 
 namespace SmartStore.Admin.Controllers
 {
@@ -21,15 +23,17 @@ namespace SmartStore.Admin.Controllers
 
 		private readonly ICommonServices _services;
 		private readonly CommonSettings _commonSettings;
+		private readonly Lazy<IUserAgent> _userAgent;
 
         #endregion
 
         #region Ctor
 
-		public HomeController(ICommonServices services, CommonSettings commonSettings)
+		public HomeController(ICommonServices services, CommonSettings commonSettings, Lazy<IUserAgent> userAgent)
         {
             this._commonSettings = commonSettings;
 			this._services = services;
+			this._userAgent = userAgent;
         }
 
         #endregion
@@ -46,12 +50,21 @@ namespace SmartStore.Admin.Controllers
 			return View();
 		}
 
+		public ActionResult UaTester(string ua = null)
+		{
+			if (ua.HasValue())
+			{
+				_userAgent.Value.RawValue = ua;
+			}
+			return View(_userAgent.Value);
+		}
+
         [ChildActionOnly]
         public ActionResult SmartStoreNews()
         {
             try
             {
-                string feedUrl = string.Format("http://www.smartstore.com/NewsRSS.aspx?Version={0}&Localhost={1}&HideAdvertisements={2}&StoreURL={3}",
+                string feedUrl = string.Format("https://www.smartstore.com/NewsRSS.aspx?Version={0}&Localhost={1}&HideAdvertisements={2}&StoreURL={3}",
                     SmartStoreVersion.CurrentVersion,
                     Request.Url.IsLoopback,
                     _commonSettings.HideAdvertisementsOnAdminArea,
@@ -76,12 +89,13 @@ namespace SmartStore.Admin.Controllers
 		[ChildActionOnly]
 		public ActionResult MarketplaceFeed()
 		{
-			var result = _services.Cache.Get("Dashboard.MarketplaceFeed", () => {
+			var result = _services.Cache.Get("admin:marketplacefeed", () => {
 				try
 				{
 					string url = "http://community.smartstore.com/index.php?/rss/downloads/";
-					var request = WebRequest.Create(url);
+					var request = (HttpWebRequest)WebRequest.Create(url);
 					request.Timeout = 3000;
+					request.UserAgent = "SmartStore.NET {0}".FormatInvariant(SmartStoreVersion.CurrentFullVersion);
 
 					using (WebResponse response = request.GetResponse())
 					{
@@ -116,7 +130,7 @@ namespace SmartStore.Admin.Controllers
 				{
 					return new List<FeedItemModel> {new FeedItemModel { IsError = true, Summary = ex.Message } };
 				}
-			}, 720 /* 12 h */);
+			}, TimeSpan.FromHours(12));
 
 			if (result.Any() && result.First().IsError)
 			{

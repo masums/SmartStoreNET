@@ -1,8 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Web.Framework.Mvc;
-using SmartStore.Web.Validators.Blogs;
+using SmartStore.Core.Domain.Blogs;
+using SmartStore.Web.Framework.Modelling;
+using SmartStore.Web.Models.Common;
+using SmartStore.Web.Models.Media;
+using System;
+using System.Collections.Generic;
 
 namespace SmartStore.Web.Models.Blogs
 {
@@ -11,33 +14,51 @@ namespace SmartStore.Web.Models.Blogs
     {
         public BlogPostModel()
         {
-            Tags = new List<string>();
-            Comments = new List<BlogCommentModel>();
-            AddNewComment = new AddBlogCommentModel();
+            Tags = new List<BlogPostTagModel>();
+			AddNewComment = new AddBlogCommentModel();
+			Comments = new CommentListModel();
+            PictureModel = new PictureModel();
+            PreviewPictureModel = new PictureModel();
         }
 
         public string MetaKeywords { get; set; }
         public string MetaDescription { get; set; }
         public string MetaTitle { get; set; }
         public string SeName { get; set; }
+		public DateTime CreatedOn { get; set; }
+		public IList<BlogPostTagModel> Tags { get; set; }
 
-        public string Title { get; set; }
+		public string Title { get; set; }
+
+        public PictureModel PictureModel { get; set; }
+
+        public PictureModel PreviewPictureModel { get; set; }
+
+        public string Intro { get; set; }
 
         public string Body { get; set; }
 
-        public bool AllowComments { get; set; }
+        public string SectionBg { get; set; }
+        
+        public bool HasBgImage { get; set; }
 
-        public int NumberOfComments { get; set; }
+        public bool DisplayAdminLink { get; set; }
 
-        public DateTime CreatedOn { get; set; }
+        public bool DisplayTagsInPreview { get; set; }
 
-        public IList<string> Tags { get; set; }
+        public PreviewDisplayType PreviewDisplayType { get; set; }
 
-        public IList<BlogCommentModel> Comments { get; set; }
         public AddBlogCommentModel AddNewComment { get; set; }
+		public CommentListModel Comments { get; set; }
+	}
 
-        // codehint: sm-add
-        public int AvatarPictureSize { get; set; }
-		public bool AllowCustomersToUploadAvatars { get; set; }
+    public class BlogPostValidator : AbstractValidator<BlogPostModel>
+    {
+        public BlogPostValidator()
+        {
+            RuleFor(x => x.AddNewComment.CommentText)
+                .NotEmpty()
+                .When(x => x.AddNewComment != null);
+        }
     }
 }

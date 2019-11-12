@@ -16,10 +16,13 @@ namespace SmartStore.Web.Framework.Validators
 
 			if (!result.IsValid)
 			{
-				int i = 0;
-				foreach (var error in result.Errors)
+                foreach (var error in result.Errors.DistinctBy(x => x.ErrorMessage))
 				{
-					modelState.AddModelError(error.PropertyName + (++i).ToString(), error.ErrorMessage);
+					try
+					{
+						modelState.AddModelError(error.PropertyName, error.ErrorMessage);
+					}
+					catch { }
 				}
 			}
 		}
@@ -30,11 +33,14 @@ namespace SmartStore.Web.Framework.Validators
 
 			if (!result.IsValid)
 			{
-				foreach (var error in result.Errors)
-					warnings.Add(error.ErrorMessage);
+                foreach (var error in result.Errors.DistinctBy(x => x.ErrorMessage))
+                {
+                    warnings.Add(error.ErrorMessage);
+                }
 
 				return false;
 			}
+
 			return true;
 		}
 	}

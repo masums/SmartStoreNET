@@ -2,36 +2,40 @@
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Web.Mvc;
-using AutoMapper;
+using System.Linq;
+using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Models.Customers;
-using SmartStore.Admin.Models.Stores;
-using SmartStore.Admin.Validators.Catalog;
+using SmartStore.ComponentModel;
+using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Discounts;
+using SmartStore.Services.Seo;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Localization;
-using SmartStore.Web.Framework.Mvc;
-using Telerik.Web.Mvc;
+using SmartStore.Web.Framework.Modelling;
+using SmartStore.Core.Localization;
 
 namespace SmartStore.Admin.Models.Catalog
 {
-    [Validator(typeof(ProductValidator))]
+	[Validator(typeof(ProductValidator))]
     public class ProductModel : TabbableModel, ILocalizedModel<ProductLocalizedModel>
-    {
+	{
         public ProductModel()
         {
             Locales = new List<ProductLocalizedModel>();
             ProductPictureModels = new List<ProductPictureModel>();
             CopyProductModel = new CopyProductModel();
             AvailableProductTemplates = new List<SelectListItem>();
-            AvailableProductTags = new List<SelectListItem>();
 			AvailableTaxCategories = new List<SelectListItem>();
 			AvailableDeliveryTimes = new List<SelectListItem>();
-			AvailableMeasureUnits = new List<SelectListItem>();
+            AvailableMeasureUnits = new List<SelectListItem>();
+            AvailableQuantityUnits = new List<SelectListItem>();
+			AvailableMeasureWeights = new List<SelectListItem>();
 			AddPictureModel = new ProductPictureModel();
 			AddSpecificationAttributeModel = new AddProductSpecificationAttributeModel();
 			AvailableManageInventoryMethods = new List<SelectListItem>();
-        }
+			AvailableCountries = new List<SelectListItem>();
+            DownloadVersions = new List<DownloadVersion>();
+		}
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.ID")]
 		public override int Id { get; set; }
@@ -55,10 +59,10 @@ namespace SmartStore.Admin.Models.Catalog
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.AssociatedToProductName")]
 		public string AssociatedToProductName { get; set; }
 
-		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.VisibleIndividually")]
-		public bool VisibleIndividually { get; set; }
+        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.Visibility")]
+        public ProductVisibility Visibility { get; set; }
 
-		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.ProductTemplate")]
+        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.ProductTemplate")]
 		[AllowHtml]
 		public int ProductTemplateId { get; set; }
 		public IList<SelectListItem> AvailableProductTemplates { get; set; }
@@ -82,6 +86,9 @@ namespace SmartStore.Admin.Models.Catalog
         [SmartResourceDisplayName("Admin.Catalog.Products.Fields.ShowOnHomePage")]
         public bool ShowOnHomePage { get; set; }
 
+		[SmartResourceDisplayName("Common.DisplayOrder")]
+		public int HomePageDisplayOrder { get; set; }
+
         [SmartResourceDisplayName("Admin.Catalog.Products.Fields.MetaKeywords")]
         [AllowHtml]
         public string MetaKeywords { get; set; }
@@ -102,8 +109,8 @@ namespace SmartStore.Admin.Models.Catalog
         public bool AllowCustomerReviews { get; set; }
 
         [SmartResourceDisplayName("Admin.Catalog.Products.Fields.ProductTags")]
-        public string ProductTags { get; set; }
-        public IList<SelectListItem> AvailableProductTags { get; set; }
+        public string[] ProductTags { get; set; }
+        public MultiSelectList AvailableProductTags { get; set; }
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.Sku")]
 		[AllowHtml]
@@ -115,7 +122,14 @@ namespace SmartStore.Admin.Models.Catalog
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.GTIN")]
 		[AllowHtml]
-		public virtual string Gtin { get; set; }
+		public string Gtin { get; set; }
+
+		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.CustomsTariffNumber")]
+		public string CustomsTariffNumber { get; set; }
+
+		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.CountryOfOriginId")]
+		public int? CountryOfOriginId { get; set; }
+		public IList<SelectListItem> AvailableCountries { get; set; }
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.IsGiftCard")]
 		public bool IsGiftCard { get; set; }
@@ -135,11 +149,23 @@ namespace SmartStore.Admin.Models.Catalog
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.IsDownload")]
 		public bool IsDownload { get; set; }
 
-		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.Download")]
-		[UIHint("Download")]
-		public int DownloadId { get; set; }
+        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.NewVersionDownloadId")]
+        [UIHint("Download")]
+        public int? NewVersionDownloadId { get; set; }
 
-		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.UnlimitedDownloads")]
+        [SmartResourceDisplayName("Common.Download.Version")]
+        public string NewVersion { get; set; }
+
+        public List<DownloadVersion> DownloadVersions { get; set; }
+
+        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.Download")]
+		[UIHint("Download")]
+		public int? DownloadId { get; set; }
+
+        [SmartResourceDisplayName("Common.Download.Version")]
+        public string DownloadFileVersion { get; set; }
+
+        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.UnlimitedDownloads")]
 		public bool UnlimitedDownloads { get; set; }
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.MaxNumberOfDownloads")]
@@ -156,7 +182,7 @@ namespace SmartStore.Admin.Models.Catalog
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.SampleDownload")]
 		[UIHint("Download")]
-		public int SampleDownloadId { get; set; }
+		public int? SampleDownloadId { get; set; }
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.HasUserAgreement")]
 		public bool HasUserAgreement { get; set; }
@@ -165,7 +191,10 @@ namespace SmartStore.Admin.Models.Catalog
 		[AllowHtml]
 		public string UserAgreementText { get; set; }
 
-		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.IsRecurring")]
+        [AllowHtml]
+        public string AddChangelog { get; set; }
+
+        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.IsRecurring")]
 		public bool IsRecurring { get; set; }
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.RecurringCycleLength")]
@@ -193,7 +222,7 @@ namespace SmartStore.Admin.Models.Catalog
 		public bool IsTaxExempt { get; set; }
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.TaxCategory")]
-		public int TaxCategoryId { get; set; }
+		public int? TaxCategoryId { get; set; }
 		public IList<SelectListItem> AvailableTaxCategories { get; set; }
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.ManageInventoryMethod")]
@@ -229,8 +258,17 @@ namespace SmartStore.Admin.Models.Catalog
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.OrderMaximumQuantity")]
 		public int OrderMaximumQuantity { get; set; }
+        
+        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.QuantityStep")]
+        public int QuantityStep { get; set; }
 
-		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.AllowedQuantities")]
+        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.QuantiyControlType")]
+        public QuantityControlType QuantiyControlType { get; set; }
+        
+        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.HideQuantityControl")]
+        public bool HideQuantityControl { get; set; }
+        
+        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.AllowedQuantities")]
 		public string AllowedQuantities { get; set; }
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.DisableBuyButton")]
@@ -317,37 +355,32 @@ namespace SmartStore.Admin.Models.Catalog
 
         public IList<ProductLocalizedModel> Locales { get; set; }
 
-        //ACL (customer roles)
-        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.SubjectToAcl")]
+        // ACL (customer roles).
+        [UIHint("CustomerRoles"), AdditionalMetadata("multiple", true)]
+        [SmartResourceDisplayName("Admin.Common.CustomerRole.LimitedTo")]
+        public int[] SelectedCustomerRoleIds { get; set; }
+        [SmartResourceDisplayName("Admin.Common.CustomerRole.LimitedTo")]
         public bool SubjectToAcl { get; set; }
 
-        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.AclCustomerRoles")]
-        public List<CustomerRoleModel> AvailableCustomerRoles { get; set; }
-        public int[] SelectedCustomerRoleIds { get; set; }
+        // Store mapping.
+        [UIHint("Stores"), AdditionalMetadata("multiple", true)]
+        [SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
+        public int[] SelectedStoreIds { get; set; }
+        [SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
+        public bool LimitedToStores { get; set; }
 
-		//Store mapping
-		[SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
-		public bool LimitedToStores { get; set; }
-
-		[SmartResourceDisplayName("Admin.Common.Store.AvailableFor")]
-		public List<StoreModel> AvailableStores { get; set; }
-		public int[] SelectedStoreIds { get; set; }
-
-        //categories
         public int NumberOfAvailableCategories { get; set; }
-
-        //manufacturers
         public int NumberOfAvailableManufacturers { get; set; }
-
-		//product attributes
 		public int NumberOfAvailableProductAttributes { get; set; }
 
         //pictures
+        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.HasPreviewPicture")]
+        public bool HasPreviewPicture { get; set; }
         public ProductPictureModel AddPictureModel { get; set; }
         public IList<ProductPictureModel> ProductPictureModels { get; set; }
-
-		//discounts
-		public List<Discount> AvailableDiscounts { get; set; }
+        
+        //discounts
+        public List<Discount> AvailableDiscounts { get; set; }
 		public int[] SelectedDiscountIds { get; set; }
 
 		//add specification attribute model
@@ -369,24 +402,30 @@ namespace SmartStore.Admin.Models.Catalog
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.BasePriceBaseAmount")]
 		public int? BasePriceBaseAmount { get; set; }
 
-		public IList<SelectListItem> AvailableMeasureUnits { get; set; }
-
+        public IList<SelectListItem> AvailableMeasureWeights { get; set; }
+        public IList<SelectListItem> AvailableMeasureUnits { get; set; }
+        
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.DeliveryTime")]
 		public int? DeliveryTimeId { get; set; }
 		public IList<SelectListItem> AvailableDeliveryTimes { get; set; }
 
+        [SmartResourceDisplayName("Admin.Catalog.Products.Fields.QuantityUnit")]
+        public int? QuantityUnitId { get; set; }
+        public IList<SelectListItem> AvailableQuantityUnits { get; set; }
+
 		public string ProductSelectCheckboxClass { get; set; }
-        
-        #region Nested classes
-        
-        public class AddProductSpecificationAttributeModel : ModelBase
+
+		public bool IsSystemProduct { get; set; } 
+		public string SystemName { get; set; }
+
+		#region Nested classes
+
+		public class AddProductSpecificationAttributeModel : ModelBase
         {
             public AddProductSpecificationAttributeModel()
             {
                 AvailableAttributes = new List<SelectListItem>();
                 AvailableOptions = new List<SelectListItem>();
-
-				AllowFiltering = true;		// codehint: sm-add
             }
             
             [SmartResourceDisplayName("Admin.Catalog.Products.SpecificationAttributes.Fields.SpecificationAttribute")]
@@ -396,12 +435,12 @@ namespace SmartStore.Admin.Models.Catalog
             public int SpecificationAttributeOptionId { get; set; }
 
             [SmartResourceDisplayName("Admin.Catalog.Products.SpecificationAttributes.Fields.AllowFiltering")]
-            public bool AllowFiltering { get; set; }
+            public bool? AllowFiltering { get; set; }
 
             [SmartResourceDisplayName("Admin.Catalog.Products.SpecificationAttributes.Fields.ShowOnProductPage")]
-            public bool ShowOnProductPage { get; set; }
+            public bool? ShowOnProductPage { get; set; }
 
-            [SmartResourceDisplayName("Admin.Catalog.Products.SpecificationAttributes.Fields.DisplayOrder")]
+            [SmartResourceDisplayName("Common.DisplayOrder")]
             public int DisplayOrder { get; set; }
 
             public IList<SelectListItem> AvailableAttributes { get; set; }
@@ -419,7 +458,7 @@ namespace SmartStore.Admin.Models.Catalog
             [SmartResourceDisplayName("Admin.Catalog.Products.Pictures.Fields.Picture")]
             public string PictureUrl { get; set; }
 
-            [SmartResourceDisplayName("Admin.Catalog.Products.Pictures.Fields.DisplayOrder")]
+            [SmartResourceDisplayName("Common.DisplayOrder")]
             public int DisplayOrder { get; set; }
         }
         
@@ -436,7 +475,7 @@ namespace SmartStore.Admin.Models.Catalog
             [SmartResourceDisplayName("Admin.Catalog.Products.Categories.Fields.IsFeaturedProduct")]
             public bool IsFeaturedProduct { get; set; }
 
-            [SmartResourceDisplayName("Admin.Catalog.Products.Categories.Fields.DisplayOrder")]
+            [SmartResourceDisplayName("Common.DisplayOrder")]
             public int DisplayOrder { get; set; }
         }
 
@@ -453,7 +492,7 @@ namespace SmartStore.Admin.Models.Catalog
             [SmartResourceDisplayName("Admin.Catalog.Products.Manufacturers.Fields.IsFeaturedProduct")]
             public bool IsFeaturedProduct { get; set; }
 
-            [SmartResourceDisplayName("Admin.Catalog.Products.Manufacturers.Fields.DisplayOrder")]
+            [SmartResourceDisplayName("Common.DisplayOrder")]
             public int DisplayOrder { get; set; }
         }
 
@@ -468,7 +507,7 @@ namespace SmartStore.Admin.Models.Catalog
 			public string ProductTypeName { get; set; }
 			public string ProductTypeLabelHint { get; set; }
             
-            [SmartResourceDisplayName("Admin.Catalog.Products.RelatedProducts.Fields.DisplayOrder")]
+            [SmartResourceDisplayName("Common.DisplayOrder")]
             public int DisplayOrder { get; set; }
 
 			[SmartResourceDisplayName("Admin.Catalog.Products.Fields.Sku")]
@@ -476,43 +515,6 @@ namespace SmartStore.Admin.Models.Catalog
 
 			[SmartResourceDisplayName("Admin.Catalog.Products.Fields.Published")]
 			public bool Product2Published { get; set; }
-        }
-
-        public class AddRelatedProductModel : ModelBase
-        {
-            public AddRelatedProductModel()
-            {
-                AvailableCategories = new List<SelectListItem>();
-                AvailableManufacturers = new List<SelectListItem>();
-				AvailableStores = new List<SelectListItem>();
-				AvailableProductTypes = new List<SelectListItem>();
-            }
-            public GridModel<ProductModel> Products { get; set; }
-
-            [SmartResourceDisplayName("Admin.Catalog.Products.List.SearchProductName")]
-            [AllowHtml]
-            public string SearchProductName { get; set; }
-
-            [SmartResourceDisplayName("Admin.Catalog.Products.List.SearchCategory")]
-            public int SearchCategoryId { get; set; }
-
-            [SmartResourceDisplayName("Admin.Catalog.Products.List.SearchManufacturer")]
-            public int SearchManufacturerId { get; set; }
-
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchStore")]
-			public int SearchStoreId { get; set; }
-
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchProductType")]
-			public int SearchProductTypeId { get; set; }
-
-            public IList<SelectListItem> AvailableCategories { get; set; }
-            public IList<SelectListItem> AvailableManufacturers { get; set; }
-			public IList<SelectListItem> AvailableStores { get; set; }
-			public IList<SelectListItem> AvailableProductTypes { get; set; }
-
-            public int ProductId { get; set; }
-
-            public int[] SelectedProductIds { get; set; }
         }
 
 		public partial class AssociatedProductModel : EntityModelBase
@@ -524,7 +526,7 @@ namespace SmartStore.Admin.Models.Catalog
 			public string ProductTypeName { get; set; }
 			public string ProductTypeLabelHint { get; set; }
 
-			[SmartResourceDisplayName("Admin.Catalog.Products.AssociatedProducts.Fields.DisplayOrder")]
+			[SmartResourceDisplayName("Common.DisplayOrder")]
 			public int DisplayOrder { get; set; }
 
 			[SmartResourceDisplayName("Admin.Catalog.Products.Fields.Sku")]
@@ -532,37 +534,6 @@ namespace SmartStore.Admin.Models.Catalog
 
 			[SmartResourceDisplayName("Admin.Catalog.Products.Fields.Published")]
 			public bool Published { get; set; }
-		}
-		public partial class AddAssociatedProductModel : ModelBase
-		{
-			public AddAssociatedProductModel()
-			{
-				AvailableCategories = new List<SelectListItem>();
-				AvailableManufacturers = new List<SelectListItem>();
-				AvailableStores = new List<SelectListItem>();
-				AvailableProductTypes = new List<SelectListItem>();
-			}
-
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchProductName")]
-			[AllowHtml]
-			public string SearchProductName { get; set; }
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchCategory")]
-			public int SearchCategoryId { get; set; }
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchManufacturer")]
-			public int SearchManufacturerId { get; set; }
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchStore")]
-			public int SearchStoreId { get; set; }
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchProductType")]
-			public int SearchProductTypeId { get; set; }
-
-			public IList<SelectListItem> AvailableCategories { get; set; }
-			public IList<SelectListItem> AvailableManufacturers { get; set; }
-			public IList<SelectListItem> AvailableStores { get; set; }
-			public IList<SelectListItem> AvailableProductTypes { get; set; }
-
-			public int ProductId { get; set; }
-
-			public int[] SelectedProductIds { get; set; }
 		}
 
 		public partial class BundleItemModel : EntityModelBase
@@ -582,7 +553,7 @@ namespace SmartStore.Admin.Models.Catalog
 			[SmartResourceDisplayName("Admin.Catalog.Products.BundleItems.Fields.Quantity")]
 			public int Quantity { get; set; }
 
-			[SmartResourceDisplayName("Admin.Catalog.Products.BundleItems.Fields.DisplayOrder")]
+			[SmartResourceDisplayName("Common.DisplayOrder")]
 			public int DisplayOrder { get; set; }
 
 			[SmartResourceDisplayName("Admin.Catalog.Products.BundleItems.Fields.Discount")]
@@ -593,39 +564,6 @@ namespace SmartStore.Admin.Models.Catalog
 
 			[SmartResourceDisplayName("Admin.Catalog.Products.BundleItems.Fields.Published")]
 			public bool Published { get; set; }
-		}
-		public partial class AddBundleItemModel : ModelBase
-		{
-			public AddBundleItemModel()
-			{
-				AvailableCategories = new List<SelectListItem>();
-				AvailableManufacturers = new List<SelectListItem>();
-				AvailableStores = new List<SelectListItem>();
-				AvailableProductTypes = new List<SelectListItem>();
-			}
-
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchProductName")]
-			[AllowHtml]
-			public string SearchProductName { get; set; }
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchCategory")]
-			public int SearchCategoryId { get; set; }
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchManufacturer")]
-			public int SearchManufacturerId { get; set; }
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchStore")]
-			public int SearchStoreId { get; set; }
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchProductType")]
-			public int SearchProductTypeId { get; set; }
-
-			public IList<SelectListItem> AvailableCategories { get; set; }
-			public IList<SelectListItem> AvailableManufacturers { get; set; }
-			public IList<SelectListItem> AvailableStores { get; set; }
-			public IList<SelectListItem> AvailableProductTypes { get; set; }
-
-			public int ProductId { get; set; }
-			public bool IsPerItemPricing { get; set; }
-			public bool IsPerItemShipping { get; set; }
-
-			public int[] SelectedProductIds { get; set; }
 		}
 
         public class CrossSellProductModel : EntityModelBase
@@ -644,42 +582,6 @@ namespace SmartStore.Admin.Models.Catalog
 
 			[SmartResourceDisplayName("Admin.Catalog.Products.Fields.Published")]
 			public bool Product2Published { get; set; }
-        }
-        public class AddCrossSellProductModel : ModelBase
-        {
-            public AddCrossSellProductModel()
-            {
-                AvailableCategories = new List<SelectListItem>();
-                AvailableManufacturers = new List<SelectListItem>();
-				AvailableStores = new List<SelectListItem>();
-				AvailableProductTypes = new List<SelectListItem>();
-            }
-            public GridModel<ProductModel> Products { get; set; }
-
-            [SmartResourceDisplayName("Admin.Catalog.Products.List.SearchProductName")]
-            [AllowHtml]
-            public string SearchProductName { get; set; }
-
-            [SmartResourceDisplayName("Admin.Catalog.Products.List.SearchCategory")]
-            public int SearchCategoryId { get; set; }
-
-            [SmartResourceDisplayName("Admin.Catalog.Products.List.SearchManufacturer")]
-            public int SearchManufacturerId { get; set; }
-
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchStore")]
-			public int SearchStoreId { get; set; }
-
-			[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchProductType")]
-			public int SearchProductTypeId { get; set; }
-
-            public IList<SelectListItem> AvailableCategories { get; set; }
-            public IList<SelectListItem> AvailableManufacturers { get; set; }
-			public IList<SelectListItem> AvailableStores { get; set; }
-			public IList<SelectListItem> AvailableProductTypes { get; set; }
-
-            public int ProductId { get; set; }
-
-            public int[] SelectedProductIds { get; set; }
         }
 
 		public class TierPriceModel : EntityModelBase
@@ -705,7 +607,12 @@ namespace SmartStore.Admin.Models.Catalog
 			//"if we have one more editor with the same name on a page, it doesn't allow editing"
 			//in our case it's product.Price1
 			public decimal Price1 { get; set; }
-		}
+
+            public int CalculationMethodId { get; set; }
+            [SmartResourceDisplayName("Admin.Catalog.Products.TierPrices.Fields.CalculationMethod")]
+            [UIHint("TierPriceCalculationMethod")]
+            public string CalculationMethod { get; set; }
+        }
 
 		public class ProductVariantAttributeModel : EntityModelBase
 		{
@@ -724,19 +631,21 @@ namespace SmartStore.Admin.Models.Catalog
 			[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Fields.IsRequired")]
 			public bool IsRequired { get; set; }
 
-			public int AttributeControlTypeId { get; set; }
             [SmartResourceDisplayName("Admin.Catalog.Attributes.AttributeControlType")]
 			[UIHint("AttributeControlType")]
 			public string AttributeControlType { get; set; }
+			public int AttributeControlTypeId { get; set; }
 
-			[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Fields.DisplayOrder")]
 			//we don't name it DisplayOrder because Telerik has a small bug 
 			//"if we have one more editor with the same name on a page, it doesn't allow editing"
 			//in our case it's category.DisplayOrder
+			[SmartResourceDisplayName("Common.DisplayOrder")]
 			public int DisplayOrder1 { get; set; }
 
 			public string ViewEditUrl { get; set; }
 			public string ViewEditText { get; set; }
+			public string OptionsSets { get; set; }
+			public int ValueCount { get; set; }
 		}
 
 		public class ProductVariantAttributeValueListModel : ModelBase
@@ -750,6 +659,7 @@ namespace SmartStore.Admin.Models.Catalog
 			public string ProductVariantAttributeName { get; set; }
 		}
 
+		// TODO: DRY. see ProductAttributeOptionModelBase
 		[Validator(typeof(ProductVariantAttributeValueModelValidator))]
 		public class ProductVariantAttributeValueModel : EntityModelBase, ILocalizedModel<ProductVariantAttributeValueLocalizedModel>
 		{
@@ -758,21 +668,27 @@ namespace SmartStore.Admin.Models.Catalog
 				Locales = new List<ProductVariantAttributeValueLocalizedModel>();
 			}
 
+			public int ProductId { get; set; }
 			public int ProductVariantAttributeId { get; set; }
 
-			[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Alias")]
+			[AllowHtml, SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Alias")]
 			public string Alias { get; set; }
 
 			[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Name")]
 			[AllowHtml]
 			public string Name { get; set; }
+			public string NameString { get; set; }
 
 			[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.ColorSquaresRgb")]
 			[AllowHtml, UIHint("Color")]
-			public string ColorSquaresRgb { get; set; }
-			public bool DisplayColorSquaresRgb { get; set; }
+			public string Color { get; set; }
+			public bool IsListTypeAttribute { get; set; }
 
-			[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.PriceAdjustment")]
+            [UIHint("Picture")]
+            [SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Picture")]
+            public int PictureId { get; set; }
+            
+            [SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.PriceAdjustment")]
 			public decimal PriceAdjustment { get; set; }
 			[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.PriceAdjustment")]
 			public string PriceAdjustmentString { get; set; }
@@ -785,7 +701,7 @@ namespace SmartStore.Admin.Models.Catalog
 			[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.IsPreSelected")]
 			public bool IsPreSelected { get; set; }
 
-			[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.DisplayOrder")]
+			[SmartResourceDisplayName("Common.DisplayOrder")]
 			public int DisplayOrder { get; set; }
  
 			[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.ValueTypeId")]
@@ -806,46 +722,14 @@ namespace SmartStore.Admin.Models.Catalog
 			public string QuantityInfo { get; set; }
 
 			public IList<ProductVariantAttributeValueLocalizedModel> Locales { get; set; }
-
-			public class AddProductLinkageModel : ModelBase
-			{
-				public AddProductLinkageModel()
-				{
-					AvailableCategories = new List<SelectListItem>();
-					AvailableManufacturers = new List<SelectListItem>();
-					AvailableStores = new List<SelectListItem>();
-					AvailableProductTypes = new List<SelectListItem>();
-				}
-				public GridModel<ProductModel> Products { get; set; }
-
-				[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchProductName")]
-				[AllowHtml]
-				public string SearchProductName { get; set; }
-
-				[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchCategory")]
-				public int SearchCategoryId { get; set; }
-
-				[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchManufacturer")]
-				public int SearchManufacturerId { get; set; }
-
-				[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchStore")]
-				public int SearchStoreId { get; set; }
-
-				[SmartResourceDisplayName("Admin.Catalog.Products.List.SearchProductType")]
-				public int SearchProductTypeId { get; set; }
-
-				public IList<SelectListItem> AvailableCategories { get; set; }
-				public IList<SelectListItem> AvailableManufacturers { get; set; }
-				public IList<SelectListItem> AvailableStores { get; set; }
-				public IList<SelectListItem> AvailableProductTypes { get; set; }
-
-				public int ProductId { get; set; }
-			}
 		}
 
 		public class ProductVariantAttributeValueLocalizedModel : ILocalizedModelLocal
 		{
 			public int LanguageId { get; set; }
+
+			[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Alias")]
+			public string Alias { get; set; }
 
 			[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Name")]
 			[AllowHtml]
@@ -889,5 +773,66 @@ namespace SmartStore.Admin.Models.Catalog
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.Fields.BundleTitleText")]
 		public string BundleTitleText { get; set; }
+    }
+
+    public class DownloadVersion
+    {
+        public int? DownloadId { get; set; }
+
+        public string FileName { get; set; }
+
+        public string DownloadUrl { get; set; }
+
+        public string FileVersion { get; set; }
+    }
+    
+	public partial class ProductValidator : AbstractValidator<ProductModel>
+	{
+		public ProductValidator(Localizer T)
+		{
+			RuleFor(x => x.Name).NotEmpty();
+
+            When(x => x.LoadedTabs != null && x.LoadedTabs.Contains("Inventory", StringComparer.OrdinalIgnoreCase), () =>
+			{
+				RuleFor(x => x.OrderMinimumQuantity).GreaterThan(0); // dont't remove "Admin.Validation.ValueGreaterZero" resource. It is used elsewhere.
+				RuleFor(x => x.OrderMaximumQuantity).GreaterThan(0);
+			});
+
+			// validate PAnGV
+			When(x => x.BasePriceEnabled && x.LoadedTabs != null && x.LoadedTabs.Contains("Price"), () =>
+			{
+				RuleFor(x => x.BasePriceMeasureUnit).NotEmpty().WithMessage(T("Admin.Catalog.Products.Fields.BasePriceMeasureUnit.Required"));
+				RuleFor(x => x.BasePriceBaseAmount)
+					.NotEmpty().WithMessage(T("Admin.Catalog.Products.Fields.BasePriceBaseAmount.Required"))
+					.GreaterThan(0).WithMessage(T("Admin.Catalog.Products.Fields.BasePriceBaseAmount.Required"));
+				RuleFor(x => x.BasePriceAmount)
+					.NotEmpty().WithMessage(T("Admin.Catalog.Products.Fields.BasePriceAmount.Required"))
+					.GreaterThan(0).WithMessage(T("Admin.Catalog.Products.Fields.BasePriceAmount.Required"));
+			});
+
+            RuleFor(x => x.TaxCategoryId)
+                .NotNull()  // Nullable required for IsTaxExempt.
+                .NotEqual(0)
+                .When(x => !x.IsTaxExempt);
+        }
+    }
+
+	public partial class ProductVariantAttributeValueModelValidator : AbstractValidator<ProductModel.ProductVariantAttributeValueModel>
+	{
+		public ProductVariantAttributeValueModelValidator()
+		{
+			RuleFor(x => x.Name).NotEmpty();
+			RuleFor(x => x.Quantity).GreaterThanOrEqualTo(1).When(x => x.ValueTypeId == (int)ProductVariantAttributeValueType.ProductLinkage);
+		}
+	}
+
+    public class ProductMapper : 
+        IMapper<Product, ProductModel>
+    {
+        public void Map(Product from, ProductModel to)
+        {
+            MiniMapper.Map(from, to);
+            to.SeName = from.GetSeName(0, true, false);
+        }
     }
 }

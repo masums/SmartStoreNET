@@ -12,8 +12,8 @@ namespace SmartStore.Core.Email
 
         public SmtpContext(string host, int port = 25)
         {
-			Guard.ArgumentNotEmpty(() => host);
-			Guard.ArgumentIsPositive(port, "port");
+			Guard.NotEmpty(host, nameof(host));
+			Guard.IsPositive(port, nameof(port));
 			
 			this.Host = host;
             this.Port = port;
@@ -21,7 +21,7 @@ namespace SmartStore.Core.Email
 
 		public SmtpContext(EmailAccount account)
 		{
-			Guard.ArgumentNotNull(() => account);
+			Guard.NotNull(account, nameof(account));
 
 			this.Host = account.Host;
 			this.Port = account.Port;
@@ -73,13 +73,16 @@ namespace SmartStore.Core.Email
 
 			smtpClient.UseDefaultCredentials = this.UseDefaultCredentials;
 			smtpClient.EnableSsl = this.EnableSsl;
+			smtpClient.Timeout = 10000;
+
 			if (this.UseDefaultCredentials)
 			{
 				smtpClient.Credentials = CredentialCache.DefaultNetworkCredentials;
 			}
 			else
 			{
-				smtpClient.Credentials = new NetworkCredential(this.Username, this.Password);
+                		if (!String.IsNullOrEmpty(this.Username))
+				    smtpClient.Credentials = new NetworkCredential(this.Username, this.Password);
 			}
 
 			return smtpClient;

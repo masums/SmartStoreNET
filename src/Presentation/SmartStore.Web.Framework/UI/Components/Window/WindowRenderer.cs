@@ -1,93 +1,119 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Web.UI;
-using System.Web.Mvc;
 
 namespace SmartStore.Web.Framework.UI
 {
-   
-    public class WindowRenderer : ComponentRenderer<Window>
+	// TODO: (mc) make modal window renderer BS4 ready (after backend has been updated to BS4)
+	public class WindowRenderer : ComponentRenderer<Window>
     {
+		public override void Render()
+		{
+			if (Component.RenderAtPageEnd)
+			{
+				using (this.HtmlHelper.BeginZoneContent("end"))
+				{
+					base.Render();
+				}
+			}
+			else
+			{
+				base.Render();
+			}
+		}
 
-        protected override void WriteHtmlCore(HtmlTextWriter writer)
+		protected override void WriteHtmlCore(HtmlTextWriter writer)
         {
             var win = base.Component;
 
             win.HtmlAttributes.AppendCssClass("modal");
-            win.HtmlAttributes["role"] = "dialog";
-            win.HtmlAttributes["tabindex"] = "-1";
-            win.HtmlAttributes["aria-labelledby"] = win.Id + "Label";
+			win.HtmlAttributes["role"] = "dialog";
+			win.HtmlAttributes["tabindex"] = "-1";
+			win.HtmlAttributes["aria-hidden"] = "true";
+			win.HtmlAttributes["aria-labelledby"] = win.Id + "Label";
 
-            if (win.Width.GetValueOrDefault() > 0)
-            {
-                win.HtmlAttributes["style"] = "width:{0}px; margin-left:-{1}px".FormatInvariant(win.Width.Value, Math.Ceiling((double)(win.Width.Value / 2)));
-            }
-
-            if (!win.Visible)
-            {
-                win.HtmlAttributes["aria-hidden"] = "true";
-                win.HtmlAttributes.AppendCssClass("hide");
-            }
-            else
-            {
-                win.HtmlAttributes["aria-hidden"] = "false";
-            }
-
-            if (win.Fade)
+			if (win.Fade)
             {
                 win.HtmlAttributes.AppendCssClass("fade");
-                if (win.Visible)
-                    win.HtmlAttributes.AppendCssClass("in");
             }
 
-            // other options
-            win.HtmlAttributes["data-backdrop"] = win.BackDrop.ToString().ToLower();
-            win.HtmlAttributes["data-keyboard"] = win.CloseOnEscapePress.ToString().ToLower();
-            //win.HtmlAttributes["data-show"] = win.Visible.ToString().ToLower();
-            if (win.ContentUrl.HasValue())
-            {
-                win.HtmlAttributes["data-remote"] = win.ContentUrl;
-            }
+			// Other options
+			win.HtmlAttributes["data-keyboard"] = win.CloseOnEscapePress.ToString().ToLower();
+			win.HtmlAttributes["data-show"] = win.Show.ToString().ToLower();
+			win.HtmlAttributes["data-focus"] = win.Focus.ToString().ToLower();
+			win.HtmlAttributes["data-backdrop"] = win.BackDrop
+				? (win.CloseOnBackdropClick ? "true" : "static")
+				: "false";
 
             writer.AddAttributes(win.HtmlAttributes);
-            writer.RenderBeginTag("div"); // root div
 
-            // HEADER
-            if (win.ShowClose && win.Title.HasValue())
-            {
-                this.RenderHeader(writer);
-            }
+			writer.RenderBeginTag("div"); // div.modal
+			{
+				var className = "modal-dialog";
+				switch (win.Size)
+				{
+					case WindowSize.Small:
+						className += " modal-sm";
+						break;
+					case WindowSize.Large:
+						className += " modal-lg";
+						break;
+					case WindowSize.Flex:
+						className += " modal-flex";
+						break;
+					case WindowSize.FlexSmall:
+						className += " modal-flex modal-flex-sm";
+						break;
+				}
 
-            // BODY
-            this.RenderBody(writer);
+				if (win.CenterVertically)
+				{
+					className += " modal-dialog-centered";
+				}
 
-            // FOOTER
-            if (win.FooterContent != null)
-            {
-                this.RenderFooter(writer);
-            }
+				writer.AddAttribute("class", className);
+				win.HtmlAttributes["role"] = "document";
+				writer.RenderBeginTag("div"); // div.modal-dialog
+				{
+					writer.AddAttribute("class", "modal-content");
+					writer.RenderBeginTag("div"); // div.modal-content
+					{
+						// HEADER
+						if (win.ShowClose && win.Title.HasValue())
+						{
+							this.RenderHeader(writer);
+						}
 
-            writer.RenderEndTag(); // div.modal
-            
+						// BODY
+						this.RenderBody(writer);
+
+						// FOOTER
+						if (win.FooterContent != null)
+						{
+							this.RenderFooter(writer);
+						}
+					}
+					writer.RenderEndTag(); // div.modal-content 
+				}
+				writer.RenderEndTag(); // div.modal-dialog 
+			}
+            writer.RenderEndTag(); // div.modal        
         }
 
         protected virtual void RenderHeader(HtmlTextWriter writer)
         {
             var win = base.Component;
-
+			
             writer.AddAttribute("class", "modal-header");
             writer.RenderBeginTag("div");
 
-            if (win.ShowClose)
-            {
-                writer.Write("<button type='button' class='close' data-dismiss='modal' aria-hidden='true'>×</button>");
-            }
+			if (win.Title.HasValue())
+			{
+				writer.Write("<h5 class='modal-title' id='{0}'>{1}</h5>".FormatCurrent(win.Id + "Label", win.Title));
+			}
 
-            if (win.Title.HasValue())
+			if (win.ShowClose)
             {
-                writer.Write("<h3 id='{0}'>{1}</h3>".FormatCurrent(win.Id + "Label", win.Title));
+                writer.Write("<button type='button' class='close' data-dismiss='modal'><span aria-hidden='true'>&times;</span></button>");
             }
 
             writer.RenderEndTag(); // div.modal-header
@@ -97,17 +123,18 @@ namespace SmartStore.Web.Framework.UI
         {
             var win = base.Component;
 
-            writer.AddAttribute("class", "modal-body");
-            if (win.Height.GetValueOrDefault() > 0)
-            {
-                writer.AddAttribute("style", "max-height:{0}px;".FormatInvariant(win.Height.Value));
-            }
+			win.BodyHtmlAttributes.PrependCssClass("modal-body");
+			writer.AddAttributes(win.BodyHtmlAttributes);
             writer.RenderBeginTag("div");
 
-            if (win.ContentUrl.IsEmpty() && win.Content != null)
-            {
-                win.Content.WriteTo(writer);
-            }
+			if (win.Content != null)
+			{
+				win.Content.WriteTo(writer);
+			}
+			else if (win.ContentUrl.HasValue())
+			{
+				writer.Write("<iframe class='modal-flex-fill-area' frameborder='0' src='{0}' />".FormatInvariant(win.ContentUrl));
+			}
 
             writer.RenderEndTag(); // div.modal-body
         }
@@ -124,8 +151,5 @@ namespace SmartStore.Web.Framework.UI
 
             writer.RenderEndTag(); // div.modal-body
         }
-
-
     }
-
 }

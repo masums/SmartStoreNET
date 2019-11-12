@@ -3,7 +3,6 @@ using System.Web;
 
 namespace SmartStore.Core.Localization
 {
-
 	[Serializable]
 	public class LocalizedString : IHtmlString
     {
@@ -27,6 +26,7 @@ namespace SmartStore.Core.Localization
         {
             if (string.IsNullOrEmpty(text))
                 return defaultValue;
+
             return new LocalizedString(text);
         }
 
@@ -45,7 +45,18 @@ namespace SmartStore.Core.Localization
             get { return _localized; }
         }
 
-        public static implicit operator string(LocalizedString obj)
+		/// <summary>
+		/// Returns a js encoded string which already contains delimiters.
+		/// </summary>
+		public IHtmlString JsText
+		{
+			get
+			{
+				return System.Web.Mvc.MvcHtmlString.Create(_localized.EncodeJsString());
+			}
+		}
+
+		public static implicit operator string(LocalizedString obj)
         {
             return obj.Text;
         }
@@ -81,6 +92,5 @@ namespace SmartStore.Core.Localization
             var that = (LocalizedString)obj;
             return string.Equals(_localized, that._localized);
         }
-
     }
 }
